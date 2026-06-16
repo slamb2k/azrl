@@ -30,6 +30,7 @@ local machine, which has no route to the VM's loopback. `azrl` solves all three:
 cd <repo> && azrl          # auto-detect profile from .azprofile, pop local browser
 azrl <profile>             # override the profile explicitly
 azrl --paste               # force the manual paste-line path (A)
+azrl --help                # usage; azrl --version prints the version
 ```
 
 ## Install

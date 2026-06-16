@@ -216,3 +216,36 @@ EOF
   [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
   rm -rf "$shimdir"
 }
+
+@test "azrl_usage: includes synopsis and all flags" {
+  run azrl_usage
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+  [[ "$output" == *"--paste"* ]]
+  [[ "$output" == *"--help"* ]]
+  [[ "$output" == *"--version"* ]]
+}
+
+@test "azrl --help: prints usage and exits 0 without needing config" {
+  run "${BATS_TEST_DIRNAME}/../azrl" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+  [[ "$output" == *"--paste"* ]]
+}
+
+@test "azrl -h: prints usage and exits 0" {
+  run "${BATS_TEST_DIRNAME}/../azrl" -h
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "azrl --version: prints version and exits 0" {
+  run "${BATS_TEST_DIRNAME}/../azrl" --version
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ azrl\ [0-9]+\.[0-9]+\.[0-9]+ ]]
+}
+
+@test "azrl: unknown flag exits 2" {
+  run "${BATS_TEST_DIRNAME}/../azrl" --bogus
+  [ "$status" -eq 2 ]
+}

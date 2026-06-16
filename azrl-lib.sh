@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 # Pure, sourceable helpers for azrl. No side effects on source.
 
+azrl_usage() {
+  cat <<'EOF'
+azrl — Azure Remote Login
+
+Interactive `az login` from a headless/remote VM: the sign-in browser opens on
+your local machine and the OAuth callback is forwarded back to the VM.
+
+Usage:
+  azrl [profile] [--paste]
+  azrl --help | --version
+
+Arguments:
+  profile          Azure profile name. If omitted, resolved from the nearest
+                   .azprofile found walking up from the current directory.
+
+Options:
+  --paste          Force the manual paste-line path (A) instead of the
+                   zero-paste reverse-tunnel path (B).
+  -h, --help       Show this help and exit.
+  -V, --version    Show version and exit.
+EOF
+}
+
 azrl_extract_port() {
   local url="$1" decoded
   decoded="${url//%3A/:}"; decoded="${decoded//%2F//}"
