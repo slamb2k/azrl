@@ -112,3 +112,27 @@ EOF
   [ ! -f "$cfg/service_principal_entries.json" ]
   rm -rf "$shimdir" "$cfg"
 }
+
+@test "azl_login_capture: sets AZL_PORT and AZL_URL from captured browser URL" {
+  shimdir="$(mktemp -d)"
+  # Fake az: emulate webbrowser by invoking $BROWSER with a URL, then block briefly.
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+url='https://login/x?redirect_uri=http%3A%2F%2Flocalhost%3A40404%2F&state=z'
+# $BROWSER is like "/path/azlogin-capture %s"
+cmd="${BROWSER/\%s/$url}"
+eval "$cmd"
+sleep 2
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azlogin-lib.sh'
+    export AZLOGIN_CAPTURE='${BATS_TEST_DIRNAME}/../azlogin-capture'
+    PATH="$shimdir:\$PATH" azl_login_capture fiig.com.au
+    echo \"PORT=\$AZL_PORT URL=\$AZL_URL\"
+    kill \$AZL_LOGIN_PID 2>/dev/null || true
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PORT=40404"* ]]
+  rm -rf "$shimdir"
+}

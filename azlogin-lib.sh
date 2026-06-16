@@ -63,3 +63,24 @@ azl_clean_slate() {
         "${AZURE_CONFIG_DIR:?}/service_principal_entries.json"
   return 0
 }
+
+azl_login_capture() {
+  # $1 = tenant. Sets globals: AZL_CAPFILE, AZL_URL, AZL_PORT, AZL_LOGIN_PID.
+  local tenant="$1"
+  AZL_CAPFILE="$(mktemp)"; : > "$AZL_CAPFILE"
+  local capture="${AZLOGIN_CAPTURE:-$HOME/.local/bin/azlogin-capture}"
+  AZLOGIN_CAPFILE="$AZL_CAPFILE" BROWSER="$capture %s" \
+    az login --tenant "$tenant" --only-show-errors >/dev/null 2>&1 &
+  AZL_LOGIN_PID=$!
+  local i
+  for i in $(seq 1 200); do
+    [[ -s "$AZL_CAPFILE" ]] && break
+    kill -0 "$AZL_LOGIN_PID" 2>/dev/null || break
+    sleep 0.1
+  done
+  [[ -s "$AZL_CAPFILE" ]] || { printf 'azlogin: failed to capture auth URL\n' >&2; return 1; }
+  AZL_URL="$(cat "$AZL_CAPFILE")"
+  AZL_PORT="$(azl_extract_port "$AZL_URL")"
+  [[ -n "$AZL_PORT" ]] || { printf 'azlogin: could not parse callback port\n' >&2; return 1; }
+  return 0
+}
