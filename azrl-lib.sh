@@ -10,7 +10,8 @@ your local machine and the OAuth callback is forwarded back to the VM.
 
 Usage:
   azrl [profile] [--paste]
-  azrl --help | --version
+  azrl --derive [profile]
+  azrl --list | --help | --version
 
 Arguments:
   profile          Azure profile name. If omitted, resolved from the nearest
@@ -19,8 +20,43 @@ Arguments:
 Options:
   --paste          Force the manual paste-line path (A) instead of the
                    zero-paste reverse-tunnel path (B).
+  --derive         Generate <profile>.conf from the current logged-in session
+                   for that profile (does not log in; refuses to overwrite).
+  --list           List configured profiles and their tenants.
   -h, --help       Show this help and exit.
   -V, --version    Show version and exit.
+EOF
+}
+
+azrl_list_profiles() {
+  # [$1=confdir]. Prints "<profile>  <AZ_TENANT>" per configured profile,
+  # excluding the global azrl.conf. Silent (exit 0) when none exist.
+  local confdir="${1:-$HOME/.azure-profiles}" f name tenant
+  for f in "$confdir"/*.conf; do
+    [[ -e "$f" ]] || continue
+    name="$(basename "$f" .conf)"
+    [[ "$name" == "azrl" ]] && continue
+    # shellcheck disable=SC1090
+    tenant="$( source "$f" 2>/dev/null || true; printf '%s' "${AZ_TENANT:-?}" )"
+    printf '%-24s %s\n' "$name" "$tenant"
+  done
+}
+
+azrl_derive_conf() {
+  # $1=account_json (`az account show`) $2=domains_json (graph /v1.0/domains).
+  # Emits a ready-to-save <profile>.conf to stdout. AZ_TENANT prefers the
+  # verified default domain; falls back to the tenant GUID (e.g. guest/B2B).
+  local acct="$1" doms="$2" tenant_id user sub domain
+  tenant_id="$(jq -r '.tenantId // empty'   <<<"$acct")"
+  user="$(jq -r '.user.name // empty'       <<<"$acct")"
+  sub="$(jq -r '.name // empty'             <<<"$acct")"
+  domain="$(jq -r '[.value[]? | select(.isDefault==true).id][0] // empty' <<<"$doms")"
+  [[ -n "$domain" ]] || domain="$tenant_id"
+  cat <<EOF
+AZ_TENANT=$domain
+AZ_TENANT_ID=$tenant_id
+AZ_DEFAULT_SUB=$sub
+AZ_EXPECT_USER=$user
 EOF
 }
 

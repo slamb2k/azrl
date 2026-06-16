@@ -9,16 +9,36 @@ source "$LIB"
 AZRL_VERSION="0.1.0"
 
 PROFILE_ARG=""
+AZRL_MODE=login
 export AZRL_FORCE_PASTE=0
 for a in "$@"; do
   case "$a" in
     -h|--help) azrl_usage; exit 0 ;;
     -V|--version) printf 'azrl %s\n' "$AZRL_VERSION"; exit 0 ;;
+    --list) azrl_list_profiles; exit 0 ;;
+    --derive) AZRL_MODE=derive ;;
     --paste) AZRL_FORCE_PASTE=1 ;;
     -*) printf 'azrl: unknown flag %s\n' "$a" >&2; exit 2 ;;
     *)  PROFILE_ARG="$a" ;;
   esac
 done
+
+# --derive: generate a <profile>.conf from an already logged-in session for that
+# profile. Does not log in or touch the global config; refuses to clobber.
+if [[ "$AZRL_MODE" == "derive" ]]; then
+  PROFILE="$(azrl_resolve_profile "$PROFILE_ARG" "$PWD")"
+  export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
+  [[ -d "$AZURE_CONFIG_DIR" ]] \
+    || { printf 'azrl: no session for profile %q — log in first (azrl %s)\n' "$PROFILE" "$PROFILE" >&2; exit 1; }
+  OUT="$HOME/.azure-profiles/$PROFILE.conf"
+  [[ -e "$OUT" ]] && { printf 'azrl: %s already exists — remove it first to re-derive\n' "$OUT" >&2; exit 1; }
+  ACCT="$(az account show -o json)" \
+    || { printf 'azrl: not logged in for profile %q — run azrl %s first\n' "$PROFILE" "$PROFILE" >&2; exit 1; }
+  DOMS="$(az rest --url 'https://graph.microsoft.com/v1.0/domains' -o json 2>/dev/null || printf '{}')"
+  azrl_derive_conf "$ACCT" "$DOMS" > "$OUT"
+  printf 'azrl: wrote %s (review AZ_TENANT and fill any blanks)\n' "$OUT"
+  exit 0
+fi
 
 # Global config (LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST)
 GLOBAL_CONF="$HOME/.azure-profiles/azrl.conf"

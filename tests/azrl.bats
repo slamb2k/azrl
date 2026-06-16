@@ -263,3 +263,93 @@ EOF
   [ ! -e "$home/.azure-profiles/ghost" ]
   rm -rf "$home"
 }
+
+@test "azrl_list_profiles: lists profiles with tenant, excluding azrl.conf" {
+  tmp="$(mktemp -d)"
+  printf 'AZ_TENANT=fiig.com.au\n'             > "$tmp/fiig.conf"
+  printf 'AZ_TENANT=onenrg.onmicrosoft.com\n'  > "$tmp/nrg.conf"
+  printf 'LOCAL_HOST=x\n'                      > "$tmp/azrl.conf"
+  run azrl_list_profiles "$tmp"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fiig"* ]]
+  [[ "$output" == *"fiig.com.au"* ]]
+  [[ "$output" == *"nrg"* ]]
+  [[ "$output" == *"onenrg.onmicrosoft.com"* ]]
+  [[ "$output" != *"azrl"* ]]
+  rm -rf "$tmp"
+}
+
+@test "azrl_list_profiles: empty confdir prints nothing, exits 0" {
+  tmp="$(mktemp -d)"
+  run azrl_list_profiles "$tmp"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  rm -rf "$tmp"
+}
+
+@test "azrl_derive_conf: builds conf from account + domains json" {
+  acct='{"tenantId":"guid-1","name":"nrgpov01","user":{"name":"simon@onenrg.onmicrosoft.com"}}'
+  doms='{"value":[{"id":"onenrg.mail.onmicrosoft.com","isDefault":false},{"id":"onenrg.onmicrosoft.com","isDefault":true}]}'
+  run azrl_derive_conf "$acct" "$doms"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"AZ_TENANT=onenrg.onmicrosoft.com"* ]]
+  [[ "$output" == *"AZ_TENANT_ID=guid-1"* ]]
+  [[ "$output" == *"AZ_DEFAULT_SUB=nrgpov01"* ]]
+  [[ "$output" == *"AZ_EXPECT_USER=simon@onenrg.onmicrosoft.com"* ]]
+}
+
+@test "azrl_derive_conf: falls back to tenantId when no default domain" {
+  acct='{"tenantId":"guid-2","name":"sub","user":{"name":"u@x"}}'
+  doms='{"value":[]}'
+  run azrl_derive_conf "$acct" "$doms"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"AZ_TENANT=guid-2"* ]]
+  [[ "$output" == *"AZ_TENANT_ID=guid-2"* ]]
+}
+
+@test "azrl --list: prints configured profiles and exits 0" {
+  home="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  printf 'AZ_TENANT=fiig.com.au\n' > "$home/.azure-profiles/fiig.conf"
+  HOME="$home" run "${BATS_TEST_DIRNAME}/../azrl" --list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fiig"* ]]
+  [[ "$output" == *"fiig.com.au"* ]]
+  rm -rf "$home"
+}
+
+@test "azrl --derive: writes a profile conf from the logged-in session" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/nrg"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)      echo '{"tenantId":"guid-1","name":"nrgpov01","user":{"name":"u@onenrg.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*)    echo '{"value":[{"id":"onenrg.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                     echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --derive nrg
+  [ "$status" -eq 0 ]
+  [ -f "$home/.azure-profiles/nrg.conf" ]
+  grep -q 'AZ_TENANT=onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
+  grep -q 'AZ_TENANT_ID=guid-1' "$home/.azure-profiles/nrg.conf"
+  grep -q 'AZ_EXPECT_USER=u@onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
+  rm -rf "$home" "$shimdir"
+}
+
+@test "azrl --derive: refuses to clobber an existing conf" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/nrg"
+  printf 'AZ_TENANT=keep.me\n' > "$home/.azure-profiles/nrg.conf"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+echo '{}'
+EOF
+  chmod +x "$shimdir/az"
+  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --derive nrg
+  [ "$status" -ne 0 ]
+  grep -q 'AZ_TENANT=keep.me' "$home/.azure-profiles/nrg.conf"
+  rm -rf "$home" "$shimdir"
+}
