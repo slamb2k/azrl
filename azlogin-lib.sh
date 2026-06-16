@@ -67,18 +67,26 @@ azl_clean_slate() {
 azl_login_capture() {
   # $1 = tenant. Sets globals: AZL_CAPFILE, AZL_URL, AZL_PORT, AZL_LOGIN_PID.
   local tenant="$1"
+  local poll_max="${AZL_CAPTURE_POLL:-200}"   # 200 × 0.1s = 20s
   AZL_CAPFILE="$(mktemp)"; : > "$AZL_CAPFILE"
   local capture="${AZLOGIN_CAPTURE:-$HOME/.local/bin/azlogin-capture}"
   AZLOGIN_CAPFILE="$AZL_CAPFILE" BROWSER="$capture %s" \
     az login --tenant "$tenant" --only-show-errors >/dev/null 2>&1 &
   AZL_LOGIN_PID=$!
-  local i
-  for i in $(seq 1 200); do
+  local _
+  for _ in $(seq 1 "$poll_max"); do
     [[ -s "$AZL_CAPFILE" ]] && break
     kill -0 "$AZL_LOGIN_PID" 2>/dev/null || break
     sleep 0.1
   done
-  [[ -s "$AZL_CAPFILE" ]] || { printf 'azlogin: failed to capture auth URL\n' >&2; return 1; }
+  if [[ ! -s "$AZL_CAPFILE" ]]; then
+    if kill -0 "$AZL_LOGIN_PID" 2>/dev/null; then
+      printf 'azlogin: timed out waiting for auth URL after %ss\n' "$((poll_max/10))" >&2
+    else
+      printf 'azlogin: az login exited before producing an auth URL (check tenant/credentials)\n' >&2
+    fi
+    return 1
+  fi
   AZL_URL="$(cat "$AZL_CAPFILE")"
   AZL_PORT="$(azl_extract_port "$AZL_URL")"
   [[ -n "$AZL_PORT" ]] || { printf 'azlogin: could not parse callback port\n' >&2; return 1; }
@@ -92,9 +100,19 @@ azl_bridge() {
   if [[ "${AZL_FORCE_PASTE:-0}" != "1" ]] \
      && ssh -o BatchMode=yes -o ConnectTimeout=5 "$LOCAL_HOST" true 2>/dev/null; then
     ssh -N -R "$port:localhost:$port" "$LOCAL_HOST" 2>/dev/null &
+    # shellcheck disable=SC2034  # consumed cross-file by the orchestrator cleanup trap
     AZL_TUNNEL_PID=$!
-    ssh "$LOCAL_HOST" "$LOCAL_BROWSER_CMD '$url'" >/dev/null 2>&1 || true
-    printf 'azlogin: browser opened on %s (zero-paste path B)\n' "$LOCAL_HOST"
+    sleep 0.5
+    if kill -0 "$AZL_TUNNEL_PID" 2>/dev/null; then
+      # shellcheck disable=SC2029  # $url intentionally expands locally to run on LOCAL_HOST
+      ssh "$LOCAL_HOST" "$LOCAL_BROWSER_CMD '$url'" >/dev/null 2>&1 || true
+      printf 'azlogin: browser opened on %s (zero-paste path B)\n' "$LOCAL_HOST"
+    else
+      unset AZL_TUNNEL_PID
+      printf 'azlogin: reverse tunnel failed — paste this on your LOCAL machine:\n\n' >&2
+      azl_paste_line "$port" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$url" >&2
+      printf '\n' >&2
+    fi
   else
     printf 'azlogin: local callback unavailable — paste this on your LOCAL machine:\n\n' >&2
     azl_paste_line "$port" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$url" >&2

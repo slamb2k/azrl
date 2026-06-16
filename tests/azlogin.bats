@@ -148,7 +148,9 @@ EOF
   cat > "$shimdir/ssh" <<EOF
 #!/usr/bin/env bash
 echo "ssh \$*" >> "$log"
-# reachability probe ("ssh ... <host> true") and browser cmd should succeed
+# reachability probe ("ssh ... <host> true") and browser cmd should succeed.
+# The reverse tunnel (-R) must stay alive so the liveness check sees it running.
+for a in "\$@"; do [[ "\$a" == "-R" ]] && { sleep 2; exit 0; }; done
 exit 0
 EOF
   chmod +x "$shimdir/ssh"
@@ -165,4 +167,20 @@ EOF
   run azl_bridge 40404 'https://login/x'
   [ "$status" -eq 0 ]
   [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
+}
+
+@test "azl_bridge: B falls back to A when reverse tunnel dies" {
+  shimdir="$(mktemp -d)"
+  cat > "$shimdir/ssh" <<'EOF'
+#!/usr/bin/env bash
+# reachability probe succeeds; the reverse-tunnel (-R) invocation fails immediately
+for a in "$@"; do [[ "$a" == "-R" ]] && exit 1; done
+exit 0
+EOF
+  chmod +x "$shimdir/ssh"
+  export LOCAL_HOST=velrada-pc-wsl LOCAL_BROWSER_CMD=wslview VM_HOST=vm-always AZL_FORCE_PASTE=0
+  PATH="$shimdir:$PATH" run azl_bridge 40404 'https://login/x'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
+  rm -rf "$shimdir"
 }

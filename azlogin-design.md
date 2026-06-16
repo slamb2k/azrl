@@ -114,7 +114,7 @@ for the Dataverse/formrule work that targets the other tenant.
 
 1. **BROWSER-capture** actually prevents device-code fallback on az 2.86.0 (primary risk).
 2. **WSL2 localhostForwarding** carries the tunnel to the Windows browser.
-3. Exact `az login` completion signal to key tunnel teardown off (process exit vs. token-cache write).
+3. ~~Exact `az login` completion signal to key tunnel teardown off (process exit vs. token-cache write).~~ **RESOLVED:** the EXIT trap kills the tunnel, watchdog, and login pid; login completion is detected via `wait` on the login pid, bounded by a watchdog timeout (`AZL_LOGIN_TIMEOUT`, default 180s). Login failure/timeout now degrades to the path-A paste recovery hint instead of hanging.
 4. Per-profile `.conf` values (tenants/subs/expected users) — fill in real values; `fiig` tenant is `fiig.com.au`.
 ```
 

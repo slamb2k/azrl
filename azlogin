@@ -23,6 +23,8 @@ GLOBAL_CONF="$HOME/.azure-profiles/azlogin.conf"
 source "$GLOBAL_CONF"
 : "${LOCAL_HOST:?set in azlogin.conf}" "${LOCAL_BROWSER_CMD:?}" "${VM_HOST:?}"
 
+AZL_LOGIN_TIMEOUT="${AZL_LOGIN_TIMEOUT:-180}"
+
 PROFILE="$(azl_resolve_profile "$PROFILE_ARG" "$PWD")"
 export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
 mkdir -p "$AZURE_CONFIG_DIR"
@@ -31,7 +33,10 @@ azl_load_profile_conf "$PROFILE"
 printf 'azlogin: profile=%s tenant=%s\n' "$PROFILE" "$AZ_TENANT"
 azl_clean_slate
 
-cleanup() { kill "${AZL_TUNNEL_PID:-}" 2>/dev/null || true; rm -f "${AZL_CAPFILE:-}"; }
+cleanup() {
+  kill "${AZL_TUNNEL_PID:-}" "${AZL_WATCHDOG_PID:-}" "${AZL_LOGIN_PID:-}" 2>/dev/null || true
+  rm -f "${AZL_CAPFILE:-}"
+}
 trap cleanup EXIT
 
 azl_login_capture "$AZ_TENANT"
@@ -39,9 +44,22 @@ printf 'azlogin: callback port %s\n' "$AZL_PORT"
 azl_bridge "$AZL_PORT" "$AZL_URL"
 
 printf 'azlogin: waiting for sign-in to complete...\n'
-wait "$AZL_LOGIN_PID"
+( sleep "$AZL_LOGIN_TIMEOUT"; kill "$AZL_LOGIN_PID" 2>/dev/null ) &
+AZL_WATCHDOG_PID=$!
+login_rc=0; wait "$AZL_LOGIN_PID" || login_rc=$?
+kill "$AZL_WATCHDOG_PID" 2>/dev/null || true
+if (( login_rc != 0 )); then
+  printf '✗ azlogin: sign-in did not complete (rc=%s). Either it failed/was cancelled, or the browser callback never reached this VM (timeout %ss).\n' "$login_rc" "$AZL_LOGIN_TIMEOUT" >&2
+  printf '  Recover by pasting this on your LOCAL machine, then retrying the browser:\n\n' >&2
+  azl_paste_line "$AZL_PORT" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$AZL_URL" >&2
+  printf '\n' >&2
+  exit "$login_rc"
+fi
 
-[[ -n "${AZ_DEFAULT_SUB:-}" ]] && az account set --subscription "$AZ_DEFAULT_SUB" || true
+if [[ -n "${AZ_DEFAULT_SUB:-}" ]]; then
+  az account set --subscription "$AZ_DEFAULT_SUB" \
+    || { printf '✗ azlogin: could not select subscription %q\n' "$AZ_DEFAULT_SUB" >&2; exit 1; }
+fi
 ACCT="$(az account show -o json)"
 if azl_assert_account "$ACCT" "${AZ_TENANT_ID:-$AZ_TENANT}" "${AZ_EXPECT_USER:-}"; then
   printf '✓ azlogin: signed in as %s (tenant %s, sub %s)\n' \
