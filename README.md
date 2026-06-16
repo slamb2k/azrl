@@ -30,8 +30,42 @@ local machine, which has no route to the VM's loopback. `azrl` solves all three:
 cd <repo> && azrl          # auto-detect profile from .azprofile, pop local browser
 azrl <profile>             # override the profile explicitly
 azrl --paste               # force the manual paste-line path (A)
+azrl --list                # list configured profiles and their tenants
+azrl --derive [profile]    # generate <profile>.conf from a logged-in session
 azrl --help                # usage; azrl --version prints the version
 ```
+
+## Using the profile after login
+
+`azrl` runs as a subprocess, so its `AZURE_CONFIG_DIR` isolation only covers the
+login itself — once it exits, plain `az` in your shell falls back to `~/.azure`
+unless you export `AZURE_CONFIG_DIR` yourself. Pin it **per repo** so every `az`
+in that tree uses the right profile. With [direnv](https://direnv.net):
+
+```bash
+# <repo>/.envrc  (gitignored alongside .azprofile)
+export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$(cat .azprofile)"
+```
+
+Add `.envrc` to your global gitignore (`~/.config/git/ignore`) next to
+`.azprofile`, then `direnv allow`. Without direnv, export the same line in your
+shell rc or before running `az`.
+
+## Deriving a profile config
+
+To create a `<profile>.conf` from a session you've already logged into:
+
+```bash
+azrl <profile>             # log in once (or however you authenticated)
+azrl --derive <profile>    # writes ~/.azure-profiles/<profile>.conf
+```
+
+`--derive` reads the live session's tenant GUID, subscription, and user, and
+queries Microsoft Graph (`/v1.0/domains`) for the **verified default domain** —
+necessary because the cached `azureProfile.json` often has a null
+`tenantDefaultDomain` (notably for guest/B2B accounts), so the domain can't be
+read from the session alone. It refuses to overwrite an existing conf; review
+`AZ_TENANT` and fill any blanks afterward.
 
 ## Install
 
