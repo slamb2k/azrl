@@ -20,3 +20,13 @@ azl_resolve_profile() {
   printf 'azlogin: no profile arg and no .azprofile found from %s\n' "$dir" >&2
   return 1
 }
+
+azl_load_profile_conf() {
+  local profile="$1" confdir="${2:-$HOME/.azure-profiles}"
+  local f="$confdir/$profile.conf"
+  [[ -f "$f" ]] || { printf 'azlogin: missing config %s\n' "$f" >&2; return 1; }
+  # shellcheck disable=SC1090
+  source "$f"
+  [[ -n "${AZ_TENANT:-}" ]] || { printf 'azlogin: AZ_TENANT not set in %s\n' "$f" >&2; return 1; }
+  return 0
+}

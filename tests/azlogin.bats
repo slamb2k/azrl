@@ -38,3 +38,27 @@ setup() {
   [ "$status" -ne 0 ]
   rm -rf "$tmp"
 }
+
+@test "azl_load_profile_conf: sources tenant and returns 0" {
+  tmp="$(mktemp -d)"
+  printf 'AZ_TENANT=fiig.com.au\nAZ_DEFAULT_SUB=sub-123\n' > "$tmp/fiig.conf"
+  run bash -c "source '${BATS_TEST_DIRNAME}/../azlogin-lib.sh'; azl_load_profile_conf fiig '$tmp'; echo \"\$AZ_TENANT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fiig.com.au"* ]]
+  rm -rf "$tmp"
+}
+
+@test "azl_load_profile_conf: missing file -> error" {
+  tmp="$(mktemp -d)"
+  run azl_load_profile_conf nope "$tmp"
+  [ "$status" -ne 0 ]
+  rm -rf "$tmp"
+}
+
+@test "azl_load_profile_conf: missing AZ_TENANT -> error" {
+  tmp="$(mktemp -d)"
+  printf 'AZ_DEFAULT_SUB=x\n' > "$tmp/bad.conf"
+  run azl_load_profile_conf bad "$tmp"
+  [ "$status" -ne 0 ]
+  rm -rf "$tmp"
+}
