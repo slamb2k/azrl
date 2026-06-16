@@ -17,3 +17,24 @@ setup() {
   run azl_extract_port "$url"
   [ "$output" = "55322" ]
 }
+
+@test "azl_resolve_profile: explicit arg wins" {
+  run azl_resolve_profile "fiig" "/tmp"
+  [ "$output" = "fiig" ]
+}
+
+@test "azl_resolve_profile: reads .azprofile walking up" {
+  tmp="$(mktemp -d)"; mkdir -p "$tmp/a/b"
+  printf 'digital-it-apps\n' > "$tmp/.azprofile"
+  run azl_resolve_profile "" "$tmp/a/b"
+  [ "$status" -eq 0 ]
+  [ "$output" = "digital-it-apps" ]
+  rm -rf "$tmp"
+}
+
+@test "azl_resolve_profile: no arg, no file -> error" {
+  tmp="$(mktemp -d)"
+  run azl_resolve_profile "" "$tmp"
+  [ "$status" -ne 0 ]
+  rm -rf "$tmp"
+}
