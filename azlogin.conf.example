@@ -1,0 +1,4 @@
+# Global azlogin config. Copy to ~/.azure-profiles/azlogin.conf
+LOCAL_HOST=velrada-pc-wsl          # tailnet host that runs the browser (WSL)
+LOCAL_BROWSER_CMD=wslview          # opens the Windows default browser from WSL
+VM_HOST=vm-always                  # this VM's tailnet name (for the path-A paste line)
