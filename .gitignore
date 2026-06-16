@@ -1,0 +1,5 @@
+*.conf
+!*.conf.example
+msal_token_cache.json
+service_principal_entries.json
+*.log

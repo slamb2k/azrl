@@ -1,0 +1,80 @@
+# azrl — Azure Remote Login
+
+Interactive `az login` from a **headless/remote Linux VM**, with the sign-in
+browser opening on your **local machine** and the OAuth callback forwarded back —
+even when Conditional Access **blocks device-code flow**. Picks the right Azure
+profile per repo, always starts from a clean slate, and verifies you ended up as
+the identity you expected.
+
+## Why this exists
+
+`az login`'s interactive flow binds a **random** `127.0.0.1:<port>` listener on
+the VM (no flag pins it). On a headless box az silently **falls back to device
+code** — which some tenants' CA policies forbid. And the browser lives on your
+local machine, which has no route to the VM's loopback. `azrl` solves all three:
+
+1. **Keeps the auth-code flow alive** — points `$BROWSER` at a capture helper so
+   MSAL believes a browser launched (no device-code fallback) and records the
+   random callback URL/port.
+2. **Bridges the browser** — opens a reverse SSH tunnel to your local machine and
+   launches the browser there (path **B**, zero-paste); falls back to printing a
+   one-line `ssh -L …` you paste locally (path **A**).
+3. **Right profile, clean slate, verified identity** — per-repo profile via an
+   uncommitted `.azprofile`, isolated `AZURE_CONFIG_DIR`, a hard logout/clear
+   before login, and a post-login assertion of tenant (by GUID, for guest/B2B)
+   and user.
+
+## Usage
+
+```bash
+cd <repo> && azrl          # auto-detect profile from .azprofile, pop local browser
+azrl <profile>             # override the profile explicitly
+azrl --paste               # force the manual paste-line path (A)
+```
+
+## Install
+
+```bash
+./install.sh               # symlinks azrl + azrl-capture into ~/.local/bin,
+                           # ensures .azprofile is globally gitignored,
+                           # bootstraps ~/.azure-profiles/azrl.conf from the template
+```
+
+## Configuration
+
+| File | Purpose |
+|---|---|
+| `~/.azure-profiles/azrl.conf` | global: `LOCAL_HOST` (tailnet host running the browser), `LOCAL_BROWSER_CMD` (e.g. `wslview`), `VM_HOST` (this VM's tailnet name) |
+| `~/.azure-profiles/<profile>.conf` | per-profile: `AZ_TENANT` (domain, for `az login --tenant`), `AZ_TENANT_ID` (tenant GUID — **required for guest/B2B** where `az account show` returns a null `tenantDefaultDomain`), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER` |
+| `<repo>/.azprofile` | one line: the profile name for that repo (uncommitted; globally gitignored) |
+| `~/.azure-profiles/<profile>/` | isolated per-profile token cache (`AZURE_CONFIG_DIR`) |
+
+See `azrl.conf.example` and `profile.conf.example` for templates.
+
+## Layout
+
+```
+azrl            # orchestrator (symlinked onto PATH)
+azrl-lib.sh     # pure, sourceable functions (unit-tested)
+azrl-capture    # $BROWSER capture helper
+install.sh      # symlink + gitignore + config bootstrap
+tests/azrl.bats # bats unit tests
+docs/           # design.md + build-plan.md (historical, pre-rename)
+```
+
+## Development
+
+```bash
+bats tests/azrl.bats
+shellcheck azrl azrl-lib.sh azrl-capture
+```
+
+Pure logic lives in `azrl-lib.sh` (sourceable, fully unit-tested). Integration
+paths (`az login` lifecycle, the reverse-tunnel bridge, the watchdog/timeout) are
+exercised end-to-end. Built TDD-first. See `HANDOVER.md` for full context.
+
+## Requirements
+
+Azure CLI, OpenSSH, `jq`, and a local machine reachable from the VM (designed
+around **Tailscale** MagicDNS + **WSL2** `wslview`/localhostForwarding, but the
+config makes the local host/browser command pluggable).

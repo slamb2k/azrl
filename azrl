@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SELF="$(readlink -f "$0")"
+LIB="$(dirname "$SELF")/azrl-lib.sh"
+# shellcheck source=/dev/null
+source "$LIB"
+
+PROFILE_ARG=""
+export AZRL_FORCE_PASTE=0
+for a in "$@"; do
+  case "$a" in
+    --paste) AZRL_FORCE_PASTE=1 ;;
+    -*) printf 'azrl: unknown flag %s\n' "$a" >&2; exit 2 ;;
+    *)  PROFILE_ARG="$a" ;;
+  esac
+done
+
+# Global config (LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST)
+GLOBAL_CONF="$HOME/.azure-profiles/azrl.conf"
+[[ -f "$GLOBAL_CONF" ]] || { printf 'azrl: missing %s (run install.sh)\n' "$GLOBAL_CONF" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$GLOBAL_CONF"
+: "${LOCAL_HOST:?set in azrl.conf}" "${LOCAL_BROWSER_CMD:?}" "${VM_HOST:?}"
+
+AZRL_LOGIN_TIMEOUT="${AZRL_LOGIN_TIMEOUT:-180}"
+
+PROFILE="$(azrl_resolve_profile "$PROFILE_ARG" "$PWD")"
+export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
+mkdir -p "$AZURE_CONFIG_DIR"
+azrl_load_profile_conf "$PROFILE"
+
+printf 'azrl: profile=%s tenant=%s\n' "$PROFILE" "$AZ_TENANT"
+azrl_clean_slate
+
+cleanup() {
+  kill "${AZRL_TUNNEL_PID:-}" "${AZRL_WATCHDOG_PID:-}" "${AZRL_LOGIN_PID:-}" 2>/dev/null || true
+  rm -f "${AZRL_CAPFILE:-}"
+}
+trap cleanup EXIT
+
+azrl_login_capture "$AZ_TENANT"
+printf 'azrl: callback port %s\n' "$AZRL_PORT"
+azrl_bridge "$AZRL_PORT" "$AZRL_URL"
+
+printf 'azrl: waiting for sign-in to complete...\n'
+( sleep "$AZRL_LOGIN_TIMEOUT"; kill "$AZRL_LOGIN_PID" 2>/dev/null ) &
+AZRL_WATCHDOG_PID=$!
+login_rc=0; wait "$AZRL_LOGIN_PID" || login_rc=$?
+kill "$AZRL_WATCHDOG_PID" 2>/dev/null || true
+if (( login_rc != 0 )); then
+  printf '✗ azrl: sign-in did not complete (rc=%s). Either it failed/was cancelled, or the browser callback never reached this VM (timeout %ss).\n' "$login_rc" "$AZRL_LOGIN_TIMEOUT" >&2
+  printf '  Recover by pasting this on your LOCAL machine, then retrying the browser:\n\n' >&2
+  azrl_paste_line "$AZRL_PORT" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$AZRL_URL" >&2
+  printf '\n' >&2
+  exit "$login_rc"
+fi
+
+if [[ -n "${AZ_DEFAULT_SUB:-}" ]]; then
+  az account set --subscription "$AZ_DEFAULT_SUB" \
+    || { printf '✗ azrl: could not select subscription %q\n' "$AZ_DEFAULT_SUB" >&2; exit 1; }
+fi
+ACCT="$(az account show -o json)"
+if azrl_assert_account "$ACCT" "${AZ_TENANT_ID:-$AZ_TENANT}" "${AZ_EXPECT_USER:-}"; then
+  printf '✓ azrl: signed in as %s (tenant %s, sub %s)\n' \
+    "$(jq -r '.user.name' <<<"$ACCT")" \
+    "$(jq -r '.tenantDefaultDomain // .tenantId' <<<"$ACCT")" \
+    "$(jq -r '.name' <<<"$ACCT")"
+else
+  printf '✗ azrl: signed in but identity does NOT match profile %s — review above.\n' "$PROFILE" >&2
+  exit 1
+fi
