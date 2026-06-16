@@ -92,3 +92,23 @@ setup() {
   run azl_assert_account "$json" "fiig.com.au" "right@x"
   [ "$status" -ne 0 ]
 }
+
+@test "azl_clean_slate: calls az logout+clear and removes only scoped caches" {
+  shimdir="$(mktemp -d)"; cfg="$(mktemp -d)"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+echo "az $*" >> "$AZ_SHIM_LOG"
+EOF
+  chmod +x "$shimdir/az"
+  export AZ_SHIM_LOG="$cfg/shim.log"
+  export AZURE_CONFIG_DIR="$cfg"
+  : > "$cfg/msal_token_cache.json"
+  : > "$cfg/service_principal_entries.json"
+  PATH="$shimdir:$PATH" run azl_clean_slate
+  [ "$status" -eq 0 ]
+  grep -q "az logout" "$AZ_SHIM_LOG"
+  grep -q "az account clear" "$AZ_SHIM_LOG"
+  [ ! -f "$cfg/msal_token_cache.json" ]
+  [ ! -f "$cfg/service_principal_entries.json" ]
+  rm -rf "$shimdir" "$cfg"
+}

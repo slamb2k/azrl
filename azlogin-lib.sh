@@ -54,3 +54,12 @@ azl_assert_account() {
   fi
   return 0
 }
+
+azl_clean_slate() {
+  # Operates only within $AZURE_CONFIG_DIR (isolated profile).
+  az logout >/dev/null 2>&1 || true
+  az account clear >/dev/null 2>&1 || true
+  rm -f "${AZURE_CONFIG_DIR:?}/msal_token_cache.json" \
+        "${AZURE_CONFIG_DIR:?}/service_principal_entries.json"
+  return 0
+}
