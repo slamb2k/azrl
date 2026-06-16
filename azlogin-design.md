@@ -117,3 +117,7 @@ for the Dataverse/formrule work that targets the other tenant.
 3. Exact `az login` completion signal to key tunnel teardown off (process exit vs. token-cache write).
 4. Per-profile `.conf` values (tenants/subs/expected users) — fill in real values; `fiig` tenant is `fiig.com.au`.
 ```
+
+## Spike result
+
+BROWSER-capture confirmed on az 2.86.0 on 2026-06-16; captured port 45715.

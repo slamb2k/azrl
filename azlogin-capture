@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Invoked by Python's webbrowser (via $BROWSER) as: azlogin-capture <url>
+# Records the URL so the caller can read the random callback port, then exits 0
+# so az believes a browser launched (preventing device-code fallback).
+set -euo pipefail
+printf '%s' "${1:-}" > "${AZLOGIN_CAPFILE:?AZLOGIN_CAPFILE not set}"
+exit 0
