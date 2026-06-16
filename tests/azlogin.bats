@@ -136,3 +136,27 @@ EOF
   [[ "$output" == *"PORT=40404"* ]]
   rm -rf "$shimdir"
 }
+
+@test "azl_bridge: B path when local reachable (uses reverse tunnel + browser cmd)" {
+  shimdir="$(mktemp -d)"; log="$shimdir/ssh.log"
+  cat > "$shimdir/ssh" <<EOF
+#!/usr/bin/env bash
+echo "ssh \$*" >> "$log"
+# reachability probe ("ssh ... <host> true") and browser cmd should succeed
+exit 0
+EOF
+  chmod +x "$shimdir/ssh"
+  export LOCAL_HOST=velrada-pc-wsl LOCAL_BROWSER_CMD=wslview VM_HOST=vm-always AZL_FORCE_PASTE=0
+  PATH="$shimdir:$PATH" run azl_bridge 40404 'https://login/x'
+  [ "$status" -eq 0 ]
+  grep -q -- "-R 40404:localhost:40404 velrada-pc-wsl" "$log"
+  grep -q "wslview" "$log"
+  rm -rf "$shimdir"
+}
+
+@test "azl_bridge: A path when forced to paste" {
+  export LOCAL_HOST=velrada-pc-wsl LOCAL_BROWSER_CMD=wslview VM_HOST=vm-always AZL_FORCE_PASTE=1
+  run azl_bridge 40404 'https://login/x'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
+}

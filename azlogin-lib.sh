@@ -84,3 +84,21 @@ azl_login_capture() {
   [[ -n "$AZL_PORT" ]] || { printf 'azlogin: could not parse callback port\n' >&2; return 1; }
   return 0
 }
+
+azl_bridge() {
+  # $1=port $2=url. Uses LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST, AZL_FORCE_PASTE.
+  # Sets AZL_TUNNEL_PID when a reverse tunnel is started (for teardown).
+  local port="$1" url="$2"
+  if [[ "${AZL_FORCE_PASTE:-0}" != "1" ]] \
+     && ssh -o BatchMode=yes -o ConnectTimeout=5 "$LOCAL_HOST" true 2>/dev/null; then
+    ssh -N -R "$port:localhost:$port" "$LOCAL_HOST" 2>/dev/null &
+    AZL_TUNNEL_PID=$!
+    ssh "$LOCAL_HOST" "$LOCAL_BROWSER_CMD '$url'" >/dev/null 2>&1 || true
+    printf 'azlogin: browser opened on %s (zero-paste path B)\n' "$LOCAL_HOST"
+  else
+    printf 'azlogin: local callback unavailable — paste this on your LOCAL machine:\n\n' >&2
+    azl_paste_line "$port" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$url" >&2
+    printf '\n' >&2
+  fi
+  return 0
+}
