@@ -1,6 +1,67 @@
 #!/usr/bin/env bash
 # Pure, sourceable helpers for azrl. No side effects on source.
 
+azrl_usage() {
+  cat <<'EOF'
+azrl — Azure Remote Login
+
+Interactive `az login` from a headless/remote VM: the sign-in browser opens on
+your local machine and the OAuth callback is forwarded back to the VM.
+
+Usage:
+  azrl [profile] [--paste]
+  azrl --derive [profile]
+  azrl --list | --help | --version
+
+Arguments:
+  profile          Azure profile name. If omitted, resolved from the nearest
+                   .azprofile found walking up from the current directory.
+
+Options:
+  --paste          Force the manual paste-line path (A) instead of the
+                   zero-paste reverse-tunnel path (B).
+  --derive         Generate <profile>.conf from the current logged-in session
+                   for that profile (does not log in; refuses to overwrite).
+  --list           List configured profiles and their tenants.
+  -h, --help       Show this help and exit.
+  -V, --version    Show version and exit.
+EOF
+}
+
+azrl_list_profiles() {
+  # [$1=confdir]. Prints "<profile>  <AZ_TENANT>" per configured profile,
+  # excluding the global azrl.conf. Silent (exit 0) when none exist.
+  local confdir="${1:-$HOME/.azure-profiles}" f name tenant
+  for f in "$confdir"/*.conf; do
+    [[ -e "$f" ]] || continue
+    name="$(basename "$f" .conf)"
+    [[ "$name" == "azrl" ]] && continue
+    # shellcheck disable=SC1090
+    tenant="$( source "$f" 2>/dev/null || true; printf '%s' "${AZ_TENANT:-?}" )"
+    printf '%-24s %s\n' "$name" "$tenant"
+  done
+}
+
+azrl_derive_conf() {
+  # $1=account_json (`az account show`) $2=domains_json (graph /v1.0/domains).
+  # Emits a ready-to-save <profile>.conf to stdout. AZ_TENANT prefers the
+  # verified default domain; falls back to the tenant GUID (e.g. guest/B2B).
+  local acct="$1" doms="$2" tenant_id user sub domain
+  tenant_id="$(jq -r '.tenantId // empty'   <<<"$acct")"
+  user="$(jq -r '.user.name // empty'       <<<"$acct")"
+  # Subscription id (GUID), not name: space-free and canonical, so the emitted
+  # conf is safe to `source` (a name like "VS Enterprise – Lamb" would not be).
+  sub="$(jq -r '.id // empty'               <<<"$acct")"
+  domain="$(jq -r '[.value[]? | select(.isDefault==true).id][0] // empty' <<<"$doms")"
+  [[ -n "$domain" ]] || domain="$tenant_id"
+  cat <<EOF
+AZ_TENANT=$domain
+AZ_TENANT_ID=$tenant_id
+AZ_DEFAULT_SUB=$sub
+AZ_EXPECT_USER=$user
+EOF
+}
+
 azrl_extract_port() {
   local url="$1" decoded
   decoded="${url//%3A/:}"; decoded="${decoded//%2F//}"
@@ -93,6 +154,27 @@ azrl_login_capture() {
   return 0
 }
 
+azrl_wait_for_login() {
+  # $1=login_pid $2=timeout_s $3=port $4=vm_host $5=browser_cmd $6=url
+  # Sets AZRL_WATCHDOG_PID. Returns the login process's exit code; on nonzero,
+  # prints a path-A recovery hint to stderr. Does not exit (caller decides).
+  local login_pid="$1" timeout="$2" port="$3" vm_host="$4" browser_cmd="$5" url="$6"
+  ( sleep "$timeout"; kill "$login_pid" 2>/dev/null ) &
+  # shellcheck disable=SC2034  # consumed cross-file by the orchestrator cleanup trap
+  AZRL_WATCHDOG_PID=$!
+  local rc=0
+  wait "$login_pid" || rc=$?
+  kill "$AZRL_WATCHDOG_PID" 2>/dev/null || true
+  if (( rc != 0 )); then
+    printf '✗ azrl: sign-in did not complete (rc=%s). Either it failed/was cancelled, or the browser callback never reached this VM (timeout %ss).\n' "$rc" "$timeout" >&2
+    printf '  Recover by pasting this on your LOCAL machine, then retrying the browser:\n\n' >&2
+    azrl_paste_line "$port" "$vm_host" "$browser_cmd" "$url" >&2
+    printf '\n' >&2
+  fi
+  return "$rc"
+}
+
+# shellcheck disable=SC2153  # VM_HOST is a global from azrl.conf, not the vm_host local elsewhere
 azrl_bridge() {
   # $1=port $2=url. Uses LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST, AZRL_FORCE_PASTE.
   # Sets AZRL_TUNNEL_PID when a reverse tunnel is started (for teardown).

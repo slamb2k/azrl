@@ -169,6 +169,38 @@ EOF
   [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
 }
 
+@test "azrl_wait_for_login: returns 0 and prints no recovery hint when login succeeds" {
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    ( exit 0 ) &
+    azrl_wait_for_login \$! 5 40404 vm-always wslview 'https://login/x'
+  "
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "azrl_wait_for_login: returns login rc and prints recovery line on failure" {
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    ( exit 3 ) &
+    azrl_wait_for_login \$! 5 40404 vm-always wslview 'https://login/x'
+  "
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"sign-in did not complete"* ]]
+  [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
+}
+
+@test "azrl_wait_for_login: watchdog kills login on timeout and reports failure" {
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    ( sleep 10 ) &
+    azrl_wait_for_login \$! 1 40404 vm-always wslview 'https://login/x'
+  "
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sign-in did not complete"* ]]
+  [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always"* ]]
+}
+
 @test "azrl_bridge: B falls back to A when reverse tunnel dies" {
   shimdir="$(mktemp -d)"
   cat > "$shimdir/ssh" <<'EOF'
@@ -183,4 +215,144 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
   rm -rf "$shimdir"
+}
+
+@test "azrl_usage: includes synopsis and all flags" {
+  run azrl_usage
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+  [[ "$output" == *"--paste"* ]]
+  [[ "$output" == *"--help"* ]]
+  [[ "$output" == *"--version"* ]]
+}
+
+@test "azrl --help: prints usage and exits 0 without needing config" {
+  run "${BATS_TEST_DIRNAME}/../azrl" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+  [[ "$output" == *"--paste"* ]]
+}
+
+@test "azrl -h: prints usage and exits 0" {
+  run "${BATS_TEST_DIRNAME}/../azrl" -h
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "azrl --version: prints version and exits 0" {
+  run "${BATS_TEST_DIRNAME}/../azrl" --version
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ azrl\ [0-9]+\.[0-9]+\.[0-9]+ ]]
+}
+
+@test "azrl: unknown flag exits 2" {
+  run "${BATS_TEST_DIRNAME}/../azrl" --bogus
+  [ "$status" -eq 2 ]
+}
+
+@test "azrl: missing <profile>.conf exits nonzero without creating an orphan state dir" {
+  home="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  cat > "$home/.azure-profiles/azrl.conf" <<'EOF'
+LOCAL_HOST=localhost
+LOCAL_BROWSER_CMD=true
+VM_HOST=vm
+EOF
+  HOME="$home" run "${BATS_TEST_DIRNAME}/../azrl" ghost
+  [ "$status" -ne 0 ]
+  [ ! -e "$home/.azure-profiles/ghost" ]
+  rm -rf "$home"
+}
+
+@test "azrl_list_profiles: lists profiles with tenant, excluding azrl.conf" {
+  tmp="$(mktemp -d)"
+  printf 'AZ_TENANT=fiig.com.au\n'             > "$tmp/fiig.conf"
+  printf 'AZ_TENANT=onenrg.onmicrosoft.com\n'  > "$tmp/nrg.conf"
+  printf 'LOCAL_HOST=x\n'                      > "$tmp/azrl.conf"
+  run azrl_list_profiles "$tmp"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fiig"* ]]
+  [[ "$output" == *"fiig.com.au"* ]]
+  [[ "$output" == *"nrg"* ]]
+  [[ "$output" == *"onenrg.onmicrosoft.com"* ]]
+  [[ "$output" != *"azrl"* ]]
+  rm -rf "$tmp"
+}
+
+@test "azrl_list_profiles: empty confdir prints nothing, exits 0" {
+  tmp="$(mktemp -d)"
+  run azrl_list_profiles "$tmp"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  rm -rf "$tmp"
+}
+
+@test "azrl_derive_conf: builds conf from account + domains json (sub by id, space-safe)" {
+  # subscription name has spaces; the conf must use the space-free id so a later
+  # `source <profile>.conf` doesn't choke.
+  acct='{"tenantId":"guid-1","id":"sub-guid-9","name":"VS Enterprise – Lamb","user":{"name":"simon@onenrg.onmicrosoft.com"}}'
+  doms='{"value":[{"id":"onenrg.mail.onmicrosoft.com","isDefault":false},{"id":"onenrg.onmicrosoft.com","isDefault":true}]}'
+  run azrl_derive_conf "$acct" "$doms"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"AZ_TENANT=onenrg.onmicrosoft.com"* ]]
+  [[ "$output" == *"AZ_TENANT_ID=guid-1"* ]]
+  [[ "$output" == *"AZ_DEFAULT_SUB=sub-guid-9"* ]]
+  [[ "$output" != *"AZ_DEFAULT_SUB=VS Enterprise"* ]]
+  [[ "$output" == *"AZ_EXPECT_USER=simon@onenrg.onmicrosoft.com"* ]]
+}
+
+@test "azrl_derive_conf: falls back to tenantId when no default domain" {
+  acct='{"tenantId":"guid-2","name":"sub","user":{"name":"u@x"}}'
+  doms='{"value":[]}'
+  run azrl_derive_conf "$acct" "$doms"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"AZ_TENANT=guid-2"* ]]
+  [[ "$output" == *"AZ_TENANT_ID=guid-2"* ]]
+}
+
+@test "azrl --list: prints configured profiles and exits 0" {
+  home="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  printf 'AZ_TENANT=fiig.com.au\n' > "$home/.azure-profiles/fiig.conf"
+  HOME="$home" run "${BATS_TEST_DIRNAME}/../azrl" --list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fiig"* ]]
+  [[ "$output" == *"fiig.com.au"* ]]
+  rm -rf "$home"
+}
+
+@test "azrl --derive: writes a profile conf from the logged-in session" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/nrg"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)      echo '{"tenantId":"guid-1","name":"nrgpov01","user":{"name":"u@onenrg.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*)    echo '{"value":[{"id":"onenrg.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                     echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --derive nrg
+  [ "$status" -eq 0 ]
+  [ -f "$home/.azure-profiles/nrg.conf" ]
+  grep -q 'AZ_TENANT=onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
+  grep -q 'AZ_TENANT_ID=guid-1' "$home/.azure-profiles/nrg.conf"
+  grep -q 'AZ_EXPECT_USER=u@onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
+  rm -rf "$home" "$shimdir"
+}
+
+@test "azrl --derive: refuses to clobber an existing conf" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/nrg"
+  printf 'AZ_TENANT=keep.me\n' > "$home/.azure-profiles/nrg.conf"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+echo '{}'
+EOF
+  chmod +x "$shimdir/az"
+  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --derive nrg
+  [ "$status" -ne 0 ]
+  grep -q 'AZ_TENANT=keep.me' "$home/.azure-profiles/nrg.conf"
+  rm -rf "$home" "$shimdir"
 }

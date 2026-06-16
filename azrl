@@ -6,15 +6,39 @@ LIB="$(dirname "$SELF")/azrl-lib.sh"
 # shellcheck source=/dev/null
 source "$LIB"
 
+AZRL_VERSION="0.1.0"
+
 PROFILE_ARG=""
+AZRL_MODE=login
 export AZRL_FORCE_PASTE=0
 for a in "$@"; do
   case "$a" in
+    -h|--help) azrl_usage; exit 0 ;;
+    -V|--version) printf 'azrl %s\n' "$AZRL_VERSION"; exit 0 ;;
+    --list) azrl_list_profiles; exit 0 ;;
+    --derive) AZRL_MODE=derive ;;
     --paste) AZRL_FORCE_PASTE=1 ;;
     -*) printf 'azrl: unknown flag %s\n' "$a" >&2; exit 2 ;;
     *)  PROFILE_ARG="$a" ;;
   esac
 done
+
+# --derive: generate a <profile>.conf from an already logged-in session for that
+# profile. Does not log in or touch the global config; refuses to clobber.
+if [[ "$AZRL_MODE" == "derive" ]]; then
+  PROFILE="$(azrl_resolve_profile "$PROFILE_ARG" "$PWD")"
+  export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
+  [[ -d "$AZURE_CONFIG_DIR" ]] \
+    || { printf 'azrl: no session for profile %q — log in first (azrl %s)\n' "$PROFILE" "$PROFILE" >&2; exit 1; }
+  OUT="$HOME/.azure-profiles/$PROFILE.conf"
+  [[ -e "$OUT" ]] && { printf 'azrl: %s already exists — remove it first to re-derive\n' "$OUT" >&2; exit 1; }
+  ACCT="$(az account show -o json)" \
+    || { printf 'azrl: not logged in for profile %q — run azrl %s first\n' "$PROFILE" "$PROFILE" >&2; exit 1; }
+  DOMS="$(az rest --url 'https://graph.microsoft.com/v1.0/domains' -o json 2>/dev/null || printf '{}')"
+  azrl_derive_conf "$ACCT" "$DOMS" > "$OUT"
+  printf 'azrl: wrote %s (review AZ_TENANT and fill any blanks)\n' "$OUT"
+  exit 0
+fi
 
 # Global config (LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST)
 GLOBAL_CONF="$HOME/.azure-profiles/azrl.conf"
@@ -26,9 +50,11 @@ source "$GLOBAL_CONF"
 AZRL_LOGIN_TIMEOUT="${AZRL_LOGIN_TIMEOUT:-180}"
 
 PROFILE="$(azrl_resolve_profile "$PROFILE_ARG" "$PWD")"
+# Validate the profile's conf BEFORE creating its state dir, so a missing/invalid
+# conf can't leave an empty orphan dir behind under set -e.
+azrl_load_profile_conf "$PROFILE"
 export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
 mkdir -p "$AZURE_CONFIG_DIR"
-azrl_load_profile_conf "$PROFILE"
 
 printf 'azrl: profile=%s tenant=%s\n' "$PROFILE" "$AZ_TENANT"
 azrl_clean_slate
@@ -44,17 +70,10 @@ printf 'azrl: callback port %s\n' "$AZRL_PORT"
 azrl_bridge "$AZRL_PORT" "$AZRL_URL"
 
 printf 'azrl: waiting for sign-in to complete...\n'
-( sleep "$AZRL_LOGIN_TIMEOUT"; kill "$AZRL_LOGIN_PID" 2>/dev/null ) &
-AZRL_WATCHDOG_PID=$!
-login_rc=0; wait "$AZRL_LOGIN_PID" || login_rc=$?
-kill "$AZRL_WATCHDOG_PID" 2>/dev/null || true
-if (( login_rc != 0 )); then
-  printf '✗ azrl: sign-in did not complete (rc=%s). Either it failed/was cancelled, or the browser callback never reached this VM (timeout %ss).\n' "$login_rc" "$AZRL_LOGIN_TIMEOUT" >&2
-  printf '  Recover by pasting this on your LOCAL machine, then retrying the browser:\n\n' >&2
-  azrl_paste_line "$AZRL_PORT" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$AZRL_URL" >&2
-  printf '\n' >&2
-  exit "$login_rc"
-fi
+login_rc=0
+azrl_wait_for_login "$AZRL_LOGIN_PID" "$AZRL_LOGIN_TIMEOUT" \
+  "$AZRL_PORT" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$AZRL_URL" || login_rc=$?
+(( login_rc == 0 )) || exit "$login_rc"
 
 if [[ -n "${AZ_DEFAULT_SUB:-}" ]]; then
   az account set --subscription "$AZ_DEFAULT_SUB" \
