@@ -35,3 +35,22 @@ azl_paste_line() {
   # $1=port $2=vm_host $3=browser_cmd $4=url
   printf 'ssh -fNL %s:localhost:%s %s && %s "%s"\n' "$1" "$1" "$2" "$3" "$4"
 }
+
+azl_assert_account() {
+  # $1=account_json $2=expected_tenant (GUID or domain) $3=expected_user (optional)
+  local json="$1" exp_tenant="$2" exp_user="$3"
+  local got_tenant got_domain got_user
+  got_tenant="$(printf '%s' "$json" | jq -r '.tenantId // empty')"
+  got_domain="$(printf '%s' "$json" | jq -r '.tenantDefaultDomain // empty')"
+  got_user="$(printf '%s' "$json" | jq -r '.user.name // empty')"
+  if [[ "$exp_tenant" != "$got_tenant" && "$exp_tenant" != "$got_domain" ]]; then
+    printf 'azlogin: TENANT MISMATCH — expected %q, got tenantId=%q domain=%q\n' \
+      "$exp_tenant" "$got_tenant" "$got_domain" >&2
+    return 1
+  fi
+  if [[ -n "$exp_user" && "$exp_user" != "$got_user" ]]; then
+    printf 'azlogin: USER MISMATCH — expected %q, got %q\n' "$exp_user" "$got_user" >&2
+    return 1
+  fi
+  return 0
+}

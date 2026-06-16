@@ -68,3 +68,27 @@ setup() {
   [ "$status" -eq 0 ]
   [ "$output" = 'ssh -fNL 38149:localhost:38149 vm-always && wslview "https://login/x?y=z"' ]
 }
+
+@test "azl_assert_account: matches tenant domain and user" {
+  json='{"tenantId":"guid-1","tenantDefaultDomain":"fiig.com.au","user":{"name":"simon@fiig.com.au"},"name":"sub"}'
+  run azl_assert_account "$json" "fiig.com.au" "simon@fiig.com.au"
+  [ "$status" -eq 0 ]
+}
+
+@test "azl_assert_account: matches tenant by GUID" {
+  json='{"tenantId":"guid-1","tenantDefaultDomain":"fiig.com.au","user":{"name":"x"}}'
+  run azl_assert_account "$json" "guid-1" ""
+  [ "$status" -eq 0 ]
+}
+
+@test "azl_assert_account: tenant mismatch -> error" {
+  json='{"tenantId":"guid-1","tenantDefaultDomain":"other.com","user":{"name":"x"}}'
+  run azl_assert_account "$json" "fiig.com.au" ""
+  [ "$status" -ne 0 ]
+}
+
+@test "azl_assert_account: user mismatch -> error" {
+  json='{"tenantId":"g","tenantDefaultDomain":"fiig.com.au","user":{"name":"wrong@x"}}'
+  run azl_assert_account "$json" "fiig.com.au" "right@x"
+  [ "$status" -ne 0 ]
+}
