@@ -49,7 +49,9 @@ azrl_derive_conf() {
   local acct="$1" doms="$2" tenant_id user sub domain
   tenant_id="$(jq -r '.tenantId // empty'   <<<"$acct")"
   user="$(jq -r '.user.name // empty'       <<<"$acct")"
-  sub="$(jq -r '.name // empty'             <<<"$acct")"
+  # Subscription id (GUID), not name: space-free and canonical, so the emitted
+  # conf is safe to `source` (a name like "VS Enterprise – Lamb" would not be).
+  sub="$(jq -r '.id // empty'               <<<"$acct")"
   domain="$(jq -r '[.value[]? | select(.isDefault==true).id][0] // empty' <<<"$doms")"
   [[ -n "$domain" ]] || domain="$tenant_id"
   cat <<EOF

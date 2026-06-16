@@ -287,14 +287,17 @@ EOF
   rm -rf "$tmp"
 }
 
-@test "azrl_derive_conf: builds conf from account + domains json" {
-  acct='{"tenantId":"guid-1","name":"nrgpov01","user":{"name":"simon@onenrg.onmicrosoft.com"}}'
+@test "azrl_derive_conf: builds conf from account + domains json (sub by id, space-safe)" {
+  # subscription name has spaces; the conf must use the space-free id so a later
+  # `source <profile>.conf` doesn't choke.
+  acct='{"tenantId":"guid-1","id":"sub-guid-9","name":"VS Enterprise – Lamb","user":{"name":"simon@onenrg.onmicrosoft.com"}}'
   doms='{"value":[{"id":"onenrg.mail.onmicrosoft.com","isDefault":false},{"id":"onenrg.onmicrosoft.com","isDefault":true}]}'
   run azrl_derive_conf "$acct" "$doms"
   [ "$status" -eq 0 ]
   [[ "$output" == *"AZ_TENANT=onenrg.onmicrosoft.com"* ]]
   [[ "$output" == *"AZ_TENANT_ID=guid-1"* ]]
-  [[ "$output" == *"AZ_DEFAULT_SUB=nrgpov01"* ]]
+  [[ "$output" == *"AZ_DEFAULT_SUB=sub-guid-9"* ]]
+  [[ "$output" != *"AZ_DEFAULT_SUB=VS Enterprise"* ]]
   [[ "$output" == *"AZ_EXPECT_USER=simon@onenrg.onmicrosoft.com"* ]]
 }
 
