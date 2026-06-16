@@ -30,3 +30,8 @@ azl_load_profile_conf() {
   [[ -n "${AZ_TENANT:-}" ]] || { printf 'azlogin: AZ_TENANT not set in %s\n' "$f" >&2; return 1; }
   return 0
 }
+
+azl_paste_line() {
+  # $1=port $2=vm_host $3=browser_cmd $4=url
+  printf 'ssh -fNL %s:localhost:%s %s && %s "%s"\n' "$1" "$1" "$2" "$3" "$4"
+}

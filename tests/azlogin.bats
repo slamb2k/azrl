@@ -62,3 +62,9 @@ setup() {
   [ "$status" -ne 0 ]
   rm -rf "$tmp"
 }
+
+@test "azl_paste_line: builds local forward+open command" {
+  run azl_paste_line 38149 vm-always wslview 'https://login/x?y=z'
+  [ "$status" -eq 0 ]
+  [ "$output" = 'ssh -fNL 38149:localhost:38149 vm-always && wslview "https://login/x?y=z"' ]
+}
