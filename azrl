@@ -30,9 +30,11 @@ source "$GLOBAL_CONF"
 AZRL_LOGIN_TIMEOUT="${AZRL_LOGIN_TIMEOUT:-180}"
 
 PROFILE="$(azrl_resolve_profile "$PROFILE_ARG" "$PWD")"
+# Validate the profile's conf BEFORE creating its state dir, so a missing/invalid
+# conf can't leave an empty orphan dir behind under set -e.
+azrl_load_profile_conf "$PROFILE"
 export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
 mkdir -p "$AZURE_CONFIG_DIR"
-azrl_load_profile_conf "$PROFILE"
 
 printf 'azrl: profile=%s tenant=%s\n' "$PROFILE" "$AZ_TENANT"
 azrl_clean_slate

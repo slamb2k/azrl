@@ -249,3 +249,17 @@ EOF
   run "${BATS_TEST_DIRNAME}/../azrl" --bogus
   [ "$status" -eq 2 ]
 }
+
+@test "azrl: missing <profile>.conf exits nonzero without creating an orphan state dir" {
+  home="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  cat > "$home/.azure-profiles/azrl.conf" <<'EOF'
+LOCAL_HOST=localhost
+LOCAL_BROWSER_CMD=true
+VM_HOST=vm
+EOF
+  HOME="$home" run "${BATS_TEST_DIRNAME}/../azrl" ghost
+  [ "$status" -ne 0 ]
+  [ ! -e "$home/.azure-profiles/ghost" ]
+  rm -rf "$home"
+}
