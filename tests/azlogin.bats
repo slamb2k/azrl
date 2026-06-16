@@ -93,6 +93,12 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
+@test "azl_assert_account: guest tenant — null domain, expected GUID matches tenantId" {
+  json='{"tenantId":"96e360c3-4483-43a9-9025-195a431eba14","tenantDefaultDomain":null,"user":{"name":"Simon.Lamb@velrada.com"}}'
+  run azl_assert_account "$json" "96e360c3-4483-43a9-9025-195a431eba14" "Simon.Lamb@velrada.com"
+  [ "$status" -eq 0 ]
+}
+
 @test "azl_clean_slate: calls az logout+clear and removes only scoped caches" {
   shimdir="$(mktemp -d)"; cfg="$(mktemp -d)"
   cat > "$shimdir/az" <<'EOF'

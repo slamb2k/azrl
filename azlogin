@@ -43,7 +43,7 @@ wait "$AZL_LOGIN_PID"
 
 [[ -n "${AZ_DEFAULT_SUB:-}" ]] && az account set --subscription "$AZ_DEFAULT_SUB" || true
 ACCT="$(az account show -o json)"
-if azl_assert_account "$ACCT" "$AZ_TENANT" "${AZ_EXPECT_USER:-}"; then
+if azl_assert_account "$ACCT" "${AZ_TENANT_ID:-$AZ_TENANT}" "${AZ_EXPECT_USER:-}"; then
   printf '✓ azlogin: signed in as %s (tenant %s, sub %s)\n' \
     "$(jq -r '.user.name' <<<"$ACCT")" \
     "$(jq -r '.tenantDefaultDomain // .tenantId' <<<"$ACCT")" \

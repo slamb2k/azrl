@@ -1,4 +1,7 @@
 # Per-profile config. Copy to ~/.azure-profiles/<profile>.conf
-AZ_TENANT=example.onmicrosoft.com  # tenant domain or GUID (required)
+AZ_TENANT=example.onmicrosoft.com  # tenant domain or GUID, used for `az login --tenant` (required)
+AZ_TENANT_ID=                      # optional tenant GUID for the post-login assertion; set this when
+                                   #   `az account show` returns a null tenantDefaultDomain (e.g. guest/B2B
+                                   #   accounts), since the domain then appears nowhere in the session
 AZ_DEFAULT_SUB=                    # optional: subscription name or id to select after login
 AZ_EXPECT_USER=                    # optional: expected signed-in UPN, asserted post-login

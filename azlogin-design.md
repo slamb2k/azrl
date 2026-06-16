@@ -121,3 +121,7 @@ for the Dataverse/formrule work that targets the other tenant.
 ## Spike result
 
 BROWSER-capture confirmed on az 2.86.0 on 2026-06-16; captured port 45715.
+
+## Guest/B2B tenants and identity assertion
+
+For guest (B2B) logins, `az account show` may return `tenantId` only with a null `tenantDefaultDomain`, and the UPN domain differs from the target tenant (e.g. accessing fiig.com.au as Simon.Lamb@velrada.com). The domain therefore cannot anchor the identity check. Profiles set `AZ_TENANT_ID` (the tenant GUID) for the assertion while keeping `AZ_TENANT` (domain) for `az login --tenant`. The orchestrator asserts against `${AZ_TENANT_ID:-$AZ_TENANT}`.

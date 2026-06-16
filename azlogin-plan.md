@@ -572,7 +572,7 @@ EOF
   run bash -c "
     source '${BATS_TEST_DIRNAME}/../azlogin-lib.sh'
     export AZLOGIN_CAPTURE='${BATS_TEST_DIRNAME}/../azlogin-capture'
-    PATH='$shimdir:\$PATH' azl_login_capture fiig.com.au
+    PATH="$shimdir:\$PATH" azl_login_capture fiig.com.au
     echo \"PORT=\$AZL_PORT URL=\$AZL_URL\"
     kill \$AZL_LOGIN_PID 2>/dev/null || true
   "
@@ -764,7 +764,7 @@ wait "$AZL_LOGIN_PID"
 
 [[ -n "${AZ_DEFAULT_SUB:-}" ]] && az account set --subscription "$AZ_DEFAULT_SUB" || true
 ACCT="$(az account show -o json)"
-if azl_assert_account "$ACCT" "$AZ_TENANT" "${AZ_EXPECT_USER:-}"; then
+if azl_assert_account "$ACCT" "${AZ_TENANT_ID:-$AZ_TENANT}" "${AZ_EXPECT_USER:-}"; then
   printf '✓ azlogin: signed in as %s (tenant %s, sub %s)\n' \
     "$(jq -r '.user.name' <<<"$ACCT")" \
     "$(jq -r '.tenantDefaultDomain // .tenantId' <<<"$ACCT")" \
@@ -824,7 +824,10 @@ Create `~/.azure-profiles/azlogin/profile.conf.example`:
 
 ```bash
 # Per-profile config. Copy to ~/.azure-profiles/<profile>.conf
-AZ_TENANT=example.onmicrosoft.com  # tenant domain or GUID (required)
+AZ_TENANT=example.onmicrosoft.com  # tenant domain or GUID, used for `az login --tenant` (required)
+AZ_TENANT_ID=                      # optional tenant GUID for the post-login assertion; set this when
+                                   #   `az account show` returns a null tenantDefaultDomain (e.g. guest/B2B
+                                   #   accounts), since the domain then appears nowhere in the session
 AZ_DEFAULT_SUB=                    # optional: subscription name or id to select after login
 AZ_EXPECT_USER=                    # optional: expected signed-in UPN, asserted post-login
 ```
@@ -881,6 +884,7 @@ EOF
 
 cat > ~/.azure-profiles/fiig.conf <<'EOF'
 AZ_TENANT=fiig.com.au
+AZ_TENANT_ID=
 AZ_DEFAULT_SUB=
 AZ_EXPECT_USER=
 EOF
