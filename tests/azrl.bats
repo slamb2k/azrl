@@ -169,6 +169,38 @@ EOF
   [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
 }
 
+@test "azrl_wait_for_login: returns 0 and prints no recovery hint when login succeeds" {
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    ( exit 0 ) &
+    azrl_wait_for_login \$! 5 40404 vm-always wslview 'https://login/x'
+  "
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "azrl_wait_for_login: returns login rc and prints recovery line on failure" {
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    ( exit 3 ) &
+    azrl_wait_for_login \$! 5 40404 vm-always wslview 'https://login/x'
+  "
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"sign-in did not complete"* ]]
+  [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always && wslview"* ]]
+}
+
+@test "azrl_wait_for_login: watchdog kills login on timeout and reports failure" {
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    ( sleep 10 ) &
+    azrl_wait_for_login \$! 1 40404 vm-always wslview 'https://login/x'
+  "
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sign-in did not complete"* ]]
+  [[ "$output" == *"ssh -fNL 40404:localhost:40404 vm-always"* ]]
+}
+
 @test "azrl_bridge: B falls back to A when reverse tunnel dies" {
   shimdir="$(mktemp -d)"
   cat > "$shimdir/ssh" <<'EOF'

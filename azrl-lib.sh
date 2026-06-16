@@ -93,6 +93,27 @@ azrl_login_capture() {
   return 0
 }
 
+azrl_wait_for_login() {
+  # $1=login_pid $2=timeout_s $3=port $4=vm_host $5=browser_cmd $6=url
+  # Sets AZRL_WATCHDOG_PID. Returns the login process's exit code; on nonzero,
+  # prints a path-A recovery hint to stderr. Does not exit (caller decides).
+  local login_pid="$1" timeout="$2" port="$3" vm_host="$4" browser_cmd="$5" url="$6"
+  ( sleep "$timeout"; kill "$login_pid" 2>/dev/null ) &
+  # shellcheck disable=SC2034  # consumed cross-file by the orchestrator cleanup trap
+  AZRL_WATCHDOG_PID=$!
+  local rc=0
+  wait "$login_pid" || rc=$?
+  kill "$AZRL_WATCHDOG_PID" 2>/dev/null || true
+  if (( rc != 0 )); then
+    printf '✗ azrl: sign-in did not complete (rc=%s). Either it failed/was cancelled, or the browser callback never reached this VM (timeout %ss).\n' "$rc" "$timeout" >&2
+    printf '  Recover by pasting this on your LOCAL machine, then retrying the browser:\n\n' >&2
+    azrl_paste_line "$port" "$vm_host" "$browser_cmd" "$url" >&2
+    printf '\n' >&2
+  fi
+  return "$rc"
+}
+
+# shellcheck disable=SC2153  # VM_HOST is a global from azrl.conf, not the vm_host local elsewhere
 azrl_bridge() {
   # $1=port $2=url. Uses LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST, AZRL_FORCE_PASTE.
   # Sets AZRL_TUNNEL_PID when a reverse tunnel is started (for teardown).
