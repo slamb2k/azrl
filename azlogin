@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SELF="$(readlink -f "$0")"
+LIB="$(dirname "$SELF")/azlogin-lib.sh"
+# shellcheck source=/dev/null
+source "$LIB"
+
+PROFILE_ARG=""
+export AZL_FORCE_PASTE=0
+for a in "$@"; do
+  case "$a" in
+    --paste) AZL_FORCE_PASTE=1 ;;
+    -*) printf 'azlogin: unknown flag %s\n' "$a" >&2; exit 2 ;;
+    *)  PROFILE_ARG="$a" ;;
+  esac
+done
+
+# Global config (LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST)
+GLOBAL_CONF="$HOME/.azure-profiles/azlogin.conf"
+[[ -f "$GLOBAL_CONF" ]] || { printf 'azlogin: missing %s (run install.sh)\n' "$GLOBAL_CONF" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$GLOBAL_CONF"
+: "${LOCAL_HOST:?set in azlogin.conf}" "${LOCAL_BROWSER_CMD:?}" "${VM_HOST:?}"
+
+PROFILE="$(azl_resolve_profile "$PROFILE_ARG" "$PWD")"
+export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
+mkdir -p "$AZURE_CONFIG_DIR"
+azl_load_profile_conf "$PROFILE"
+
+printf 'azlogin: profile=%s tenant=%s\n' "$PROFILE" "$AZ_TENANT"
+azl_clean_slate
+
+cleanup() { kill "${AZL_TUNNEL_PID:-}" 2>/dev/null || true; rm -f "${AZL_CAPFILE:-}"; }
+trap cleanup EXIT
+
+azl_login_capture "$AZ_TENANT"
+printf 'azlogin: callback port %s\n' "$AZL_PORT"
+azl_bridge "$AZL_PORT" "$AZL_URL"
+
+printf 'azlogin: waiting for sign-in to complete...\n'
+wait "$AZL_LOGIN_PID"
+
+[[ -n "${AZ_DEFAULT_SUB:-}" ]] && az account set --subscription "$AZ_DEFAULT_SUB" || true
+ACCT="$(az account show -o json)"
+if azl_assert_account "$ACCT" "$AZ_TENANT" "${AZ_EXPECT_USER:-}"; then
+  printf '✓ azlogin: signed in as %s (tenant %s, sub %s)\n' \
+    "$(jq -r '.user.name' <<<"$ACCT")" \
+    "$(jq -r '.tenantDefaultDomain // .tenantId' <<<"$ACCT")" \
+    "$(jq -r '.name' <<<"$ACCT")"
+else
+  printf '✗ azlogin: signed in but identity does NOT match profile %s — review above.\n' "$PROFILE" >&2
+  exit 1
+fi
