@@ -33,6 +33,7 @@ azrl --paste               # force the manual paste-line path (A)
 azrl --list                # list configured profiles and their tenants
 azrl --init [name]         # tenant-less login, then record conf + .azprofile
 azrl --save [name]         # record current session as conf + .azprofile
+azrl --use <name>          # link this dir to an existing profile (writes .azprofile)
 azrl --rm <name>           # remove a profile: conf + token dir (+ matching .azprofile)
 azrl --help                # usage; azrl --version prints the version
 ```
@@ -66,6 +67,11 @@ azrl --save <name>         # writes ~/.azure-profiles/<name>.conf
 writes them to `<name>.conf` plus a `.azprofile` in the current directory.
 `--init` does the same but signs you in first (tenant-less). The name
 defaults to the sanitized current directory when omitted.
+
+`--use <name>` links the current directory to an **existing** profile by writing
+its name to `.azprofile` (after checking `<name>.conf` exists). Use it to point a
+new repo at a profile you already created — unlike `--save`/`--init`, it does not
+log in or create a conf. Equivalent to `echo <name> > .azprofile`, but validated.
 
 `--rm <name>` deletes the profile's `<name>.conf`, its token dir
 `~/.azure-profiles/<name>/`, and `$PWD/.azprofile` when it names `<name>`. It

@@ -684,3 +684,66 @@ EOF
   [ "$status" -eq 2 ]
   rm -rf "$home"
 }
+
+@test "azrl_use_profile: links pwd to an existing profile" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  printf 'AZ_TENANT=acme.com\n' > "$home/.azure-profiles/acme.conf"
+  run azrl_use_profile acme "$home/.azure-profiles" "$work"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$work/.azprofile")" = "acme" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl_use_profile: overwrites an existing .azprofile" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  printf 'AZ_TENANT=acme.com\n' > "$home/.azure-profiles/acme.conf"
+  printf 'old\n' > "$work/.azprofile"
+  run azrl_use_profile acme "$home/.azure-profiles" "$work"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$work/.azprofile")" = "acme" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl_use_profile: unknown profile -> error, no .azprofile written" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  run azrl_use_profile ghost "$home/.azure-profiles" "$work"
+  [ "$status" -ne 0 ]
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl --use: requires a profile name (exit 2)" {
+  home="$(mktemp -d)"
+  HOME="$home" run "${BATS_TEST_DIRNAME}/../azrl" --use
+  [ "$status" -eq 2 ]
+  rm -rf "$home"
+}
+
+@test "azrl --use: links pwd to an existing profile" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  printf 'AZ_TENANT=acme.com\n' > "$home/.azure-profiles/acme.conf"
+  HOME="$home" run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --use acme"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$work/.azprofile")" = "acme" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl --use: unknown profile exits 1 without writing .azprofile" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  HOME="$home" run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --use ghost"
+  [ "$status" -eq 1 ]
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl --use: refuses the reserved name azrl (exit 2)" {
+  home="$(mktemp -d)"
+  HOME="$home" run "${BATS_TEST_DIRNAME}/../azrl" --use azrl
+  [ "$status" -eq 2 ]
+  rm -rf "$home"
+}
