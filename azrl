@@ -32,6 +32,12 @@ if [[ "$AZRL_MODE" == "save" ]]; then
   exit 0
 fi
 
+cleanup() {
+  kill "${AZRL_TUNNEL_PID:-}" "${AZRL_WATCHDOG_PID:-}" "${AZRL_LOGIN_PID:-}" 2>/dev/null || true
+  rm -f "${AZRL_CAPFILE:-}"
+}
+trap cleanup EXIT
+
 # Global config (LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST)
 GLOBAL_CONF="$HOME/.azure-profiles/azrl.conf"
 [[ -f "$GLOBAL_CONF" ]] || { printf 'azrl: missing %s (run install.sh)\n' "$GLOBAL_CONF" >&2; exit 1; }
@@ -41,23 +47,20 @@ source "$GLOBAL_CONF"
 
 AZRL_LOGIN_TIMEOUT="${AZRL_LOGIN_TIMEOUT:-180}"
 
-PROFILE="$(azrl_resolve_profile "$PROFILE_ARG" "$PWD")"
-# Validate the profile's conf BEFORE creating its state dir, so a missing/invalid
-# conf can't leave an empty orphan dir behind under set -e.
-azrl_load_profile_conf "$PROFILE"
-export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
-mkdir -p "$AZURE_CONFIG_DIR"
+if PROFILE="$(azrl_resolve_profile "$PROFILE_ARG" "$PWD" 2>/dev/null)"; then
+  azrl_load_profile_conf "$PROFILE"
+  export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
+  mkdir -p "$AZURE_CONFIG_DIR"
+  TENANT="$AZ_TENANT"
+  printf 'azrl: profile=%s tenant=%s\n' "$PROFILE" "$AZ_TENANT"
+  azrl_clean_slate
+else
+  PROFILE=""
+  TENANT=""
+  printf 'azrl: no profile resolved — tenant-less sign-in into default ~/.azure\n'
+fi
 
-printf 'azrl: profile=%s tenant=%s\n' "$PROFILE" "$AZ_TENANT"
-azrl_clean_slate
-
-cleanup() {
-  kill "${AZRL_TUNNEL_PID:-}" "${AZRL_WATCHDOG_PID:-}" "${AZRL_LOGIN_PID:-}" 2>/dev/null || true
-  rm -f "${AZRL_CAPFILE:-}"
-}
-trap cleanup EXIT
-
-azrl_login_capture "$AZ_TENANT"
+azrl_login_capture "$TENANT"
 printf 'azrl: callback port %s\n' "$AZRL_PORT"
 azrl_bridge "$AZRL_PORT" "$AZRL_URL"
 
@@ -66,6 +69,15 @@ login_rc=0
 azrl_wait_for_login "$AZRL_LOGIN_PID" "$AZRL_LOGIN_TIMEOUT" \
   "$AZRL_PORT" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$AZRL_URL" || login_rc=$?
 (( login_rc == 0 )) || exit "$login_rc"
+
+if [[ -z "$PROFILE" ]]; then
+  ACCT="$(az account show -o json)"
+  printf '✓ azrl: signed in as %s (tenant %s, sub %s)\n' \
+    "$(jq -r '.user.name' <<<"$ACCT")" \
+    "$(jq -r '.tenantDefaultDomain // .tenantId' <<<"$ACCT")" \
+    "$(jq -r '.name' <<<"$ACCT")"
+  exit 0
+fi
 
 if [[ -n "${AZ_DEFAULT_SUB:-}" ]]; then
   az account set --subscription "$AZ_DEFAULT_SUB" \

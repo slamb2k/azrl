@@ -468,3 +468,40 @@ EOF
   [ ! -e "$work/.azprofile" ]
   rm -rf "$home" "$shimdir" "$work"
 }
+
+@test "azrl: no profile -> tenant-less sign-in into default config" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"; log="$shimdir/az.log"
+  mkdir -p "$home/.azure-profiles"
+  cat > "$home/.azure-profiles/azrl.conf" <<'EOF'
+LOCAL_HOST=localhost
+LOCAL_BROWSER_CMD=true
+VM_HOST=vm
+EOF
+  cat > "$shimdir/az" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$log"
+case "\$*" in
+  *"login"*)
+    url='https://login/x?redirect_uri=http%3A%2F%2Flocalhost%3A40404%2F'
+    cmd="\${BROWSER/\\%s/\$url}"; eval "\$cmd"; exit 0 ;;
+  *"account show"*) echo '{"tenantId":"g","tenantDefaultDomain":"d","name":"s","user":{"name":"u@x"}}' ;;
+  *) echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  # ssh shim: reachability + reverse tunnel both succeed quickly.
+  cat > "$shimdir/ssh" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do [[ "$a" == "-R" ]] && { sleep 1; exit 0; }; done
+exit 0
+EOF
+  chmod +x "$shimdir/ssh"
+  HOME="$home" PATH="$shimdir:$PATH" AZRL_CAPTURE="${BATS_TEST_DIRNAME}/../azrl-capture" \
+    run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl'"
+  [ "$status" -eq 0 ]
+  grep -q 'login' "$log"
+  run grep -q -- '--tenant' "$log"
+  [ "$status" -ne 0 ]
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
