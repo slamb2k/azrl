@@ -49,7 +49,10 @@ func runWriteEnvrc() tea.Cmd {
 		if !wrote {
 			return opDoneMsg{msg: ".envrc already present"}
 		}
-		return opDoneMsg{msg: "wrote .envrc — run direnv allow"}
+		if ran, aerr := profile.DirenvAllow(pwd); ran && aerr == nil {
+			return opDoneMsg{msg: "wrote .envrc + direnv allow — shell now follows this profile"}
+		}
+		return opDoneMsg{msg: "wrote .envrc — run direnv allow to activate"}
 	}
 }
 

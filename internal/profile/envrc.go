@@ -2,6 +2,7 @@ package profile
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
@@ -29,4 +30,17 @@ func WriteEnvrc(pwd string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// DirenvAllow trusts pwd's .envrc via `direnv allow` so the stanza loads on the
+// shell's next prompt. It reports whether direnv was found and run; a missing
+// direnv is not an error (the caller falls back to a manual hint).
+func DirenvAllow(pwd string) (ran bool, err error) {
+	bin, lookErr := exec.LookPath("direnv")
+	if lookErr != nil {
+		return false, nil
+	}
+	cmd := exec.Command(bin, "allow", pwd)
+	cmd.Dir = pwd
+	return true, cmd.Run()
 }

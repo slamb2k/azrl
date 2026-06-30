@@ -30,7 +30,12 @@ func offerEnvrc(pwd string, out io.Writer, in io.Reader) {
 		fmt.Fprintf(out, "azrl: could not write .envrc: %v\n", err)
 		return
 	}
-	if wrote {
-		fmt.Fprintf(out, "azrl: wrote %s — run `direnv allow`\n", profile.EnvrcPath(pwd))
+	if !wrote {
+		return
+	}
+	if ran, aerr := profile.DirenvAllow(pwd); ran && aerr == nil {
+		fmt.Fprintf(out, "azrl: wrote %s and ran `direnv allow` — `az` follows this profile from now on\n", profile.EnvrcPath(pwd))
+	} else {
+		fmt.Fprintf(out, "azrl: wrote %s — run `direnv allow` (or export AZURE_CONFIG_DIR) to activate\n", profile.EnvrcPath(pwd))
 	}
 }
