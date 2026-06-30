@@ -242,11 +242,18 @@ azrl_wait_for_login() {
   # Sets AZRL_WATCHDOG_PID. Returns the login process's exit code; on nonzero,
   # prints a path-A recovery hint to stderr. Does not exit (caller decides).
   local login_pid="$1" timeout="$2" port="$3" vm_host="$4" browser_cmd="$5" url="$6"
-  ( sleep "$timeout"; kill "$login_pid" 2>/dev/null ) &
+  # Silence the subshell's own stderr so that reaping its `sleep` below does not
+  # surface a job-control "Terminated" notice.
+  ( sleep "$timeout"; kill "$login_pid" 2>/dev/null ) 2>/dev/null &
   # shellcheck disable=SC2034  # consumed cross-file by the orchestrator cleanup trap
   AZRL_WATCHDOG_PID=$!
   local rc=0
   wait "$login_pid" || rc=$?
+  # Reap the watchdog's child `sleep` first (while its parent is still the
+  # subshell), then the subshell itself. Killing only the subshell would orphan
+  # the `sleep`, which lingers for the full timeout holding inherited fds open
+  # (e.g. a test harness's captured stdout), stalling the caller.
+  pkill -P "$AZRL_WATCHDOG_PID" 2>/dev/null || true
   kill "$AZRL_WATCHDOG_PID" 2>/dev/null || true
   if (( rc != 0 )); then
     printf '✗ azrl: sign-in did not complete (rc=%s). Either it failed/was cancelled, or the browser callback never reached this VM (timeout %ss).\n' "$rc" "$timeout" >&2

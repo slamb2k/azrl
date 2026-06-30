@@ -49,6 +49,12 @@ if [[ "$AZRL_MODE" == "rm" ]]; then
 fi
 
 cleanup() {
+  # Reap the watchdog's child `sleep` before the watchdog subshell, so it does
+  # not outlive azrl as an orphan holding the timeout. `|| true` keeps the trap
+  # from changing azrl's exit status when there is nothing left to reap.
+  if [[ -n "${AZRL_WATCHDOG_PID:-}" ]]; then
+    pkill -P "$AZRL_WATCHDOG_PID" 2>/dev/null || true
+  fi
   kill "${AZRL_TUNNEL_PID:-}" "${AZRL_WATCHDOG_PID:-}" "${AZRL_LOGIN_PID:-}" 2>/dev/null || true
   rm -f "${AZRL_CAPFILE:-}"
 }
