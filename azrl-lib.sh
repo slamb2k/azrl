@@ -10,7 +10,7 @@ your local machine and the OAuth callback is forwarded back to the VM.
 
 Usage:
   azrl [profile] [--paste]
-  azrl --derive [profile]
+  azrl --save [name]
   azrl --list | --help | --version
 
 Arguments:
@@ -20,8 +20,8 @@ Arguments:
 Options:
   --paste          Force the manual paste-line path (A) instead of the
                    zero-paste reverse-tunnel path (B).
-  --derive         Generate <profile>.conf from the current logged-in session
-                   for that profile (does not log in; refuses to overwrite).
+  --save, -s       Record the current session as <name>.conf (name defaults to
+                   the sanitized current directory) and write .azprofile in $PWD.
   --list           List configured profiles and their tenants.
   -h, --help       Show this help and exit.
   -V, --version    Show version and exit.

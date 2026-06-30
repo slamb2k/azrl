@@ -347,7 +347,7 @@ EOF
   rm -rf "$home"
 }
 
-@test "azrl --derive: writes a profile conf from the logged-in session" {
+@test "azrl --save: writes a profile conf and .azprofile" {
   home="$(mktemp -d)"; shimdir="$(mktemp -d)"
   mkdir -p "$home/.azure-profiles/nrg"
   cat > "$shimdir/az" <<'EOF'
@@ -359,16 +359,18 @@ case "$*" in
 esac
 EOF
   chmod +x "$shimdir/az"
-  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --derive nrg
+  work="$(mktemp -d)"
+  HOME="$home" PATH="$shimdir:$PATH" run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --save nrg"
   [ "$status" -eq 0 ]
   [ -f "$home/.azure-profiles/nrg.conf" ]
   grep -q 'AZ_TENANT=onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
   grep -q 'AZ_TENANT_ID=guid-1' "$home/.azure-profiles/nrg.conf"
   grep -q 'AZ_EXPECT_USER=u@onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
-  rm -rf "$home" "$shimdir"
+  [ "$(cat "$work/.azprofile")" = "nrg" ]
+  rm -rf "$home" "$shimdir" "$work"
 }
 
-@test "azrl --derive: refuses to clobber an existing conf" {
+@test "azrl --save: refuses to clobber an existing conf" {
   home="$(mktemp -d)"; shimdir="$(mktemp -d)"
   mkdir -p "$home/.azure-profiles/nrg"
   printf 'AZ_TENANT=keep.me\n' > "$home/.azure-profiles/nrg.conf"
@@ -377,7 +379,7 @@ EOF
 echo '{}'
 EOF
   chmod +x "$shimdir/az"
-  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --derive nrg
+  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --save nrg
   [ "$status" -ne 0 ]
   grep -q 'AZ_TENANT=keep.me' "$home/.azure-profiles/nrg.conf"
   rm -rf "$home" "$shimdir"
