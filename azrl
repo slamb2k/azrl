@@ -12,7 +12,6 @@ PROFILE_ARG=""
 AZRL_MODE=login
 export AZRL_FORCE_PASTE=0
 ASSUME_YES=0
-# shellcheck disable=SC2209
 for a in "$@"; do
   case "$a" in
     -h|--help) azrl_usage; exit 0 ;;
@@ -20,7 +19,7 @@ for a in "$@"; do
     --list) azrl_list_profiles; exit 0 ;;
     --save|-s) AZRL_MODE=save ;;
     --init|-i) AZRL_MODE=init ;;
-    --rm|-r) AZRL_MODE=rm ;;
+    --rm|-r) AZRL_MODE='rm' ;;
     -y|--yes) ASSUME_YES=1 ;;
     --paste) AZRL_FORCE_PASTE=1 ;;
     -*) printf 'azrl: unknown flag %s\n' "$a" >&2; exit 2 ;;
