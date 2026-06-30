@@ -35,7 +35,7 @@ if [[ "$AZRL_MODE" == "derive" ]]; then
   ACCT="$(az account show -o json)" \
     || { printf 'azrl: not logged in for profile %q — run azrl %s first\n' "$PROFILE" "$PROFILE" >&2; exit 1; }
   DOMS="$(az rest --url 'https://graph.microsoft.com/v1.0/domains' -o json 2>/dev/null || printf '{}')"
-  azrl_derive_conf "$ACCT" "$DOMS" > "$OUT"
+  azrl_save_conf "$ACCT" "$DOMS" > "$OUT"
   printf 'azrl: wrote %s (review AZ_TENANT and fill any blanks)\n' "$OUT"
   exit 0
 fi

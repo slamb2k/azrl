@@ -42,7 +42,7 @@ azrl_list_profiles() {
   done
 }
 
-azrl_derive_conf() {
+azrl_save_conf() {
   # $1=account_json (`az account show`) $2=domains_json (graph /v1.0/domains).
   # Emits a ready-to-save <profile>.conf to stdout. AZ_TENANT prefers the
   # verified default domain; falls back to the tenant GUID (e.g. guest/B2B).
