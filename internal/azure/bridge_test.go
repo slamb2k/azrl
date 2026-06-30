@@ -35,7 +35,9 @@ func TestBridgePathB(t *testing.T) {
 	// ssh shim: reachability + browser cmd succeed; -R reverse tunnel stays up.
 	sshScript := "#!/usr/bin/env bash\necho \"$*\" >> \"" + log + "\"\n" +
 		"for a in \"$@\"; do [[ \"$a\" == \"-R\" ]] && { sleep 2; exit 0; }; done\nexit 0\n"
-	os.WriteFile(filepath.Join(bin, "ssh"), []byte(sshScript), 0o755)
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(sshScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm-always"}
 	tun, paste, err := Bridge("40404", "https://login/x", g, false)
@@ -46,6 +48,27 @@ func TestBridgePathB(t *testing.T) {
 	b, _ := os.ReadFile(log)
 	if !contains(string(b), "-R 40404:localhost:40404 pc") || !contains(string(b), "wslview") {
 		t.Fatalf("ssh log missing tunnel/browser: %s", b)
+	}
+}
+
+func TestBridgePathBDeadTunnel(t *testing.T) {
+	bin := t.TempDir()
+	// ssh shim: probe (no -R flag) succeeds; tunnel (-R flag) exits immediately nonzero.
+	sshScript := "#!/usr/bin/env bash\nfor a in \"$@\"; do [[ \"$a\" == \"-R\" ]] && exit 1; done\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(sshScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm-always"}
+	tun, paste, err := Bridge("40404", "https://login/x", g, false)
+	if err != nil {
+		t.Fatalf("dead tunnel: unexpected error: %v", err)
+	}
+	if tun != nil {
+		t.Fatalf("dead tunnel: expected nil cmd, got %v", tun)
+	}
+	if paste == "" || !contains(paste, "ssh -fNL 40404:localhost:40404 vm-always") {
+		t.Fatalf("dead tunnel: expected paste fallback, got %q", paste)
 	}
 }
 

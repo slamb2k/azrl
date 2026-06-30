@@ -30,9 +30,16 @@ func Bridge(port, url string, g config.Global, forcePaste bool) (*exec.Cmd, stri
 	if err := tunnel.Start(); err != nil {
 		return nil, PasteLine(port, g.VMHost, g.LocalBrowserCmd, url), nil
 	}
-	time.Sleep(500 * time.Millisecond)
-	if tunnel.ProcessState != nil && tunnel.ProcessState.Exited() {
+	// Detect tunnels that die immediately (port conflict, auth failure, etc.).
+	// ProcessState is only set after Wait(), so we use a goroutine + select.
+	tunnelDone := make(chan error, 1)
+	go func() { tunnelDone <- tunnel.Wait() }()
+	select {
+	case <-tunnelDone:
+		// Tunnel exited within the liveness window — fall back to paste.
 		return nil, PasteLine(port, g.VMHost, g.LocalBrowserCmd, url), nil
+	case <-time.After(500 * time.Millisecond):
+		// Tunnel is still alive — open the remote browser and return it.
 	}
 	_ = exec.Command("ssh", g.LocalHost, fmt.Sprintf("%s '%s'", g.LocalBrowserCmd, url)).Run()
 	return tunnel, "", nil
