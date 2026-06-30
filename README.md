@@ -31,7 +31,8 @@ cd <repo> && azrl          # auto-detect profile from .azprofile, pop local brow
 azrl <profile>             # override the profile explicitly
 azrl --paste               # force the manual paste-line path (A)
 azrl --list                # list configured profiles and their tenants
-azrl --derive [profile]    # generate <profile>.conf from a logged-in session
+azrl --init [name]         # tenant-less login, then record conf + .azprofile
+azrl --save [name]         # record current session as conf + .azprofile
 azrl --help                # usage; azrl --version prints the version
 ```
 
@@ -51,21 +52,16 @@ Add `.envrc` to your global gitignore (`~/.config/git/ignore`) next to
 `.azprofile`, then `direnv allow`. Without direnv, export the same line in your
 shell rc or before running `az`.
 
-## Deriving a profile config
-
-To create a `<profile>.conf` from a session you've already logged into:
+## Saving and initializing profile configs
 
 ```bash
-azrl <profile>             # log in once (or however you authenticated)
-azrl --derive <profile>    # writes ~/.azure-profiles/<profile>.conf
+azrl --save <name>         # writes ~/.azure-profiles/<name>.conf
 ```
 
-`--derive` reads the live session's tenant GUID, subscription, and user, and
-queries Microsoft Graph (`/v1.0/domains`) for the **verified default domain** —
-necessary because the cached `azureProfile.json` often has a null
-`tenantDefaultDomain` (notably for guest/B2B accounts), so the domain can't be
-read from the session alone. It refuses to overwrite an existing conf; review
-`AZ_TENANT` and fill any blanks afterward.
+`--save` reads the live session's tenant GUID, subscription, and user, and
+writes them to `<name>.conf` plus a `.azprofile` in the current directory.
+`--init` does the same but signs you in first (tenant-less). The name
+defaults to the sanitized current directory when omitted.
 
 ## Install
 

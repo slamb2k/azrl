@@ -10,7 +10,8 @@ your local machine and the OAuth callback is forwarded back to the VM.
 
 Usage:
   azrl [profile] [--paste]
-  azrl --derive [profile]
+  azrl --save [name]
+  azrl --init [name]
   azrl --list | --help | --version
 
 Arguments:
@@ -20,8 +21,11 @@ Arguments:
 Options:
   --paste          Force the manual paste-line path (A) instead of the
                    zero-paste reverse-tunnel path (B).
-  --derive         Generate <profile>.conf from the current logged-in session
-                   for that profile (does not log in; refuses to overwrite).
+  --save, -s       Record the current session as <name>.conf (name defaults to
+                   the sanitized current directory) and write .azprofile in $PWD.
+  --init, -i       Tenant-less `az login`, then record the session as
+                   <name>.conf (default: sanitized current directory) and
+                   write .azprofile in $PWD.
   --list           List configured profiles and their tenants.
   -h, --help       Show this help and exit.
   -V, --version    Show version and exit.
@@ -42,7 +46,7 @@ azrl_list_profiles() {
   done
 }
 
-azrl_derive_conf() {
+azrl_save_conf() {
   # $1=account_json (`az account show`) $2=domains_json (graph /v1.0/domains).
   # Emits a ready-to-save <profile>.conf to stdout. AZ_TENANT prefers the
   # verified default domain; falls back to the tenant GUID (e.g. guest/B2B).
@@ -60,6 +64,31 @@ AZ_TENANT_ID=$tenant_id
 AZ_DEFAULT_SUB=$sub
 AZ_EXPECT_USER=$user
 EOF
+}
+
+azrl_write_profile() {
+  # $1=profile $2=target_dir. Uses AZURE_CONFIG_DIR (set by caller).
+  # Writes ~/.azure-profiles/<profile>.conf from the current session (refusing to
+  # clobber) and <target_dir>/.azprofile. Returns 1 on existing conf or no session.
+  local profile="$1" dir="$2"
+  local out="$HOME/.azure-profiles/$profile.conf"
+  [[ -e "$out" ]] && { printf 'azrl: %s already exists — remove it first to re-save\n' "$out" >&2; return 1; }
+  local acct doms
+  acct="$(az account show -o json 2>/dev/null)" \
+    || { printf 'azrl: not logged in for %q — run azrl --init first\n' "$profile" >&2; return 1; }
+  doms="$(az rest --url 'https://graph.microsoft.com/v1.0/domains' -o json 2>/dev/null || printf '{}')"
+  mkdir -p "$(dirname "$out")"
+  local tmp
+  tmp="$(mktemp "$out.XXXXXX")"
+  if ! azrl_save_conf "$acct" "$doms" > "$tmp"; then
+    rm -f "$tmp"
+    printf 'azrl: failed to write %s\n' "$out" >&2
+    return 1
+  fi
+  mv "$tmp" "$out"
+  printf '%s\n' "$profile" > "$dir/.azprofile"
+  printf 'azrl: wrote %s and %s/.azprofile\n' "$out" "$dir"
+  return 0
 }
 
 azrl_extract_port() {
@@ -80,6 +109,20 @@ azrl_resolve_profile() {
   done
   printf 'azrl: no profile arg and no .azprofile found from %s\n' "$dir" >&2
   return 1
+}
+
+azrl_sanitize_name() {
+  # $1=raw. lowercase; non [a-z0-9._-] runs -> '-'; strip leading/trailing '-'.
+  local s="${1,,}"
+  s="$(printf '%s' "$s" | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//')"
+  printf '%s\n' "$s"
+}
+
+azrl_default_name() {
+  # $1=arg $2=dir. Explicit arg verbatim; else sanitized basename of dir.
+  local arg="$1" dir="${2:-$PWD}"
+  if [[ -n "$arg" ]]; then printf '%s\n' "$arg"; return 0; fi
+  azrl_sanitize_name "$(basename "$dir")"
 }
 
 azrl_load_profile_conf() {
@@ -131,8 +174,10 @@ azrl_login_capture() {
   local poll_max="${AZRL_CAPTURE_POLL:-200}"   # 200 × 0.1s = 20s
   AZRL_CAPFILE="$(mktemp)"; : > "$AZRL_CAPFILE"
   local capture="${AZRL_CAPTURE:-$HOME/.local/bin/azrl-capture}"
+  local -a tenant_args=()
+  [[ -n "$tenant" ]] && tenant_args=(--tenant "$tenant")
   AZRL_CAPFILE="$AZRL_CAPFILE" BROWSER="$capture %s" \
-    az login --tenant "$tenant" --only-show-errors >/dev/null 2>&1 &
+    az login ${tenant_args[@]+"${tenant_args[@]}"} --only-show-errors >/dev/null 2>&1 &
   AZRL_LOGIN_PID=$!
   local _
   for _ in $(seq 1 "$poll_max"); do

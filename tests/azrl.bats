@@ -143,6 +143,32 @@ EOF
   rm -rf "$shimdir"
 }
 
+@test "azrl_login_capture: omits --tenant when tenant is empty" {
+  shimdir="$(mktemp -d)"; log="$shimdir/az.log"
+  cat > "$shimdir/az" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$log"
+url='https://login/x?redirect_uri=http%3A%2F%2Flocalhost%3A40404%2F&state=z'
+cmd="\${BROWSER/\\%s/\$url}"
+eval "\$cmd"
+sleep 2
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export AZRL_CAPTURE='${BATS_TEST_DIRNAME}/../azrl-capture'
+    PATH='$shimdir':\$PATH azrl_login_capture ''
+    echo \"PORT=\$AZRL_PORT\"
+    kill \$AZRL_LOGIN_PID 2>/dev/null || true
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PORT=40404"* ]]
+  grep -q 'login' "$log"
+  run grep -q -- '--tenant' "$log"
+  [ "$status" -ne 0 ]
+  rm -rf "$shimdir"
+}
+
 @test "azrl_bridge: B path when local reachable (uses reverse tunnel + browser cmd)" {
   shimdir="$(mktemp -d)"; log="$shimdir/ssh.log"
   cat > "$shimdir/ssh" <<EOF
@@ -287,12 +313,12 @@ EOF
   rm -rf "$tmp"
 }
 
-@test "azrl_derive_conf: builds conf from account + domains json (sub by id, space-safe)" {
+@test "azrl_save_conf: builds conf from account + domains json (sub by id, space-safe)" {
   # subscription name has spaces; the conf must use the space-free id so a later
   # `source <profile>.conf` doesn't choke.
   acct='{"tenantId":"guid-1","id":"sub-guid-9","name":"VS Enterprise – Lamb","user":{"name":"simon@onenrg.onmicrosoft.com"}}'
   doms='{"value":[{"id":"onenrg.mail.onmicrosoft.com","isDefault":false},{"id":"onenrg.onmicrosoft.com","isDefault":true}]}'
-  run azrl_derive_conf "$acct" "$doms"
+  run azrl_save_conf "$acct" "$doms"
   [ "$status" -eq 0 ]
   [[ "$output" == *"AZ_TENANT=onenrg.onmicrosoft.com"* ]]
   [[ "$output" == *"AZ_TENANT_ID=guid-1"* ]]
@@ -301,10 +327,10 @@ EOF
   [[ "$output" == *"AZ_EXPECT_USER=simon@onenrg.onmicrosoft.com"* ]]
 }
 
-@test "azrl_derive_conf: falls back to tenantId when no default domain" {
+@test "azrl_save_conf: falls back to tenantId when no default domain" {
   acct='{"tenantId":"guid-2","name":"sub","user":{"name":"u@x"}}'
   doms='{"value":[]}'
-  run azrl_derive_conf "$acct" "$doms"
+  run azrl_save_conf "$acct" "$doms"
   [ "$status" -eq 0 ]
   [[ "$output" == *"AZ_TENANT=guid-2"* ]]
   [[ "$output" == *"AZ_TENANT_ID=guid-2"* ]]
@@ -321,7 +347,7 @@ EOF
   rm -rf "$home"
 }
 
-@test "azrl --derive: writes a profile conf from the logged-in session" {
+@test "azrl --save: writes a profile conf and .azprofile" {
   home="$(mktemp -d)"; shimdir="$(mktemp -d)"
   mkdir -p "$home/.azure-profiles/nrg"
   cat > "$shimdir/az" <<'EOF'
@@ -333,16 +359,18 @@ case "$*" in
 esac
 EOF
   chmod +x "$shimdir/az"
-  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --derive nrg
+  work="$(mktemp -d)"
+  HOME="$home" PATH="$shimdir:$PATH" run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --save nrg"
   [ "$status" -eq 0 ]
   [ -f "$home/.azure-profiles/nrg.conf" ]
   grep -q 'AZ_TENANT=onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
   grep -q 'AZ_TENANT_ID=guid-1' "$home/.azure-profiles/nrg.conf"
   grep -q 'AZ_EXPECT_USER=u@onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
-  rm -rf "$home" "$shimdir"
+  [ "$(cat "$work/.azprofile")" = "nrg" ]
+  rm -rf "$home" "$shimdir" "$work"
 }
 
-@test "azrl --derive: refuses to clobber an existing conf" {
+@test "azrl --save: refuses to clobber an existing conf" {
   home="$(mktemp -d)"; shimdir="$(mktemp -d)"
   mkdir -p "$home/.azure-profiles/nrg"
   printf 'AZ_TENANT=keep.me\n' > "$home/.azure-profiles/nrg.conf"
@@ -351,8 +379,191 @@ EOF
 echo '{}'
 EOF
   chmod +x "$shimdir/az"
-  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --derive nrg
+  HOME="$home" PATH="$shimdir:$PATH" run "${BATS_TEST_DIRNAME}/../azrl" --save nrg
   [ "$status" -ne 0 ]
   grep -q 'AZ_TENANT=keep.me' "$home/.azure-profiles/nrg.conf"
   rm -rf "$home" "$shimdir"
+}
+
+@test "azrl_sanitize_name: lowercases and dashes spaces" {
+  run azrl_sanitize_name "Contoso Migration"
+  [ "$status" -eq 0 ]
+  [ "$output" = "contoso-migration" ]
+}
+
+@test "azrl_sanitize_name: collapses junk runs and trims edges" {
+  run azrl_sanitize_name "  --Foo__Bar!!  "
+  [ "$output" = "foo__bar" ]
+}
+
+@test "azrl_default_name: explicit arg used verbatim" {
+  run azrl_default_name "My Profile" "/home/x/whatever"
+  [ "$output" = "My Profile" ]
+}
+
+@test "azrl_default_name: empty arg falls back to sanitized basename" {
+  run azrl_default_name "" "/home/x/Contoso Migration"
+  [ "$output" = "contoso-migration" ]
+}
+
+@test "azrl_write_profile: writes conf and .azprofile from session" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/acme"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)   echo '{"tenantId":"guid-9","id":"sub-1","name":"Sub","user":{"name":"u@acme.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*) echo '{"value":[{"id":"acme.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                  echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export HOME='$home' AZURE_CONFIG_DIR='$home/.azure-profiles/acme'
+    PATH='$shimdir':\$PATH azrl_write_profile acme '$work'
+  "
+  [ "$status" -eq 0 ]
+  grep -q 'AZ_TENANT=acme.onmicrosoft.com' "$home/.azure-profiles/acme.conf"
+  grep -q 'AZ_TENANT_ID=guid-9' "$home/.azure-profiles/acme.conf"
+  [ "$(cat "$work/.azprofile")" = "acme" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl_write_profile: fails clearly when not logged in" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export HOME='$home' AZURE_CONFIG_DIR='$home/.azure-profiles/acme'
+    PATH='$shimdir':\$PATH azrl_write_profile acme '$work'
+  "
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not logged in"* ]]
+  [ ! -e "$home/.azure-profiles/acme.conf" ]
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl_write_profile: refuses to clobber existing conf" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  printf 'AZ_TENANT=keep.me\n' > "$home/.azure-profiles/acme.conf"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+echo '{}'
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export HOME='$home' AZURE_CONFIG_DIR='$home/.azure-profiles/acme'
+    PATH='$shimdir':\$PATH azrl_write_profile acme '$work'
+  "
+  [ "$status" -ne 0 ]
+  grep -q 'AZ_TENANT=keep.me' "$home/.azure-profiles/acme.conf"
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl_write_profile: succeeds when ~/.azure-profiles dir does not pre-exist" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  # Deliberately do NOT create $home/.azure-profiles
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)   echo '{"tenantId":"guid-9","id":"sub-1","name":"Sub","user":{"name":"u@acme.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*) echo '{"value":[{"id":"acme.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                  echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export HOME='$home' AZURE_CONFIG_DIR='$home/.azure-profiles/acme'
+    PATH='$shimdir':\$PATH azrl_write_profile acme '$work'
+  "
+  [ "$status" -eq 0 ]
+  grep -q 'AZ_TENANT=acme.onmicrosoft.com' "$home/.azure-profiles/acme.conf"
+  grep -q 'AZ_TENANT_ID=guid-9' "$home/.azure-profiles/acme.conf"
+  [ "$(cat "$work/.azprofile")" = "acme" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl --init: tenant-less login then writes conf and .azprofile" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"; log="$shimdir/az.log"
+  mkdir -p "$home/.azure-profiles"
+  cat > "$home/.azure-profiles/azrl.conf" <<'EOF'
+LOCAL_HOST=localhost
+LOCAL_BROWSER_CMD=true
+VM_HOST=vm
+EOF
+  cat > "$shimdir/az" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$log"
+case "\$*" in
+  *"login"*)
+    url='https://login/x?redirect_uri=http%3A%2F%2Flocalhost%3A40404%2F'
+    cmd="\${BROWSER/\\%s/\$url}"; eval "\$cmd"; exit 0 ;;
+  *"account show"*)   echo '{"tenantId":"guid-7","id":"sub-7","name":"Sub","user":{"name":"u@boot.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*) echo '{"value":[{"id":"boot.onmicrosoft.com","isDefault":true}]}' ;;
+  *) echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  cat > "$shimdir/ssh" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do [[ "$a" == "-R" ]] && { sleep 1; exit 0; }; done
+exit 0
+EOF
+  chmod +x "$shimdir/ssh"
+  HOME="$home" PATH="$shimdir:$PATH" AZRL_CAPTURE="${BATS_TEST_DIRNAME}/../azrl-capture" \
+    run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --init boot"
+  [ "$status" -eq 0 ]
+  run grep -q -- '--tenant' "$log"
+  [ "$status" -ne 0 ]
+  grep -q 'AZ_TENANT=boot.onmicrosoft.com' "$home/.azure-profiles/boot.conf"
+  grep -q 'AZ_TENANT_ID=guid-7' "$home/.azure-profiles/boot.conf"
+  [ "$(cat "$work/.azprofile")" = "boot" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl: no profile -> tenant-less sign-in into default config" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"; log="$shimdir/az.log"
+  mkdir -p "$home/.azure-profiles"
+  cat > "$home/.azure-profiles/azrl.conf" <<'EOF'
+LOCAL_HOST=localhost
+LOCAL_BROWSER_CMD=true
+VM_HOST=vm
+EOF
+  cat > "$shimdir/az" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$log"
+case "\$*" in
+  *"login"*)
+    url='https://login/x?redirect_uri=http%3A%2F%2Flocalhost%3A40404%2F'
+    cmd="\${BROWSER/\\%s/\$url}"; eval "\$cmd"; exit 0 ;;
+  *"account show"*) echo '{"tenantId":"g","tenantDefaultDomain":"d","name":"s","user":{"name":"u@x"}}' ;;
+  *) echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  # ssh shim: reachability + reverse tunnel both succeed quickly.
+  cat > "$shimdir/ssh" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do [[ "$a" == "-R" ]] && { sleep 1; exit 0; }; done
+exit 0
+EOF
+  chmod +x "$shimdir/ssh"
+  HOME="$home" PATH="$shimdir:$PATH" AZRL_CAPTURE="${BATS_TEST_DIRNAME}/../azrl-capture" \
+    run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl'"
+  [ "$status" -eq 0 ]
+  grep -q 'login' "$log"
+  run grep -q -- '--tenant' "$log"
+  [ "$status" -ne 0 ]
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$shimdir" "$work"
 }
