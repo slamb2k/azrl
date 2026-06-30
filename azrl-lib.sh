@@ -145,8 +145,10 @@ azrl_login_capture() {
   local poll_max="${AZRL_CAPTURE_POLL:-200}"   # 200 × 0.1s = 20s
   AZRL_CAPFILE="$(mktemp)"; : > "$AZRL_CAPFILE"
   local capture="${AZRL_CAPTURE:-$HOME/.local/bin/azrl-capture}"
+  local -a tenant_args=()
+  [[ -n "$tenant" ]] && tenant_args=(--tenant "$tenant")
   AZRL_CAPFILE="$AZRL_CAPFILE" BROWSER="$capture %s" \
-    az login --tenant "$tenant" --only-show-errors >/dev/null 2>&1 &
+    az login ${tenant_args[@]+"${tenant_args[@]}"} --only-show-errors >/dev/null 2>&1 &
   AZRL_LOGIN_PID=$!
   local _
   for _ in $(seq 1 "$poll_max"); do
