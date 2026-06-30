@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SRC="$(dirname "$(readlink -f "$0")")"
-BIN="$HOME/.local/bin"
-mkdir -p "$BIN"
-ln -sf "$SRC/azrl"         "$BIN/azrl"
-ln -sf "$SRC/azrl-capture" "$BIN/azrl-capture"
-echo "linked azrl + azrl-capture into $BIN"
 
-# Ensure .azprofile is globally ignored
-IGN="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
-mkdir -p "$(dirname "$IGN")"
-grep -qxF '.azprofile' "$IGN" 2>/dev/null || echo '.azprofile' >> "$IGN"
-echo "ensured .azprofile in $IGN"
+# Build and install the azrl binary, gitignore .azprofile, and bootstrap config.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
+mkdir -p "$BIN_DIR"
 
-# Bootstrap global config if absent
-[[ -f "$HOME/.azure-profiles/azrl.conf" ]] || {
-  cp "$SRC/azrl.conf.example" "$HOME/.azure-profiles/azrl.conf"
-  echo "created ~/.azure-profiles/azrl.conf (review values)"
-}
+echo "azrl: building..."
+( cd "$ROOT" && go build -o "$BIN_DIR/azrl" . )
+echo "azrl: installed $BIN_DIR/azrl"
+
+# Globally gitignore .azprofile so it is never committed.
+GI="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
+mkdir -p "$(dirname "$GI")"
+grep -qxF '.azprofile' "$GI" 2>/dev/null || echo '.azprofile' >> "$GI"
+
+# Bootstrap the global config from the example if absent.
+PROFILES="$HOME/.azure-profiles"
+mkdir -p "$PROFILES"
+if [[ ! -f "$PROFILES/azrl.conf" && -f "$ROOT/azrl.conf.example" ]]; then
+  cp "$ROOT/azrl.conf.example" "$PROFILES/azrl.conf"
+  echo "azrl: wrote $PROFILES/azrl.conf (edit LOCAL_HOST/LOCAL_BROWSER_CMD/VM_HOST)"
+fi
+
+echo "azrl: done. Ensure $BIN_DIR is on your PATH."
