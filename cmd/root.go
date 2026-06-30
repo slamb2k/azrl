@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/slamb2k/azrl/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +15,7 @@ var RootCmd = &cobra.Command{
 	Short:   "Azure Remote Login — interactive az login from a headless VM",
 	Version: Version,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return cmd.Help()
+		return ui.Run()
 	},
 }
 
