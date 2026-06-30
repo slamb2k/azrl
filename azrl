@@ -17,7 +17,8 @@ for a in "$@"; do
     -h|--help) azrl_usage; exit 0 ;;
     -V|--version) printf 'azrl %s\n' "$AZRL_VERSION"; exit 0 ;;
     --list) azrl_list_profiles; exit 0 ;;
-    --save|-s) AZRL_MODE=save ;;
+    --capture|-c) AZRL_MODE=capture ;;
+    --save|-s) AZRL_MODE=capture; printf 'azrl: --save is deprecated; use --capture\n' >&2 ;;
     --init|-i) AZRL_MODE=init ;;
     --rm|-r) AZRL_MODE='rm' ;;
     --use|-u) AZRL_MODE=use ;;
@@ -28,9 +29,10 @@ for a in "$@"; do
   esac
 done
 
-# --save: record the current session as <name>.conf and wire $PWD/.azprofile.
+# --capture: record the current session as <name>.conf and wire $PWD/.azprofile.
 # name = arg, else sanitized basename of $PWD. Refuses to clobber. No login.
-if [[ "$AZRL_MODE" == "save" ]]; then
+# (--save is a deprecated alias for --capture.)
+if [[ "$AZRL_MODE" == "capture" ]]; then
   PROFILE="$(azrl_default_name "$PROFILE_ARG" "$PWD")"
   export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
   azrl_write_profile "$PROFILE" "$PWD" || exit 1

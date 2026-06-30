@@ -414,6 +414,73 @@ EOF
   rm -rf "$home" "$shimdir"
 }
 
+@test "azrl --capture: writes a profile conf and .azprofile" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/nrg"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)      echo '{"tenantId":"guid-1","name":"nrgpov01","user":{"name":"u@onenrg.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*)    echo '{"value":[{"id":"onenrg.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                     echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  work="$(mktemp -d)"
+  HOME="$home" PATH="$shimdir:$PATH" run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --capture nrg"
+  [ "$status" -eq 0 ]
+  [ -f "$home/.azure-profiles/nrg.conf" ]
+  grep -q 'AZ_TENANT=onenrg.onmicrosoft.com' "$home/.azure-profiles/nrg.conf"
+  grep -q 'AZ_TENANT_ID=guid-1' "$home/.azure-profiles/nrg.conf"
+  [ "$(cat "$work/.azprofile")" = "nrg" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl -c: short flag captures the current session" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/nrg"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)      echo '{"tenantId":"guid-1","name":"nrgpov01","user":{"name":"u@onenrg.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*)    echo '{"value":[{"id":"onenrg.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                     echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  HOME="$home" PATH="$shimdir:$PATH" run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' -c nrg"
+  [ "$status" -eq 0 ]
+  [ -f "$home/.azure-profiles/nrg.conf" ]
+  [ "$(cat "$work/.azprofile")" = "nrg" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl --save: still works but prints a deprecation notice" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/nrg"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)      echo '{"tenantId":"guid-1","name":"nrgpov01","user":{"name":"u@onenrg.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*)    echo '{"value":[{"id":"onenrg.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                     echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  HOME="$home" PATH="$shimdir:$PATH" run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --save nrg"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"deprecated"* ]]
+  [[ "$output" == *"--capture"* ]]
+  [ -f "$home/.azure-profiles/nrg.conf" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl_usage: advertises --capture" {
+  run azrl_usage
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--capture"* ]]
+}
+
 @test "azrl_sanitize_name: lowercases and dashes spaces" {
   run azrl_sanitize_name "Contoso Migration"
   [ "$status" -eq 0 ]
