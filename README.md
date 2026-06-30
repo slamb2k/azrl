@@ -59,21 +59,20 @@ shell rc or before running `az`.
 ## Saving and initializing profile configs
 
 ```bash
-azrl --capture <name>      # writes ~/.azure-profiles/<name>.conf
+azrl capture [name]        # writes ~/.azure-profiles/<name>.conf
 ```
 
-`--capture` reads the live session's tenant GUID, subscription, and user, and
+`capture` reads the live session's tenant GUID, subscription, and user, and
 writes them to `<name>.conf` plus a `.azprofile` in the current directory.
-`--init` does the same but signs you in first (tenant-less). The name
-defaults to the sanitized current directory when omitted. (`--save` is a
-deprecated alias for `--capture`.)
+`init` does the same but signs you in first (tenant-less). The name
+defaults to the sanitized current directory when omitted.
 
-`--use <name>` links the current directory to an **existing** profile by writing
+`use <name>` links the current directory to an **existing** profile by writing
 its name to `.azprofile` (after checking `<name>.conf` exists). Use it to point a
-new repo at a profile you already created — unlike `--capture`/`--init`, it does not
+new repo at a profile you already created — unlike `capture`/`init`, it does not
 log in or create a conf. Equivalent to `echo <name> > .azprofile`, but validated.
 
-`--rm <name>` deletes the profile's `<name>.conf`, its token dir
+`rm <name>` deletes the profile's `<name>.conf`, its token dir
 `~/.azure-profiles/<name>/`, and `$PWD/.azprofile` when it names `<name>`. It
 prompts for confirmation unless you pass `-y`.
 
