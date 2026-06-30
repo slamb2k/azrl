@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/slamb2k/azrl/internal/config"
@@ -21,9 +22,11 @@ func (i item) FilterValue() string { return i.name }
 // Model is the root TUI model.
 type Model struct {
 	list          list.Model
+	spin          spinner.Model
 	pwd           string
 	width, height int
 	status        string
+	busy          bool
 }
 
 // NewModel builds the home model from the profiles on disk.
@@ -37,7 +40,9 @@ func NewModel() Model {
 	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "Profiles"
 	l.SetShowHelp(false)
-	return Model{list: l, pwd: pwd}
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	return Model{list: l, spin: sp, pwd: pwd}
 }
 
 // Init implements tea.Model.
@@ -48,11 +53,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.list.SetSize(msg.Width-4, msg.Height-14)
+		m.list.SetSize(msg.Width-4, msg.Height-15)
+	case opDoneMsg:
+		m.busy = false
+		if msg.err != nil {
+			m.status = failureStyle.Render("✗ " + msg.err.Error())
+		} else {
+			m.status = successStyle.Render("✓ " + msg.msg)
+		}
+		// refresh the list after a mutating action
+		nm := NewModel()
+		nm.width, nm.height, nm.status = m.width, m.height, m.status
+		nm.list.SetSize(m.width-4, m.height-15)
+		return nm, nil
+	case spinner.TickMsg:
+		var c tea.Cmd
+		m.spin, c = m.spin.Update(msg)
+		return m, c
 	case tea.KeyMsg:
+		if m.busy {
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "r":
+			nm := NewModel()
+			nm.width, nm.height = m.width, m.height
+			nm.list.SetSize(m.width-4, m.height-15)
+			return nm, nil
+		case "u":
+			base := profile.SanitizeName(filepathBase(m.pwd))
+			m.busy = true
+			m.status = ""
+			return m, tea.Batch(m.spin.Tick, runUse(base))
+		case "d":
+			if it, ok := m.list.SelectedItem().(item); ok {
+				m.busy = true
+				m.status = ""
+				return m, tea.Batch(m.spin.Tick, runDelete(it.name))
+			}
 		}
 	}
 	var cmd tea.Cmd
@@ -63,9 +103,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View implements tea.Model.
 func (m Model) View() string {
 	ctx := panelStyle.Render(contextLine(m.pwd))
+	statusLine := m.status
+	if m.busy {
+		statusLine = m.spin.View() + " working..."
+	}
 	help := mutedStyle.Render("enter use · l login · i init · c capture · u use · d delete · r refresh · q quit")
-	return lipgloss.JoinVertical(lipgloss.Left, Banner(), "", ctx, "", m.list.View(), "", help)
+	return lipgloss.JoinVertical(lipgloss.Left, Banner(), "", ctx, "", m.list.View(), "", statusLine, help)
 }
+
+func filepathBase(p string) string { return filepath.Base(p) }
 
 // contextLine describes the current directory's relationship to profiles.
 func contextLine(pwd string) string {
