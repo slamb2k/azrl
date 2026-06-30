@@ -107,7 +107,7 @@ func (m Model) View() string {
 	if m.busy {
 		statusLine = m.spin.View() + " working..."
 	}
-	help := mutedStyle.Render("enter use · l login · i init · c capture · u use · d delete · r refresh · q quit")
+	help := mutedStyle.Render("u use · d delete · r refresh · q quit")
 	return lipgloss.JoinVertical(lipgloss.Left, Banner(), "", ctx, "", m.list.View(), "", statusLine, help)
 }
 
@@ -123,5 +123,5 @@ func contextLine(pwd string) string {
 	if _, err := os.Stat(conf); err == nil {
 		return fmt.Sprintf("No .azprofile here. Link this dir to %s? (press u)", accentStyle.Render(base))
 	}
-	return fmt.Sprintf("No profile for this dir. Create one named %s? (press i)", accentStyle.Render(base))
+	return fmt.Sprintf("No profile for this dir — create with: azrl init %s", accentStyle.Render(base))
 }
