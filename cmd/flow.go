@@ -29,8 +29,13 @@ func loginTimeout() time.Duration {
 func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) error {
 	lg, err := azure.LoginCapture(tenant)
 	if err != nil {
-		if lg != nil && lg.Cmd != nil && lg.Cmd.Process != nil {
-			_ = lg.Cmd.Process.Kill()
+		if lg != nil {
+			if lg.Capfile != "" {
+				os.Remove(lg.Capfile)
+			}
+			if lg.Cmd != nil && lg.Cmd.Process != nil {
+				_ = lg.Cmd.Process.Kill()
+			}
 		}
 		return err
 	}
@@ -38,6 +43,7 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 	fmt.Fprintf(out, "azrl: callback port %s\n", lg.Port)
 	tunnel, paste, err := azure.Bridge(lg.Port, lg.URL, g, forcePaste)
 	if err != nil {
+		_ = lg.Cmd.Process.Kill()
 		return err
 	}
 	if tunnel != nil {
@@ -47,7 +53,7 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 		fmt.Fprintf(out, "azrl: paste this on your LOCAL machine:\n\n%s\n\n", paste)
 	}
 	fmt.Fprintln(out, "azrl: waiting for sign-in to complete...")
-	if err := azure.WaitForLogin(lg.Cmd, loginTimeout()); err != nil {
+	if err := azure.WaitForLogin(lg, loginTimeout()); err != nil {
 		fmt.Fprintf(out, "✗ %v\n  Recover with:\n  %s\n", err,
 			azure.PasteLine(lg.Port, g.VMHost, g.LocalBrowserCmd, lg.URL))
 		return err

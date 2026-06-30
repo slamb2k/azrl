@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoginCapture(t *testing.T) {
@@ -34,6 +35,43 @@ func TestLoginCapture(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(bin, "az.log"))
 	if !contains(string(b), "--tenant") || !contains(string(b), "--allow-no-subscription") {
 		t.Fatalf("az args missing flags: %s", b)
+	}
+}
+
+// TestLoginCaptureFastExit verifies that when az exits non-zero immediately
+// (e.g. bad tenant / credential failure) without writing a capfile, LoginCapture
+// returns promptly with a descriptive error rather than waiting the full 20 s.
+func TestLoginCaptureFastExit(t *testing.T) {
+	bin := t.TempDir()
+	// az shim: exit immediately nonzero without invoking $BROWSER.
+	if err := os.WriteFile(filepath.Join(bin, "az"), []byte("#!/usr/bin/env bash\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	capPath := filepath.Join(bin, "cap")
+	if err := os.WriteFile(capPath, []byte("#!/usr/bin/env bash\nprintf '%s' \"$1\" > \"$AZRL_CAPFILE\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("AZRL_CAPTURE", capPath)
+
+	start := time.Now()
+	lg, err := LoginCapture("fiig.com.au")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		if lg != nil && lg.Cmd != nil && lg.Cmd.Process != nil {
+			lg.Cmd.Process.Kill()
+		}
+		t.Fatal("expected error from fast-exit az, got nil")
+	}
+	if lg != nil && lg.Capfile != "" {
+		os.Remove(lg.Capfile)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("fast-exit detection too slow: %v (want < 5s)", elapsed)
+	}
+	if !contains(err.Error(), "exited before producing an auth URL") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

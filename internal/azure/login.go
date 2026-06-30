@@ -15,6 +15,7 @@ type Login struct {
 	URL     string
 	Port    string
 	Capfile string
+	waitErr chan error // receives the result of cmd.Wait(); buffered cap 1
 }
 
 // captureCommand returns the BROWSER value: env AZRL_CAPTURE override, else the
@@ -57,14 +58,19 @@ func LoginCapture(tenant string) (*Login, error) {
 	}
 
 	lg := &Login{Cmd: cmd, Capfile: capfile}
+	lg.waitErr = make(chan error, 1)
+	go func() { lg.waitErr <- cmd.Wait() }()
+
 	pollMax := 200 // 200 × 0.1s = 20s
 	for i := 0; i < pollMax; i++ {
 		if b, err := os.ReadFile(capfile); err == nil && len(b) > 0 {
 			lg.URL = string(b)
 			break
 		}
-		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			break
+		select {
+		case <-lg.waitErr:
+			return lg, fmt.Errorf("azrl: az login exited before producing an auth URL (check tenant/credentials)")
+		default:
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

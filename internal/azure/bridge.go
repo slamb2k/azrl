@@ -45,17 +45,17 @@ func Bridge(port, url string, g config.Global, forcePaste bool) (*exec.Cmd, stri
 	return tunnel, "", nil
 }
 
-// WaitForLogin waits for cmd with a deadline; on timeout it kills the process
-// and returns an error.
-func WaitForLogin(cmd *exec.Cmd, timeout time.Duration) error {
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+// WaitForLogin waits for the az login process (tracked in lg.waitErr) to finish
+// within the given timeout. On timeout it kills the process, drains the channel,
+// and returns an error. This must not call cmd.Wait() — the goroutine started by
+// LoginCapture owns that.
+func WaitForLogin(lg *Login, timeout time.Duration) error {
 	select {
-	case err := <-done:
+	case err := <-lg.waitErr:
 		return err
 	case <-time.After(timeout):
-		_ = cmd.Process.Kill()
-		<-done
+		_ = lg.Cmd.Process.Kill()
+		<-lg.waitErr
 		return fmt.Errorf("azrl: sign-in did not complete within %s", timeout)
 	}
 }
