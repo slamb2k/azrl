@@ -356,3 +356,24 @@ EOF
   grep -q 'AZ_TENANT=keep.me' "$home/.azure-profiles/nrg.conf"
   rm -rf "$home" "$shimdir"
 }
+
+@test "azrl_sanitize_name: lowercases and dashes spaces" {
+  run azrl_sanitize_name "Contoso Migration"
+  [ "$status" -eq 0 ]
+  [ "$output" = "contoso-migration" ]
+}
+
+@test "azrl_sanitize_name: collapses junk runs and trims edges" {
+  run azrl_sanitize_name "  --Foo__Bar!!  "
+  [ "$output" = "foo__bar" ]
+}
+
+@test "azrl_default_name: explicit arg used verbatim" {
+  run azrl_default_name "My Profile" "/home/x/whatever"
+  [ "$output" = "My Profile" ]
+}
+
+@test "azrl_default_name: empty arg falls back to sanitized basename" {
+  run azrl_default_name "" "/home/x/Contoso Migration"
+  [ "$output" = "contoso-migration" ]
+}

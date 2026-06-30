@@ -82,6 +82,20 @@ azrl_resolve_profile() {
   return 1
 }
 
+azrl_sanitize_name() {
+  # $1=raw. lowercase; non [a-z0-9._-] runs -> '-'; strip leading/trailing '-'.
+  local s="${1,,}"
+  s="$(printf '%s' "$s" | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//')"
+  printf '%s\n' "$s"
+}
+
+azrl_default_name() {
+  # $1=arg $2=dir. Explicit arg verbatim; else sanitized basename of dir.
+  local arg="$1" dir="${2:-$PWD}"
+  if [[ -n "$arg" ]]; then printf '%s\n' "$arg"; return 0; fi
+  azrl_sanitize_name "$(basename "$dir")"
+}
+
 azrl_load_profile_conf() {
   local profile="$1" confdir="${2:-$HOME/.azure-profiles}"
   local f="$confdir/$profile.conf"
