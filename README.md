@@ -27,14 +27,13 @@ local machine, which has no route to the VM's loopback. `azrl` solves all three:
 ## Usage
 
 ```bash
-cd <repo> && azrl          # auto-detect profile from .azprofile, pop local browser
-azrl <profile>             # override the profile explicitly
-azrl --paste               # force the manual paste-line path (A)
-azrl --list                # list configured profiles and their tenants
-azrl --init [name]         # tenant-less login, then record conf + .azprofile
-azrl --capture [name]      # record current session as conf + .azprofile
-azrl --use <name>          # link this dir to an existing profile (writes .azprofile)
-azrl --rm <name>           # remove a profile: conf + token dir (+ matching .azprofile)
+azrl                       # launch the TUI (manage/select/login profiles)
+azrl login [profile]       # sign in via the remote-browser bridge
+azrl init [name]           # tenant-less login, then record conf + .azprofile
+azrl capture [name]        # record the current session as conf + .azprofile
+azrl use <name>            # link this dir to an existing profile
+azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
+azrl list                  # list configured profiles and their tenants
 azrl --help                # usage; azrl --version prints the version
 ```
 
@@ -81,7 +80,7 @@ prompts for confirmation unless you pass `-y`.
 ## Install
 
 ```bash
-./install.sh               # symlinks azrl + azrl-capture into ~/.local/bin,
+./install.sh               # go build + installs azrl into ~/.local/bin,
                            # ensures .azprofile is globally gitignored,
                            # bootstraps ~/.azure-profiles/azrl.conf from the template
 ```
@@ -100,24 +99,27 @@ See `azrl.conf.example` and `profile.conf.example` for templates.
 ## Layout
 
 ```
-azrl            # orchestrator (symlinked onto PATH)
-azrl-lib.sh     # pure, sourceable functions (unit-tested)
-azrl-capture    # $BROWSER capture helper
-install.sh      # symlink + gitignore + config bootstrap
-tests/azrl.bats # bats unit tests
-docs/           # design.md + build-plan.md (historical, pre-rename)
+main.go            # entrypoint
+cmd/               # Cobra subcommands (+ hidden __browser-capture self-shim)
+internal/config/   # azrl.conf + KEY=value parsing
+internal/profile/  # pure profile logic (resolve, conf I/O, use, rm) — unit-tested
+internal/azure/    # az/ssh login lifecycle — unit + shimmed-integration tested
+internal/ui/       # Bubble Tea TUI (banner, angel, list, actions)
+install.sh         # go build + install + config bootstrap
 ```
 
 ## Development
 
 ```bash
-bats tests/azrl.bats
-shellcheck azrl azrl-lib.sh azrl-capture
+go build ./...
+go test ./...
+gofmt -l .
 ```
 
-Pure logic lives in `azrl-lib.sh` (sourceable, fully unit-tested). Integration
-paths (`az login` lifecycle, the reverse-tunnel bridge, the watchdog/timeout) are
-exercised end-to-end. Built TDD-first. See `HANDOVER.md` for full context.
+Pure logic lives in `internal/profile` and is unit-tested. `internal/azure` shells
+out to `az`/`ssh` and is tested by shimming them onto `PATH`. Bare `azrl` launches
+the `internal/ui` TUI. The single binary is its own `$BROWSER` shim via the hidden
+`__browser-capture` subcommand. See `HANDOVER.md` for full context.
 
 ## Requirements
 
