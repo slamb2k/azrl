@@ -11,6 +11,8 @@ AZRL_VERSION="0.1.0"
 PROFILE_ARG=""
 AZRL_MODE=login
 export AZRL_FORCE_PASTE=0
+ASSUME_YES=0
+# shellcheck disable=SC2209
 for a in "$@"; do
   case "$a" in
     -h|--help) azrl_usage; exit 0 ;;
@@ -18,6 +20,8 @@ for a in "$@"; do
     --list) azrl_list_profiles; exit 0 ;;
     --save|-s) AZRL_MODE=save ;;
     --init|-i) AZRL_MODE=init ;;
+    --rm|-r) AZRL_MODE=rm ;;
+    -y|--yes) ASSUME_YES=1 ;;
     --paste) AZRL_FORCE_PASTE=1 ;;
     -*) printf 'azrl: unknown flag %s\n' "$a" >&2; exit 2 ;;
     *)  PROFILE_ARG="$a" ;;
@@ -31,6 +35,18 @@ if [[ "$AZRL_MODE" == "save" ]]; then
   export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
   azrl_write_profile "$PROFILE" "$PWD" || exit 1
   exit 0
+fi
+
+# --rm: delete a profile's conf, its AZURE_CONFIG_DIR, and $PWD/.azprofile (only
+# when it names that profile). Requires an explicit name. No login, no global conf.
+if [[ "$AZRL_MODE" == "rm" ]]; then
+  NAME="$PROFILE_ARG"
+  [[ -n "$NAME" ]] || { printf 'azrl: --rm requires a profile name\n' >&2; exit 2; }
+  [[ "$NAME" == */* ]] && { printf 'azrl: invalid profile name %q\n' "$NAME" >&2; exit 2; }
+  [[ "$NAME" == "azrl" ]] && { printf 'azrl: refusing to remove the global azrl config\n' >&2; exit 2; }
+  rc=0
+  azrl_rm_profile "$NAME" "$HOME/.azure-profiles" "$PWD" "$ASSUME_YES" || rc=$?
+  exit "$rc"
 fi
 
 cleanup() {
