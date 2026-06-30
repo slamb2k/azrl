@@ -10,7 +10,7 @@ your local machine and the OAuth callback is forwarded back to the VM.
 
 Usage:
   azrl [profile] [--paste]
-  azrl --save [name]
+  azrl --capture [name]
   azrl --init [name]
   azrl --use <name>
   azrl --rm <name>
@@ -23,8 +23,9 @@ Arguments:
 Options:
   --paste          Force the manual paste-line path (A) instead of the
                    zero-paste reverse-tunnel path (B).
-  --save, -s       Record the current session as [name].conf (name defaults to
+  --capture, -c    Record the current session as [name].conf (name defaults to
                    the sanitized current directory) and write .azprofile in $PWD.
+                   (--save, -s is a deprecated alias.)
   --init, -i       Tenant-less `az login`, then record the session as
                    [name].conf (default: sanitized current directory) and
                    write .azprofile in $PWD.
