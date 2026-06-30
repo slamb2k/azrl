@@ -177,7 +177,7 @@ azrl_login_capture() {
   local -a tenant_args=()
   [[ -n "$tenant" ]] && tenant_args=(--tenant "$tenant")
   AZRL_CAPFILE="$AZRL_CAPFILE" BROWSER="$capture %s" \
-    az login ${tenant_args[@]+"${tenant_args[@]}"} --only-show-errors >/dev/null 2>&1 &
+    az login ${tenant_args[@]+"${tenant_args[@]}"} --allow-no-subscription --only-show-errors >/dev/null 2>&1 &
   AZRL_LOGIN_PID=$!
   local _
   for _ in $(seq 1 "$poll_max"); do

@@ -36,6 +36,9 @@ azrl --save [name]         # record current session as conf + .azprofile
 azrl --help                # usage; azrl --version prints the version
 ```
 
+azrl always signs in with `--allow-no-subscription`, so it works with tenants
+that have no Azure subscription (Entra-ID-only / tenant-level accounts).
+
 ## Using the profile after login
 
 `azrl` runs as a subprocess, so its `AZURE_CONFIG_DIR` isolation only covers the

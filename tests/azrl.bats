@@ -166,6 +166,35 @@ EOF
   grep -q 'login' "$log"
   run grep -q -- '--tenant' "$log"
   [ "$status" -ne 0 ]
+  run grep -q -- '--allow-no-subscription' "$log"
+  [ "$status" -eq 0 ]
+  rm -rf "$shimdir"
+}
+
+@test "azrl_login_capture: passes --allow-no-subscription (with tenant)" {
+  shimdir="$(mktemp -d)"; log="$shimdir/az.log"
+  cat > "$shimdir/az" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$log"
+url='https://login/x?redirect_uri=http%3A%2F%2Flocalhost%3A40404%2F&state=z'
+cmd="\${BROWSER/\\%s/\$url}"
+eval "\$cmd"
+sleep 2
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export AZRL_CAPTURE='${BATS_TEST_DIRNAME}/../azrl-capture'
+    PATH='$shimdir':\$PATH azrl_login_capture fiig.com.au
+    echo \"PORT=\$AZRL_PORT\"
+    kill \$AZRL_LOGIN_PID 2>/dev/null || true
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PORT=40404"* ]]
+  run grep -q -- '--tenant fiig.com.au' "$log"
+  [ "$status" -eq 0 ]
+  run grep -q -- '--allow-no-subscription' "$log"
+  [ "$status" -eq 0 ]
   rm -rf "$shimdir"
 }
 
