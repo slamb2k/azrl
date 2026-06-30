@@ -469,6 +469,30 @@ EOF
   rm -rf "$home" "$shimdir" "$work"
 }
 
+@test "azrl_write_profile: succeeds when ~/.azure-profiles dir does not pre-exist" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  # Deliberately do NOT create $home/.azure-profiles
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)   echo '{"tenantId":"guid-9","id":"sub-1","name":"Sub","user":{"name":"u@acme.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*) echo '{"value":[{"id":"acme.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                  echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export HOME='$home' AZURE_CONFIG_DIR='$home/.azure-profiles/acme'
+    PATH='$shimdir':\$PATH azrl_write_profile acme '$work'
+  "
+  [ "$status" -eq 0 ]
+  grep -q 'AZ_TENANT=acme.onmicrosoft.com' "$home/.azure-profiles/acme.conf"
+  grep -q 'AZ_TENANT_ID=guid-9' "$home/.azure-profiles/acme.conf"
+  [ "$(cat "$work/.azprofile")" = "acme" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
 @test "azrl --init: tenant-less login then writes conf and .azprofile" {
   home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"; log="$shimdir/az.log"
   mkdir -p "$home/.azure-profiles"

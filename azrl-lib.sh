@@ -77,7 +77,15 @@ azrl_write_profile() {
   acct="$(az account show -o json 2>/dev/null)" \
     || { printf 'azrl: not logged in for %q — run azrl --init first\n' "$profile" >&2; return 1; }
   doms="$(az rest --url 'https://graph.microsoft.com/v1.0/domains' -o json 2>/dev/null || printf '{}')"
-  azrl_save_conf "$acct" "$doms" > "$out"
+  mkdir -p "$(dirname "$out")"
+  local tmp
+  tmp="$(mktemp "$out.XXXXXX")"
+  if ! azrl_save_conf "$acct" "$doms" > "$tmp"; then
+    rm -f "$tmp"
+    printf 'azrl: failed to write %s\n' "$out" >&2
+    return 1
+  fi
+  mv "$tmp" "$out"
   printf '%s\n' "$profile" > "$dir/.azprofile"
   printf 'azrl: wrote %s and %s/.azprofile\n' "$out" "$dir"
   return 0
