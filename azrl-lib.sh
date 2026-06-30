@@ -11,6 +11,7 @@ your local machine and the OAuth callback is forwarded back to the VM.
 Usage:
   azrl [profile] [--paste]
   azrl --save [name]
+  azrl --init [name]
   azrl --list | --help | --version
 
 Arguments:
@@ -22,6 +23,9 @@ Options:
                    zero-paste reverse-tunnel path (B).
   --save, -s       Record the current session as <name>.conf (name defaults to
                    the sanitized current directory) and write .azprofile in $PWD.
+  --init, -i       Tenant-less `az login`, then record the session as
+                   <name>.conf (default: sanitized current directory) and
+                   write .azprofile in $PWD.
   --list           List configured profiles and their tenants.
   -h, --help       Show this help and exit.
   -V, --version    Show version and exit.

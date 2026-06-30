@@ -17,6 +17,7 @@ for a in "$@"; do
     -V|--version) printf 'azrl %s\n' "$AZRL_VERSION"; exit 0 ;;
     --list) azrl_list_profiles; exit 0 ;;
     --save|-s) AZRL_MODE=save ;;
+    --init|-i) AZRL_MODE=init ;;
     --paste) AZRL_FORCE_PASTE=1 ;;
     -*) printf 'azrl: unknown flag %s\n' "$a" >&2; exit 2 ;;
     *)  PROFILE_ARG="$a" ;;
@@ -37,6 +38,36 @@ cleanup() {
   rm -f "${AZRL_CAPFILE:-}"
 }
 trap cleanup EXIT
+
+# --init: tenant-less sign-in into the profile's isolated config, then record it.
+if [[ "$AZRL_MODE" == "init" ]]; then
+  GLOBAL_CONF="$HOME/.azure-profiles/azrl.conf"
+  [[ -f "$GLOBAL_CONF" ]] || { printf 'azrl: missing %s (run install.sh)\n' "$GLOBAL_CONF" >&2; exit 1; }
+  # shellcheck source=/dev/null
+  source "$GLOBAL_CONF"
+  : "${LOCAL_HOST:?set in azrl.conf}" "${LOCAL_BROWSER_CMD:?}" "${VM_HOST:?}"
+  AZRL_LOGIN_TIMEOUT="${AZRL_LOGIN_TIMEOUT:-180}"
+
+  PROFILE="$(azrl_default_name "$PROFILE_ARG" "$PWD")"
+  OUT="$HOME/.azure-profiles/$PROFILE.conf"
+  [[ -e "$OUT" ]] && { printf 'azrl: %s already exists — remove it first to re-init\n' "$OUT" >&2; exit 1; }
+  export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$PROFILE"
+  mkdir -p "$AZURE_CONFIG_DIR"
+  printf 'azrl: init profile=%s (tenant-less sign-in)\n' "$PROFILE"
+  azrl_clean_slate
+
+  azrl_login_capture ""
+  printf 'azrl: callback port %s\n' "$AZRL_PORT"
+  azrl_bridge "$AZRL_PORT" "$AZRL_URL"
+  printf 'azrl: waiting for sign-in to complete...\n'
+  login_rc=0
+  azrl_wait_for_login "$AZRL_LOGIN_PID" "$AZRL_LOGIN_TIMEOUT" \
+    "$AZRL_PORT" "$VM_HOST" "$LOCAL_BROWSER_CMD" "$AZRL_URL" || login_rc=$?
+  (( login_rc == 0 )) || exit "$login_rc"
+
+  azrl_write_profile "$PROFILE" "$PWD" || exit 1
+  exit 0
+fi
 
 # Global config (LOCAL_HOST, LOCAL_BROWSER_CMD, VM_HOST)
 GLOBAL_CONF="$HOME/.azure-profiles/azrl.conf"

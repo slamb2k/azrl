@@ -469,6 +469,44 @@ EOF
   rm -rf "$home" "$shimdir" "$work"
 }
 
+@test "azrl --init: tenant-less login then writes conf and .azprofile" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"; log="$shimdir/az.log"
+  mkdir -p "$home/.azure-profiles"
+  cat > "$home/.azure-profiles/azrl.conf" <<'EOF'
+LOCAL_HOST=localhost
+LOCAL_BROWSER_CMD=true
+VM_HOST=vm
+EOF
+  cat > "$shimdir/az" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$log"
+case "\$*" in
+  *"login"*)
+    url='https://login/x?redirect_uri=http%3A%2F%2Flocalhost%3A40404%2F'
+    cmd="\${BROWSER/\\%s/\$url}"; eval "\$cmd"; exit 0 ;;
+  *"account show"*)   echo '{"tenantId":"guid-7","id":"sub-7","name":"Sub","user":{"name":"u@boot.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*) echo '{"value":[{"id":"boot.onmicrosoft.com","isDefault":true}]}' ;;
+  *) echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  cat > "$shimdir/ssh" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do [[ "$a" == "-R" ]] && { sleep 1; exit 0; }; done
+exit 0
+EOF
+  chmod +x "$shimdir/ssh"
+  HOME="$home" PATH="$shimdir:$PATH" AZRL_CAPTURE="${BATS_TEST_DIRNAME}/../azrl-capture" \
+    run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --init boot"
+  [ "$status" -eq 0 ]
+  run grep -q -- '--tenant' "$log"
+  [ "$status" -ne 0 ]
+  grep -q 'AZ_TENANT=boot.onmicrosoft.com' "$home/.azure-profiles/boot.conf"
+  grep -q 'AZ_TENANT_ID=guid-7' "$home/.azure-profiles/boot.conf"
+  [ "$(cat "$work/.azprofile")" = "boot" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
 @test "azrl: no profile -> tenant-less sign-in into default config" {
   home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"; log="$shimdir/az.log"
   mkdir -p "$home/.azure-profiles"
