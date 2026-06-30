@@ -36,7 +36,10 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 	}
 	defer os.Remove(lg.Capfile)
 	fmt.Fprintf(out, "azrl: callback port %s\n", lg.Port)
-	tunnel, paste, _ := azure.Bridge(lg.Port, lg.URL, g, forcePaste)
+	tunnel, paste, err := azure.Bridge(lg.Port, lg.URL, g, forcePaste)
+	if err != nil {
+		return err
+	}
 	if tunnel != nil {
 		defer func() { _ = tunnel.Process.Kill() }()
 		fmt.Fprintf(out, "azrl: browser opened on %s (zero-paste path B)\n", g.LocalHost)

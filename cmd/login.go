@@ -54,7 +54,9 @@ var loginCmd = &cobra.Command{
 			return err
 		}
 		if conf.DefaultSub != "" {
-			_ = azure.SetSubscription(conf.DefaultSub)
+			if err := azure.SetSubscription(conf.DefaultSub); err != nil {
+				return fmt.Errorf("azrl: could not select subscription %q: %w", conf.DefaultSub, err)
+			}
 		}
 		acct, _ := azure.AccountShow()
 		expTenant := conf.TenantID
