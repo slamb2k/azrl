@@ -12,6 +12,7 @@ Usage:
   azrl [profile] [--paste]
   azrl --save [name]
   azrl --init [name]
+  azrl --rm <name>
   azrl --list | --help | --version
 
 Arguments:
@@ -21,11 +22,15 @@ Arguments:
 Options:
   --paste          Force the manual paste-line path (A) instead of the
                    zero-paste reverse-tunnel path (B).
-  --save, -s       Record the current session as <name>.conf (name defaults to
+  --save, -s       Record the current session as [name].conf (name defaults to
                    the sanitized current directory) and write .azprofile in $PWD.
   --init, -i       Tenant-less `az login`, then record the session as
-                   <name>.conf (default: sanitized current directory) and
+                   [name].conf (default: sanitized current directory) and
                    write .azprofile in $PWD.
+  --rm, -r         Remove profile <name>: its <name>.conf, its AZURE_CONFIG_DIR
+                   (~/.azure-profiles/<name>/), and $PWD/.azprofile if it names
+                   <name>. Prompts unless -y/--yes is given.
+  -y, --yes        Skip the --rm confirmation prompt.
   --list           List configured profiles and their tenants.
   -h, --help       Show this help and exit.
   -V, --version    Show version and exit.
@@ -132,6 +137,39 @@ azrl_load_profile_conf() {
   # shellcheck disable=SC1090
   source "$f"
   [[ -n "${AZ_TENANT:-}" ]] || { printf 'azrl: AZ_TENANT not set in %s\n' "$f" >&2; return 1; }
+  return 0
+}
+
+azrl_rm_profile() {
+  # $1=name $2=confdir $3=pwd $4=assume_yes(0/1). Removes <confdir>/<name>.conf,
+  # <confdir>/<name>/, and <pwd>/.azprofile (only if it names <name>). Prompts for
+  # [y/N] on stdin unless assume_yes=1. Returns 0 on success/nothing-to-remove,
+  # 1 if the user declines.
+  local name="$1" confdir="$2" pwd_dir="$3" assume_yes="${4:-0}"
+  local conf="$confdir/$name.conf" dir="$confdir/$name" azprofile="$pwd_dir/.azprofile"
+  local -a targets=()
+  [[ -e "$conf" ]] && targets+=("$conf")
+  [[ -d "$dir" ]] && targets+=("$dir")
+  if [[ -f "$azprofile" ]]; then
+    local pointed
+    pointed="$(tr -d '[:space:]' < "$azprofile")"
+    [[ "$pointed" == "$name" ]] && targets+=("$azprofile")
+  fi
+  if (( ${#targets[@]} == 0 )); then
+    printf 'azrl: nothing to remove for %q\n' "$name"
+    return 0
+  fi
+  printf 'azrl: will remove:\n'
+  local t
+  for t in "${targets[@]}"; do printf '  %s\n' "$t"; done
+  if [[ "$assume_yes" != "1" ]]; then
+    local ans
+    printf 'Remove these? [y/N] '
+    read -r ans || ans=n
+    [[ "$ans" =~ ^[Yy] ]] || { printf 'azrl: aborted\n'; return 1; }
+  fi
+  for t in "${targets[@]}"; do rm -rf "$t"; done
+  printf 'azrl: removed profile %q\n' "$name"
   return 0
 }
 

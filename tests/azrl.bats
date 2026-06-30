@@ -596,3 +596,91 @@ EOF
   [ ! -e "$work/.azprofile" ]
   rm -rf "$home" "$shimdir" "$work"
 }
+
+@test "azrl_rm_profile: removes conf, dir, and matching .azprofile (assume_yes)" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/acme"
+  printf 'AZ_TENANT=acme.com\n' > "$home/.azure-profiles/acme.conf"
+  printf 'acme\n' > "$work/.azprofile"
+  run azrl_rm_profile acme "$home/.azure-profiles" "$work" 1
+  [ "$status" -eq 0 ]
+  [ ! -e "$home/.azure-profiles/acme.conf" ]
+  [ ! -e "$home/.azure-profiles/acme" ]
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl_rm_profile: leaves a non-matching .azprofile untouched" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  printf 'AZ_TENANT=acme.com\n' > "$home/.azure-profiles/acme.conf"
+  printf 'other\n' > "$work/.azprofile"
+  run azrl_rm_profile acme "$home/.azure-profiles" "$work" 1
+  [ "$status" -eq 0 ]
+  [ ! -e "$home/.azure-profiles/acme.conf" ]
+  [ -f "$work/.azprofile" ]
+  [ "$(cat "$work/.azprofile")" = "other" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl_rm_profile: nothing to remove returns 0 with message" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  run azrl_rm_profile ghost "$home/.azure-profiles" "$work" 1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to remove"* ]]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl_rm_profile: declines on 'n', removes nothing, returns 1" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/acme"
+  printf 'AZ_TENANT=acme.com\n' > "$home/.azure-profiles/acme.conf"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    printf 'n\n' | azrl_rm_profile acme '$home/.azure-profiles' '$work' 0
+  "
+  [ "$status" -eq 1 ]
+  [ -f "$home/.azure-profiles/acme.conf" ]
+  [ -d "$home/.azure-profiles/acme" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl_rm_profile: confirms on 'y', removes, returns 0" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/acme"
+  printf 'AZ_TENANT=acme.com\n' > "$home/.azure-profiles/acme.conf"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    printf 'y\n' | azrl_rm_profile acme '$home/.azure-profiles' '$work' 0
+  "
+  [ "$status" -eq 0 ]
+  [ ! -e "$home/.azure-profiles/acme.conf" ]
+  [ ! -e "$home/.azure-profiles/acme" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl --rm: requires a profile name (exit 2)" {
+  home="$(mktemp -d)"
+  HOME="$home" run "${BATS_TEST_DIRNAME}/../azrl" --rm
+  [ "$status" -eq 2 ]
+  rm -rf "$home"
+}
+
+@test "azrl --rm: removes a named profile with -y" {
+  home="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/acme"
+  printf 'AZ_TENANT=acme.com\n' > "$home/.azure-profiles/acme.conf"
+  HOME="$home" run bash -c "cd '$work' && '${BATS_TEST_DIRNAME}/../azrl' --rm acme -y"
+  [ "$status" -eq 0 ]
+  [ ! -e "$home/.azure-profiles/acme.conf" ]
+  [ ! -e "$home/.azure-profiles/acme" ]
+  rm -rf "$home" "$work"
+}
+
+@test "azrl --rm: refuses the reserved name azrl (exit 2)" {
+  home="$(mktemp -d)"
+  HOME="$home" run "${BATS_TEST_DIRNAME}/../azrl" --rm azrl -y
+  [ "$status" -eq 2 ]
+  rm -rf "$home"
+}
