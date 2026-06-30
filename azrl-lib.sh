@@ -12,6 +12,7 @@ Usage:
   azrl [profile] [--paste]
   azrl --save [name]
   azrl --init [name]
+  azrl --use <name>
   azrl --rm <name>
   azrl --list | --help | --version
 
@@ -27,6 +28,8 @@ Options:
   --init, -i       Tenant-less `az login`, then record the session as
                    [name].conf (default: sanitized current directory) and
                    write .azprofile in $PWD.
+  --use, -u        Link $PWD to the existing profile <name> by writing
+                   .azprofile (verifies <name>.conf exists; no login).
   --rm, -r         Remove profile <name>: its <name>.conf, its AZURE_CONFIG_DIR
                    (~/.azure-profiles/<name>/), and $PWD/.azprofile if it names
                    <name>. Prompts unless -y/--yes is given.
@@ -170,6 +173,18 @@ azrl_rm_profile() {
   fi
   for t in "${targets[@]}"; do rm -rf "$t"; done
   printf 'azrl: removed profile %q\n' "$name"
+  return 0
+}
+
+azrl_use_profile() {
+  # $1=name $2=confdir $3=pwd. Points <pwd>/.azprofile at the existing profile
+  # <name> after verifying <confdir>/<name>.conf exists. Overwrites any current
+  # .azprofile. Returns 1 (writing nothing) when the profile does not exist.
+  local name="$1" confdir="$2" pwd_dir="$3"
+  local conf="$confdir/$name.conf"
+  [[ -f "$conf" ]] || { printf 'azrl: no such profile %q (missing %s)\n' "$name" "$conf" >&2; return 1; }
+  printf '%s\n' "$name" > "$pwd_dir/.azprofile"
+  printf 'azrl: linked %s/.azprofile -> profile %q\n' "$pwd_dir" "$name"
   return 0
 }
 

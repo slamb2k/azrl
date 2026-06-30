@@ -20,6 +20,7 @@ for a in "$@"; do
     --save|-s) AZRL_MODE=save ;;
     --init|-i) AZRL_MODE=init ;;
     --rm|-r) AZRL_MODE='rm' ;;
+    --use|-u) AZRL_MODE=use ;;
     -y|--yes) ASSUME_YES=1 ;;
     --paste) AZRL_FORCE_PASTE=1 ;;
     -*) printf 'azrl: unknown flag %s\n' "$a" >&2; exit 2 ;;
@@ -46,6 +47,17 @@ if [[ "$AZRL_MODE" == "rm" ]]; then
   rc=0
   azrl_rm_profile "$NAME" "$HOME/.azure-profiles" "$PWD" "$ASSUME_YES" || rc=$?
   exit "$rc"
+fi
+
+# --use: point $PWD/.azprofile at an existing profile (validated). Requires an
+# explicit name. No login, no global conf.
+if [[ "$AZRL_MODE" == "use" ]]; then
+  NAME="$PROFILE_ARG"
+  [[ -n "$NAME" ]] || { printf 'azrl: --use requires a profile name\n' >&2; exit 2; }
+  [[ "$NAME" == */* ]] && { printf 'azrl: invalid profile name %q\n' "$NAME" >&2; exit 2; }
+  [[ "$NAME" == "azrl" ]] && { printf 'azrl: refusing to use the global azrl config\n' >&2; exit 2; }
+  azrl_use_profile "$NAME" "$HOME/.azure-profiles" "$PWD" || exit 1
+  exit 0
 fi
 
 cleanup() {
