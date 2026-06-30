@@ -164,7 +164,8 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"PORT=40404"* ]]
   grep -q 'login' "$log"
-  ! grep -q -- '--tenant' "$log"
+  run grep -q -- '--tenant' "$log"
+  [ "$status" -ne 0 ]
   rm -rf "$shimdir"
 }
 
