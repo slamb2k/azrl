@@ -67,6 +67,9 @@ var loginCmd = &cobra.Command{
 			return err
 		}
 		printSignedIn(out, acct)
+		// The profile's session lives in its isolated dir; plain `az` in this
+		// shell still uses ~/.azure. Offer to pin it so they match.
+		offerEnvrc(pwd, out, os.Stdin)
 		return nil
 	},
 }

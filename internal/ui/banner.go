@@ -4,22 +4,65 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	figure "github.com/common-nighthawk/go-figure"
 )
 
-// Banner renders the AZRL block-letter banner with a blue gradient, the angel
-// art, and the tagline.
+// Block-letter glyphs for A Z R L, five rows tall, four columns wide.
+var (
+	glyphA = []string{" ██ ", "█  █", "████", "█  █", "█  █"}
+	glyphZ = []string{"████", "  █ ", " █  ", "█   ", "████"}
+	glyphR = []string{"███ ", "█  █", "███ ", "█ █ ", "█  █"}
+	glyphL = []string{"█   ", "█   ", "█   ", "█   ", "████"}
+
+	azrlGlyphs = [][]string{glyphA, glyphZ, glyphR, glyphL}
+
+	// Braille angel wings, mirrored across the wordmark. Drawn pixel-by-pixel as
+	// a fan of tapering feathers and packed into braille (2x4 dots per cell):
+	// wrists low at the wordmark, primaries sweeping up and out to the tips.
+	leftWing = []string{
+		"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣒⣲⣺⣒⣒⣒⢒⠐⠀⠀⠀⠀⠀⠀",
+		"⠀⠀⠀⠀⠀⠀⠀⢐⢐⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣻⣒⢒⠀⠀⠀⠀",
+		"⠀⠀⠀⠀⠀⠀⠀⡭⣯⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠛⠀⠀⠀",
+		"⠀⠀⠀⠀⣠⣺⣺⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⡯⠯⠁⠀⠀⠀",
+		"⠀⠀⠀⢐⢐⣒⣺⣿⣿⣿⣿⣿⣿⣿⣿⡿⠯⠍⠁⠀⠀⠀⠀⠀⠀⠀",
+	}
+	rightWing = []string{
+		"⠀⠀⠀⠀⠀⠀⢀⣐⣒⣒⣒⣺⣚⣒⠒⠐⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+		"⠀⠀⠀⠀⣐⣒⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⢛⢐⢐⠀⠀⠀⠀⠀⠀⠀",
+		"⠀⠀⠀⣤⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠯⠀⠀⠀⠀⠀⠀⠀",
+		"⠀⠀⠀⠄⡭⡯⣯⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣺⣺⠚⠀⠀⠀⠀",
+		"⠀⠀⠀⠀⠀⠀⠀⠄⠥⡭⣯⣿⣿⣿⣿⣿⣿⣿⣿⣺⣒⢐⢐⠀⠀⠀",
+	}
+)
+
+// wordmark builds the five-row AZRL block letters.
+func wordmark() []string {
+	rows := make([]string, 5)
+	for i := 0; i < 5; i++ {
+		parts := make([]string, len(azrlGlyphs))
+		for j, g := range azrlGlyphs {
+			parts[j] = g[i]
+		}
+		rows[i] = strings.Join(parts, "  ")
+	}
+	return rows
+}
+
+// Banner renders gold AZRL block letters flanked by blue braille angel wings
+// in a top-bright gradient, above the tagline.
 func Banner() string {
-	fig := figure.NewFigure("AZRL", "standard", true).String()
-	blues := []lipgloss.Color{azureBlue, azureBlue, azureDeep, azureDeep}
+	word := wordmark()
+	wingBlues := []lipgloss.Color{azureSky, azureSky, azureBlue, azureBlue, azureDeep}
+
 	var lines []string
-	for i, line := range strings.Split(strings.TrimRight(fig, "\n"), "\n") {
-		c := blues[i%len(blues)]
-		lines = append(lines, lipgloss.NewStyle().Foreground(c).Render(line))
+	for i := 0; i < 5; i++ {
+		wing := lipgloss.NewStyle().Foreground(wingBlues[i])
+		row := wing.Render(leftWing[i]) + "  " +
+			accentStyle.Render(word[i]) + "  " +
+			wing.Render(rightWing[i])
+		lines = append(lines, row)
 	}
 	logo := strings.Join(lines, "\n")
-	angel := lipgloss.NewStyle().Foreground(gold).Render(AngelArt)
-	top := lipgloss.JoinHorizontal(lipgloss.Top, angel, "  ", logo)
 	tagline := accentStyle.Render("Azure Remote Login")
-	return lipgloss.JoinVertical(lipgloss.Left, top, "", tagline)
+	block := lipgloss.JoinVertical(lipgloss.Center, logo, "", tagline)
+	return block
 }
