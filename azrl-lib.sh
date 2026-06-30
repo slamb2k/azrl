@@ -62,6 +62,23 @@ AZ_EXPECT_USER=$user
 EOF
 }
 
+azrl_write_profile() {
+  # $1=profile $2=target_dir. Uses AZURE_CONFIG_DIR (set by caller).
+  # Writes ~/.azure-profiles/<profile>.conf from the current session (refusing to
+  # clobber) and <target_dir>/.azprofile. Returns 1 on existing conf or no session.
+  local profile="$1" dir="$2"
+  local out="$HOME/.azure-profiles/$profile.conf"
+  [[ -e "$out" ]] && { printf 'azrl: %s already exists — remove it first to re-save\n' "$out" >&2; return 1; }
+  local acct doms
+  acct="$(az account show -o json 2>/dev/null)" \
+    || { printf 'azrl: not logged in for %q — run azrl --init first\n' "$profile" >&2; return 1; }
+  doms="$(az rest --url 'https://graph.microsoft.com/v1.0/domains' -o json 2>/dev/null || printf '{}')"
+  azrl_save_conf "$acct" "$doms" > "$out"
+  printf '%s\n' "$profile" > "$dir/.azprofile"
+  printf 'azrl: wrote %s and %s/.azprofile\n' "$out" "$dir"
+  return 0
+}
+
 azrl_extract_port() {
   local url="$1" decoded
   decoded="${url//%3A/:}"; decoded="${decoded//%2F//}"

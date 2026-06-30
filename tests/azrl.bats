@@ -403,3 +403,66 @@ EOF
   run azrl_default_name "" "/home/x/Contoso Migration"
   [ "$output" = "contoso-migration" ]
 }
+
+@test "azrl_write_profile: writes conf and .azprofile from session" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles/acme"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"account show"*)   echo '{"tenantId":"guid-9","id":"sub-1","name":"Sub","user":{"name":"u@acme.onmicrosoft.com"}}' ;;
+  *"rest"*"domains"*) echo '{"value":[{"id":"acme.onmicrosoft.com","isDefault":true}]}' ;;
+  *)                  echo '{}' ;;
+esac
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export HOME='$home' AZURE_CONFIG_DIR='$home/.azure-profiles/acme'
+    PATH='$shimdir':\$PATH azrl_write_profile acme '$work'
+  "
+  [ "$status" -eq 0 ]
+  grep -q 'AZ_TENANT=acme.onmicrosoft.com' "$home/.azure-profiles/acme.conf"
+  grep -q 'AZ_TENANT_ID=guid-9' "$home/.azure-profiles/acme.conf"
+  [ "$(cat "$work/.azprofile")" = "acme" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl_write_profile: fails clearly when not logged in" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export HOME='$home' AZURE_CONFIG_DIR='$home/.azure-profiles/acme'
+    PATH='$shimdir':\$PATH azrl_write_profile acme '$work'
+  "
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not logged in"* ]]
+  [ ! -e "$home/.azure-profiles/acme.conf" ]
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
+
+@test "azrl_write_profile: refuses to clobber existing conf" {
+  home="$(mktemp -d)"; shimdir="$(mktemp -d)"; work="$(mktemp -d)"
+  mkdir -p "$home/.azure-profiles"
+  printf 'AZ_TENANT=keep.me\n' > "$home/.azure-profiles/acme.conf"
+  cat > "$shimdir/az" <<'EOF'
+#!/usr/bin/env bash
+echo '{}'
+EOF
+  chmod +x "$shimdir/az"
+  run bash -c "
+    source '${BATS_TEST_DIRNAME}/../azrl-lib.sh'
+    export HOME='$home' AZURE_CONFIG_DIR='$home/.azure-profiles/acme'
+    PATH='$shimdir':\$PATH azrl_write_profile acme '$work'
+  "
+  [ "$status" -ne 0 ]
+  grep -q 'AZ_TENANT=keep.me' "$home/.azure-profiles/acme.conf"
+  [ ! -e "$work/.azprofile" ]
+  rm -rf "$home" "$shimdir" "$work"
+}
