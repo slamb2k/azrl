@@ -43,6 +43,13 @@ func GithubProfilesDir() string {
 	return filepath.Join(home, ".github-profiles")
 }
 
+// AwsProfilesDir returns ~/.aws-profiles, the root for AWS profile confs and
+// their per-profile isolated config/credentials dirs.
+func AwsProfilesDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".aws-profiles")
+}
+
 // DashboardPollSecs reads DASHBOARD_POLL_SECS from <dir>/azrl.conf, returning 3
 // on any missing/parse failure or a non-positive value. It does not require the
 // other azrl.conf keys, so the dashboard works standalone.
