@@ -109,7 +109,7 @@ the profile's config dir / conf file):
 | Field | Azure | GitHub | AWS (later) | GCP (later) |
 |---|---|---|---|---|
 | `Identity` | signed-in user / tenant from MSAL cache in `AZURE_CONFIG_DIR` | `GH_USER` + host from `hosts.yml` under `GH_CONFIG_DIR` | SSO account/role from `~/.aws/sso/cache` + profile | active account from `gcloud` config / `credentials.db` |
-| `Directory` | last-bound dir (see `LastUsed` tracking) | same | same | same |
+| `Directory` | `LAST_DIR` conf key (see tracking below) | same | same | same |
 | `Expiry` | `accessToken` expiry in MSAL cache, if present | `gh` tokens don't expire → `nil` | SSO cached token `expiresAt` (plain JSON) | `nil` in v1 (expiry is in SQLite `access_tokens.db`; see multi-cloud spec) |
 | `Drifted` | ambient `AZURE_CONFIG_DIR`/active-sub ≠ this profile's | ambient `GH_CONFIG_DIR` ≠ this profile's | ambient `AWS_PROFILE` ≠ this profile's | ambient `CLOUDSDK_ACTIVE_CONFIG_NAME` ≠ this profile's |
 
@@ -121,34 +121,58 @@ field without the network, it returns the zero value (`Expiry == nil`,
 `Identity == ""`) rather than reaching out — a blank cell is honest; a network
 call is a bug.
 
-### `LastUsed` tracking
+### `LastUsed` + `Directory` tracking
 
-A single timestamp per profile, persisted to the profile's conf file
-(`~/.<provider>-profiles/<name>.conf`) under a shared key (e.g. `LAST_USED`, an
-RFC 3339 string). It is bumped on every event that makes a profile "the one you
-touched":
+Two scalar keys per profile, persisted to the profile's conf file
+(`~/.<provider>-profiles/<name>.conf`) and bumped **together** on every event that
+makes a profile "the one you touched":
 
-- `use` (pin a directory to the profile),
-- `login` / `capture` (establish or record a session),
-- any directory-bind that rewrites `.xxprofile`.
+- `LAST_USED` — an RFC 3339 timestamp (feeds `Status().LastUsed` and the sort).
+- `LAST_DIR` — the absolute directory of the touch event (feeds
+  `Status().Directory` / the `Dir` column). Without this the `Directory` field has
+  no source: a profile can be pinned by `.xxprofile` in *many* directories across
+  a tree, so "last-bound dir" is specifically the most-recent bind, which only a
+  persisted value can answer. `Status()` reads it straight back; blank → `""`.
 
-The bump is a small helper in the parameterized `internal/profile` package (it
-already owns conf I/O and the `.envrc`/pointer writes), so every provider gets it
-for free by going through the shared writer rather than each re-implementing it.
-`Status()` reads the key back; a missing/blank key sorts last (zero time).
+Both are bumped on:
 
-Scope discipline: **one timestamp, not a log.** No append-only history, no
-per-directory ledger. That keeps the conf file human-readable and the feature
-small; the richer "history" ambition stays a future phase.
+- `use` (pin a directory to the profile) — `LAST_DIR` = the pinned dir,
+- `login` / `capture` (establish or record a session) — `LAST_DIR` = `$PWD`,
+- any directory-bind that rewrites `.xxprofile` — `LAST_DIR` = that dir.
+
+The bump is a single small helper in the parameterized `internal/profile` package
+(it already owns conf I/O and the `.envrc`/pointer writes), so every provider gets
+both keys for free by going through the shared writer rather than each
+re-implementing it. A missing/blank `LAST_USED` sorts last (zero time).
+
+Scope discipline: **two scalars, not a log.** One timestamp + one directory per
+profile — no append-only history, no per-directory ledger. That keeps the conf
+file human-readable and the feature small; the richer "history" ambition (every
+dir a profile was ever active in, over time) stays a future phase.
+
+### Provider enumeration — introduce a small central list
+
+The dashboard's core job is "iterate **every** provider," but today there is **no
+registry**: the tab container hardcodes its providers as a slice literal
+(`internal/ui/tabs.go` — `[]tab{ {"Azure", …}, {"GitHub", …} }`), and each CLI
+command self-wires via its own `init()`. So this phase introduces a single
+ordered source of truth — e.g. `provider.All() []provider.Provider` (Azure,
+GitHub in order) — and **points the existing tab container at it** instead of its
+literal. This is a small, well-scoped refactor, not a plugin system: one slice,
+constructed once. The payoff is that the dashboard, the tab bar, and future
+providers all read/register in **one place** — so when AWS/GCP land (Phase 8/9)
+they append to `provider.All()` rather than editing the tab literal *and* a
+separate dashboard list. (The per-file `init()` CLI wiring already needs no
+central edit and is left as-is.)
 
 ### Dashboard view (TUI)
 
 A new **top-level view**, sibling to the per-provider tabs — *not* nested inside
 any one tab. It is owned by the tab container introduced in Phase 5.
 
-- On mount and on each poll tick, iterate all registered providers, call
-  `ListProfiles` then `Status(name, confdir)` per profile, and flatten into one
-  slice of `(providerTitle, Status)` rows.
+- On mount and on each poll tick, iterate `provider.All()`, call `ListProfiles`
+  then `Status(name, confdir)` per profile, and flatten into one slice of
+  `(providerTitle, Status)` rows.
 - Render as a single table, **sorted by `LastUsed` descending** by default,
   columns: `Provider | Profile | Identity | Dir | Expiry | Drift | Last used`.
   Drift renders as a loud marker (e.g. `⚠ drift`) so it's the thing your eye
@@ -159,9 +183,12 @@ any one tab. It is owned by the tab container introduced in Phase 5.
   keybind), matching "keep it up and glance at it." A bare `ghrl`/`azrl`-alias
   invocation still preselects its provider's tab (back-compat), but the neutral
   unified entrypoint lands on the dashboard.
-- **Refresh cadence:** poll local cache every 2–5s (disk-only per `Status()`),
-  no network refresh loop. A Bubble Tea `tea.Tick` drives it; the poll is cheap
+- **Refresh cadence:** poll local cache every **3s by default** (disk-only per
+  `Status()`), overridable via a `DASHBOARD_POLL_SECS` key in `azrl.conf`; no
+  network refresh loop. A Bubble Tea `tea.Tick` drives it; the poll is cheap
   enough that leaving the dashboard open overnight costs nothing but stat calls.
+  3s is the midpoint of the 2–5s range — responsive without being busy, and it's
+  all disk either way.
 
 ### Actions — drill-through, not inline
 
@@ -187,9 +214,13 @@ the targeting ambiguity that per-provider write actions would.
 - Bare unified invocation (no args) → **dashboard** (new default landing view).
 - Tab-switch keybind cycles dashboard ↔ Azure ↔ GitHub ↔ … (dashboard is the
   leftmost/first view).
-- Optional CLI parity (nice-to-have, not required for the phase): `<bin> status`
-  prints the same table non-interactively (one shot, disk-only) for scripting /
-  `watch`. Reuses the exact same `Status()` aggregation the TUI uses.
+- CLI parity: `<bin> status` prints the same aggregation non-interactively (one
+  shot, disk-only) for scripting / `watch` — a **plain aligned table by default**,
+  or machine-readable JSON with **`--json`** (array of the `Status` struct plus
+  the provider name). Reuses the exact same `Status()` aggregation the TUI uses.
+  The plain form is the default because the primary consumer is a human running
+  `watch <bin> status`; `--json` exists from day one so the disk-only snapshot is
+  scriptable without screen-scraping.
 
 ## Error handling
 
@@ -211,8 +242,9 @@ the targeting ambiguity that per-provider write actions would.
   network call** (verify by running with `az`/`gh`/`aws`/`gcloud` shimmed onto
   `PATH` as fakes that `exit 1` if invoked — a passing `Status()` must never
   touch them).
-- **`LastUsed` unit tests** in `internal/profile`: `use`/relabel/login bumps the
-  timestamp; `Status()` reads it back; blank sorts last.
+- **`LastUsed` + `LAST_DIR` unit tests** in `internal/profile`: `use`/login bumps
+  both keys together (`LAST_DIR` = the bound dir); `Status()` reads them back;
+  blank `LAST_USED` sorts last, blank `LAST_DIR` renders `""`.
 - **Drift unit tests:** seed ambient env var vs pinned pointer; assert `Drifted`
   toggles correctly with no process spawn.
 - **TUI model tests** (`internal/ui`): dashboard `View()` renders sorted rows,
@@ -235,14 +267,17 @@ the day they're written rather than being retrofitted.
 - **History subsystem** — per-event / per-directory ledger beyond the single
   `LastUsed` timestamp (the README's "history of which account was active in
   which directory"). Explicitly a later phase.
-- **Poll interval default** — 2s vs 5s; pick the higher end unless it feels
-  laggy, since it's disk-only either way. Could be made configurable in
-  `azrl.conf`.
 - **Unified `[u]se`-from-dashboard** — tempting but rejected for v1 as it starts
   down the "inline write action" path B4 warns against; revisit only if a single
   provider-agnostic bind action proves unambiguous.
-- **CLI `status` output format** — plain table vs JSON (`--json`) for scripting;
-  defer until there's a consumer.
+
+*Resolved during refinement (were open):*
+
+- **Poll interval** → **3s default**, configurable via `DASHBOARD_POLL_SECS` in
+  `azrl.conf`. (Midpoint of the 2–5s range; disk-only, so cost is negligible.)
+- **CLI `status` output** → **plain aligned table by default, `--json` flag** for
+  scripting, shipped together in the phase (not deferred) since JSON is trivial
+  over the same `Status()` aggregation and avoids screen-scraping later.
 
 ## Roadmap position
 
