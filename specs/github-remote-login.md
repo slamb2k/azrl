@@ -39,8 +39,9 @@ transparently bridge loopback callbacks.
 
 - Manage multiple GitHub accounts on a remote VM: per-account isolated config,
   fast switching, per-repo pinning.
-- Sign in with the browser on the *local* machine, for all three surfaces:
-  `gh` (relay), git-HTTPS via GCM (tunnel), VS Code (tunnel; pending spike).
+- Sign in with the browser on the *local* machine: `gh` (relay via `$BROWSER`),
+  git-HTTPS via GCM (tunnel via `xdg-open` shadow). VS Code needs no work —
+  Remote-SSH already handles its GitHub sign-in.
 - Support github.com and GHE Cloud (`*.ghe.com`) as primary; GHE Server
   (`--hostname`) as a host-agnostic bonus.
 - Reuse azrl's `Bridge`, browser-shim, profile model, and TUI; leave azrl's
@@ -118,20 +119,34 @@ Direct analogue of azrl's model.
   - `GH_PROTOCOL` — `https` (GCM/bridge path) or `ssh` (informational)
 - **Isolated auth per account** — `GH_CONFIG_DIR = ~/.github-profiles/<name>/`.
   `gh` honors `GH_CONFIG_DIR`, giving each profile its own `hosts.yml`/token —
-  mirror of azrl's per-profile `AZURE_CONFIG_DIR`.
+  mirror of azrl's per-profile `AZURE_CONFIG_DIR`. **Spike correction:** `gh`'s
+  default credential store is the OS keyring, which is *global* (keyed by
+  host+user, ignoring `GH_CONFIG_DIR`). So `Login` must call
+  `gh auth login --insecure-storage` to force the token into the per-profile
+  `hosts.yml`, which is what actually gives clean per-account isolation.
 - **Repo pin** — `<repo>/.ghprofile` (one line, gitignored), resolved by walking
   up from `$PWD` (reuses the extracted resolver). A repo may carry `.azprofile`
   and `.ghprofile` independently.
-- **Activation (`gh use`)** — writes `.ghprofile` and runs `gh auth setup-git`
-  scoped to that profile's `GH_CONFIG_DIR`, so `git push/pull` over HTTPS
-  resolves to *this account's* token via the credential helper.
+- **Activation (`gh use`)** — writes `.ghprofile`, runs `gh auth setup-git`
+  scoped to that profile's `GH_CONFIG_DIR`, **and** sets the repo-local
+  `credential.https://<host>.username = GH_USER` (GCM's prescribed multi-account
+  method), so `git push/pull` over HTTPS resolves to *this account's* token even
+  when two accounts share a host.
 - **Assertion** — `gh api user` under the profile's `GH_CONFIG_DIR`/`GH_HOST`
   confirms the login matches `GH_USER`.
 
 ## Browser-shim + bridge (the core mechanism)
 
-A single hidden shim subcommand — `<bin> __browser <url>` — is set as `$BROWSER`
-(and GCM/VS Code's browser hook where they don't honor `$BROWSER`; spike item).
+A single hidden shim subcommand — `<bin> __browser <url>` — receives whatever URL
+a tool tries to open, classifies it, and relays-or-tunnels. **Spike-confirmed
+install points differ per tool:**
+- `gh` honors `$BROWSER` → set `BROWSER=<bin> __browser`.
+- **GCM does NOT honor `$BROWSER` on Linux** — it execs `xdg-open` → the shim
+  must **shadow `xdg-open`** on the session `PATH` (a small wrapper that forwards
+  to `<bin> __browser`). (Alternatively `GCM_GITHUB_AUTHMODES=device` forces
+  device flow and skips the loopback entirely — kept as a fallback, but shadowing
+  `xdg-open` is the default so git-HTTPS gets the zero-paste bridge.)
+
 Whenever a tool opens a browser it invokes the shim, which classifies and acts:
 
 - **Loopback OAuth** — URL carries `redirect_uri=http://127.0.0.1:PORT/…` (or
@@ -145,8 +160,11 @@ Whenever a tool opens a browser it invokes the shim, which classifies and acts:
   Open the URL on the laptop via the local-browser mechanism (`LOCAL_BROWSER_CMD`
   over SSH in path B; print for paste in path A). VM tool polls for the token.
 
-One mechanism covers all three surfaces: `gh` → relay; GCM → tunnel; VS Code →
-tunnel (pending spike). The shim is stateless per invocation; global config
+Surfaces after the spike: `gh` → relay (via `$BROWSER`); GCM → tunnel (via
+`xdg-open` shadow); **VS Code → no bridge needed** — Remote-SSH already handles
+GitHub sign-in through its own `vscode://` URI handler + `asExternalUri`, so we
+document it as handled rather than intercept it. The shim is stateless per
+invocation; global config
 (`LOCAL_HOST`, `VM_HOST`, `LOCAL_BROWSER_CMD`) tells it how to reach the laptop.
 GCM picks a fresh random port each time — hence parsing the port from the URL
 rather than assuming a fixed port.
@@ -191,10 +209,18 @@ rather than assuming a fixed port.
   `*.ghe.com` are public, so this bites only self-hosted GHES — documented, not
   engineered around.
 
-## Phase 0 — Spike (gates implementation)
+## Phase 0 — Spike (gates implementation) — RESOLVED
 
-Verify external-tool behaviour before building on assumptions. Output is a short
-findings note that confirms the design or triggers a targeted revision.
+Findings in `specs/github-remote-login.spike.md`. **Design holds** with the
+mechanical revisions folded into the sections above: (1) `gh auth login
+--insecure-storage`, (2) shim shadows `xdg-open` for GCM (not `$BROWSER`), (3)
+`Use` sets per-repo `credential.https://<host>.username`, (4) VS Code documented
+as handled (no active bridge). Items still requiring a real laptop+VM+GCM+VS Code
+to close (see `specs/github-remote-login.manual-verify.md`): end-to-end GCM push
+through shim+tunnel, two-account no-cross-push proof, gh isolation on a host with
+a working keyring, VS Code Remote sign-in with zero tunnel.
+
+Original verification checklist (now answered):
 
 1. **`gh` token storage** — keyring (global) vs `hosts.yml` under
    `GH_CONFIG_DIR`; confirm per-profile isolation; decide whether to force file
@@ -243,7 +269,8 @@ findings note that confirms the design or triggers a targeted revision.
    `profile`) with azrl green throughout.
 2. **Provider interface** + move Azure behind it (no behaviour change).
 3. **`internal/github`** — profiles, login (relay), use, switch, assert.
-4. **Smart shim** — classify + relay/tunnel; wire GCM/VS Code per spike findings.
+4. **Smart shim** — classify + relay/tunnel; install as `$BROWSER` (gh) + shadow
+   `xdg-open` (GCM). VS Code needs no bridge (Remote-SSH handles it).
 5. **Tabbed TUI** — tab container + GitHub tab.
 6. **CLI namespacing** + `azrl`/`ghrl` alias entrypoints + goreleaser targets.
 7. **Docs + release.**
