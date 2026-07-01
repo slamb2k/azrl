@@ -37,6 +37,8 @@ type Provider struct{}
 // NewProvider returns the GitHub provider.
 func NewProvider() provider.Provider { return Provider{} }
 
+func init() { provider.Register(NewProvider()) }
+
 func (Provider) Name() string  { return "github" }
 func (Provider) Title() string { return "GitHub" }
 
