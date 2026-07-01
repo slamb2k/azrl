@@ -78,8 +78,12 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		// Reserve one line for the tab bar so each tab's own frame fits.
-		inner := tea.WindowSizeMsg{Width: msg.Width, Height: msg.Height - 1}
+		// Reserve the banner rows and the tab-bar line so each tab's own frame fits.
+		innerH := msg.Height - lipgloss.Height(bannerFor(msg.Width)) - 1
+		if innerH < 0 {
+			innerH = 0
+		}
+		inner := tea.WindowSizeMsg{Width: msg.Width, Height: innerH}
 		return m.broadcast(inner)
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -136,7 +140,17 @@ func (m tabsModel) View() string {
 		}
 	}
 	bar := strings.Join(cells, tabSepStyle.Render("│"))
-	return bar + "\n" + m.tabs[m.active].model.View()
+	out := bannerFor(m.width) + "\n" + bar + "\n" + m.tabs[m.active].model.View()
+	// Backstop invariant: no line may exceed the terminal width, whatever a child
+	// renders. Truncate every line (ANSI-aware) to guarantee it.
+	if m.width > 0 {
+		lines := strings.Split(out, "\n")
+		for i, l := range lines {
+			lines[i] = truncateLine(l, m.width)
+		}
+		out = strings.Join(lines, "\n")
+	}
+	return out
 }
 
 var (

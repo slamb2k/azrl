@@ -132,20 +132,16 @@ func (m dashboardModel) View() string {
 			lastUsedText(r.status.LastUsed),
 		})
 	}
-	widths := make([]int, len(cols))
-	for _, row := range matrix {
-		for i, c := range row {
-			if w := lipgloss.Width(c); w > widths[i] {
-				widths[i] = w
-			}
-		}
-	}
+
+	// Fit the table to the terminal: drop lower-priority columns as width shrinks,
+	// then truncate the Identity cell if the surviving columns still overflow.
+	active, widths := m.fitColumns(matrix)
 
 	var b strings.Builder
 	for ri, row := range matrix {
 		var cells []string
-		for i, c := range row {
-			cells = append(cells, padTo(c, widths[i]))
+		for _, ci := range active {
+			cells = append(cells, padTo(row[ci], widths[ci]))
 		}
 		line := strings.Join(cells, "  ")
 		if ri == 0 {
@@ -160,6 +156,124 @@ func (m dashboardModel) View() string {
 	}
 
 	return frameStyle.Render(strings.Join([]string{header, "", b.String(), help}, "\n"))
+}
+
+// Dashboard column indices into the full matrix row.
+const (
+	colProvider = 0
+	colProfile  = 1
+	colIdentity = 2
+	colDir      = 3
+	colExpiry   = 4
+	colDrift    = 5
+	colLastUsed = 6
+)
+
+// dashDropOrder lists the droppable columns in the order they are shed as the
+// terminal narrows; Provider, Profile, Identity and Drift are never dropped.
+var dashDropOrder = []int{colLastUsed, colExpiry, colDir}
+
+// fitColumns picks which columns survive at the current width and their pixel
+// widths, dropping low-priority columns then truncating the Identity cells (in
+// place) when the survivors still overflow. It returns the active column indices
+// in display order and a per-column width map.
+func (m dashboardModel) fitColumns(matrix [][]string) ([]int, map[int]int) {
+	all := []int{colProvider, colProfile, colIdentity, colDir, colExpiry, colDrift, colLastUsed}
+
+	// innerW is the room inside the frame border/padding for the marker + cells.
+	innerW := m.width - 4
+	if m.width <= 0 {
+		innerW = 1 << 30
+	}
+
+	active := append([]int(nil), all...)
+	widths := colWidths(matrix, active)
+	for lineWidth(active, widths) > innerW && len(dashDropOrder) > 0 {
+		next := -1
+		for _, d := range dashDropOrder {
+			if contains(active, d) {
+				next = d
+				break
+			}
+		}
+		if next < 0 {
+			break
+		}
+		active = remove(active, next)
+		widths = colWidths(matrix, active)
+	}
+
+	// Still too wide: squeeze the Identity column with an ellipsis.
+	if over := lineWidth(active, widths) - innerW; over > 0 && contains(active, colIdentity) {
+		target := widths[colIdentity] - over
+		if target < 3 {
+			target = 3
+		}
+		for ri := range matrix {
+			matrix[ri][colIdentity] = truncCell(matrix[ri][colIdentity], target)
+		}
+		widths = colWidths(matrix, active)
+	}
+	return active, widths
+}
+
+// colWidths measures the max visible width of each active column across matrix.
+func colWidths(matrix [][]string, active []int) map[int]int {
+	w := make(map[int]int, len(active))
+	for _, row := range matrix {
+		for _, ci := range active {
+			if lw := lipgloss.Width(row[ci]); lw > w[ci] {
+				w[ci] = lw
+			}
+		}
+	}
+	return w
+}
+
+// lineWidth is the rendered width of a data row: a 2-col marker, the cells, and
+// a 2-col gap between them.
+func lineWidth(active []int, widths map[int]int) int {
+	total := 2
+	for i, ci := range active {
+		total += widths[ci]
+		if i > 0 {
+			total += 2
+		}
+	}
+	return total
+}
+
+// truncCell trims s to width w, appending an ellipsis when it had to cut.
+func truncCell(s string, w int) string {
+	if w < 1 {
+		w = 1
+	}
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+	if w <= 1 {
+		return truncateLine(s, w)
+	}
+	return truncateLine(s, w-1) + "…"
+}
+
+func contains(xs []int, x int) bool {
+	for _, v := range xs {
+		if v == x {
+			return true
+		}
+	}
+	return false
+}
+
+func remove(xs []int, x int) []int {
+	out := xs[:0:0]
+	for _, v := range xs {
+		if v != x {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // orDash renders a blank cell as an em dash.

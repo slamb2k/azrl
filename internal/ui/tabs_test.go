@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // seedTabs returns a sized tab container with one Azure and one GitHub profile
@@ -38,9 +39,9 @@ func TestTabsRendersDashboardActiveByDefault(t *testing.T) {
 	if !strings.Contains(v, "acme") || !strings.Contains(v, "work") {
 		t.Fatalf("dashboard body missing aggregated profiles:\n%s", v)
 	}
-	// Azure banner must NOT show while the dashboard is active.
-	if strings.Contains(v, "█") {
-		t.Fatalf("Azure banner leaked into the dashboard:\n%s", v)
+	// The winged banner now lives in the container and shows above every tab.
+	if !strings.Contains(v, "█") {
+		t.Fatalf("banner missing from the dashboard tab:\n%s", v)
 	}
 }
 
@@ -58,9 +59,9 @@ func TestTabsSwitchToGitHubAndBack(t *testing.T) {
 	if !strings.Contains(v, "PROFILES") || !strings.Contains(v, "work") {
 		t.Fatalf("GitHub tab body missing profile list:\n%s", v)
 	}
-	// Azure banner must NOT show while GitHub is active.
-	if strings.Contains(v, "█") {
-		t.Fatalf("Azure banner leaked into GitHub tab:\n%s", v)
+	// The winged banner now shows above the GitHub tab too.
+	if !strings.Contains(v, "█") {
+		t.Fatalf("banner missing from the GitHub tab:\n%s", v)
 	}
 
 	// '[' returns to Azure.
@@ -145,5 +146,57 @@ func TestNewTabsForProviderSelectsNamedTab(t *testing.T) {
 	m := NewTabsForProvider("github")
 	if m.tabs[m.active].name != "github" {
 		t.Fatalf("NewTabsForProvider(github) active tab = %q", m.tabs[m.active].name)
+	}
+}
+
+// TestTabsBannerOnEveryTab asserts the winged wordmark shows above the tab bar
+// on the dashboard, Azure, and GitHub tabs alike (banner lives in the container).
+func TestTabsBannerOnEveryTab(t *testing.T) {
+	m := seedTabs(t) // width 100 → full art
+	for i := range m.tabs {
+		m.active = i
+		if !strings.Contains(m.View(), "█") {
+			t.Fatalf("banner wordmark missing on tab %d (%s):\n%s", i, m.tabs[i].title, m.View())
+		}
+	}
+}
+
+// TestTabsWidthInvariant is the core responsiveness guarantee: at every width,
+// on every tab, no rendered line may exceed the terminal width.
+func TestTabsWidthInvariant(t *testing.T) {
+	base := seedTabs(t)
+	for _, w := range []int{40, 60, 80, 100, 120} {
+		nm, _ := base.Update(tea.WindowSizeMsg{Width: w, Height: 40})
+		tm := nm.(tabsModel)
+		for i := range tm.tabs {
+			tm.active = i
+			for _, line := range strings.Split(tm.View(), "\n") {
+				if lw := lipgloss.Width(line); lw > w {
+					t.Fatalf("tab %d (%s) at width %d: line width %d exceeds terminal: %q",
+						i, tm.tabs[i].title, w, lw, line)
+				}
+			}
+		}
+	}
+}
+
+// TestTabsCompactBannerAtNarrowWidth asserts the fixed art is replaced by a
+// compact one-line title when the terminal is narrower than the art, and that
+// nothing overflows.
+func TestTabsCompactBannerAtNarrowWidth(t *testing.T) {
+	base := seedTabs(t)
+	nm, _ := base.Update(tea.WindowSizeMsg{Width: 30, Height: 40})
+	tm := nm.(tabsModel)
+	v := tm.View()
+	if strings.Contains(v, "█") {
+		t.Fatalf("full banner art must not render at width 30:\n%s", v)
+	}
+	if !strings.Contains(v, "A Z R L") {
+		t.Fatalf("compact banner title missing at width 30:\n%s", v)
+	}
+	for _, line := range strings.Split(v, "\n") {
+		if lw := lipgloss.Width(line); lw > 30 {
+			t.Fatalf("line width %d exceeds width 30: %q", lw, line)
+		}
 	}
 }

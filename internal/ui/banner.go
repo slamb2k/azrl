@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // bannerArt is the haloed angel wings spread apart to seat the AZRL shadow
@@ -82,6 +83,50 @@ func cellColor(y, x int, r rune) (col lipgloss.Color, bold bool) {
 	default:
 		return wingBlue(y), false
 	}
+}
+
+// bannerWidthCache memoises the fixed art's widest line (computed once).
+var bannerWidthCache int
+
+// bannerWidth reports the visible width of the widest banner-art line.
+func bannerWidth() int {
+	if bannerWidthCache == 0 {
+		for _, l := range bannerArt {
+			if w := lipgloss.Width(l); w > bannerWidthCache {
+				bannerWidthCache = w
+			}
+		}
+	}
+	return bannerWidthCache
+}
+
+// compactBannerStyle renders the one-line fallback wordmark shown when the
+// terminal is too narrow for the full winged art.
+var compactBannerStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
+
+// bannerFor returns the crest sized to width: the full winged art when it fits,
+// otherwise a compact gold wordmark, truncated if even that overflows.
+func bannerFor(width int) string {
+	if width >= bannerWidth() {
+		return Banner()
+	}
+	title := "A Z R L"
+	if lipgloss.Width(title) > width {
+		title = truncateLine(title, width)
+	}
+	return "\n" + compactBannerStyle.Render(title) + "\n"
+}
+
+// truncateLine trims s to a visible width of at most w, honouring embedded ANSI
+// styling so colour sequences are never sliced mid-escape.
+func truncateLine(s string, w int) string {
+	if w < 0 {
+		w = 0
+	}
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+	return ansi.Truncate(s, w, "")
 }
 
 // Banner renders the winged AZRL crest: gold shadow wordmark, a gradient halo,
