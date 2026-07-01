@@ -24,14 +24,19 @@ type tabsModel struct {
 	height int
 }
 
-// NewTabs builds the tabbed container with one tab per provider.
-func NewTabs() tabsModel {
-	return tabsModel{
-		tabs: []tab{
-			{title: "Azure", model: NewModel()},
-			{title: "GitHub", model: newGithubView()},
-		},
+// NewTabs builds the tabbed container with one tab per provider, on the Azure tab.
+func NewTabs() tabsModel { return NewTabsOn(0) }
+
+// NewTabsOn builds the tabbed container preselected on tab index active.
+func NewTabsOn(active int) tabsModel {
+	tabs := []tab{
+		{title: "Azure", model: NewModel()},
+		{title: "GitHub", model: newGithubView()},
 	}
+	if active < 0 || active >= len(tabs) {
+		active = 0
+	}
+	return tabsModel{tabs: tabs, active: active}
 }
 
 func (m tabsModel) Init() tea.Cmd {

@@ -52,6 +52,14 @@ func TestAssertAccountNoExpectedUserSkipsCheck(t *testing.T) {
 	}
 }
 
+func TestWhoAmIReturnsLogin(t *testing.T) {
+	fakeGhAPI(t, "octocat")
+	login, err := WhoAmI(t.TempDir(), "work", "github.com")
+	if err != nil || login != "octocat" {
+		t.Fatalf("WhoAmI=%q err=%v", login, err)
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
 }

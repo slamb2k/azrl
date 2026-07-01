@@ -16,9 +16,19 @@ builds:
       - -s -w -X github.com/slamb2k/azrl/cmd.Version={{ .Version }}
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
+  - id: ghrl
+    main: ./cmd/ghrl
+    binary: ghrl
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/slamb2k/azrl/cmd.Version={{ .Version }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
 
 archives:
   - id: azrl
+    ids: [azrl, ghrl]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
@@ -55,11 +65,14 @@ brews:
     skip_upload: '{{ if eq .Env.HOMEBREW_TAP_TOKEN "" }}true{{ else }}false{{ end }}'
     install: |
       bin.install "azrl"
+      bin.install "ghrl"
     test: |
       system "#{bin}/azrl", "--version"
+      system "#{bin}/ghrl", "--version"
 
 nfpms:
   - id: azrl
+    ids: [azrl, ghrl]
     package_name: azrl
     vendor: slamb2k
     homepage: "https://github.com/slamb2k/azrl"
