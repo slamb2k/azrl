@@ -97,6 +97,10 @@ func RunContract(t *testing.T, p provider.Provider) {
 		t.Fatal("Status shelled out to a provider CLI (network call)")
 	}
 
+	// WatchDirs is a best-effort disk enumeration for the dashboard's fs watcher:
+	// sanity-call it to confirm it never panics (it may legitimately be empty).
+	_ = p.WatchDirs()
+
 	// Removing an unknown profile via Use must error.
 	if err := p.Use("ghost", confdir, t.TempDir()); err == nil {
 		t.Fatal("Use of unknown profile should error")

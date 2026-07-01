@@ -95,6 +95,30 @@ func TestStatusDrift(t *testing.T) {
 	}
 }
 
+func TestStatusLastUsedReflectsCacheMtime(t *testing.T) {
+	confdir := t.TempDir()
+	iso := filepath.Join(confdir, "acme")
+	os.MkdirAll(iso, 0o755)
+	// LAST_USED in the conf is older than the token cache's mtime: external `az`
+	// usage refreshed the MSAL cache without going through azrl.
+	os.WriteFile(filepath.Join(confdir, "acme.conf"),
+		[]byte("AZ_TENANT=acme.com\nLAST_USED=2026-06-01T10:00:00Z\n"), 0o644)
+	cache := filepath.Join(iso, "msal_token_cache.json")
+	os.WriteFile(cache, []byte(`{"AccessToken":{}}`), 0o644)
+	newer := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(cache, newer, newer); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := azure.NewProvider().Status("acme", confdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.LastUsed.Equal(newer) {
+		t.Fatalf("LastUsed = %v, want cache mtime %v", st.LastUsed, newer)
+	}
+}
+
 func TestStatusBlankOnMissingCache(t *testing.T) {
 	confdir := t.TempDir()
 	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)

@@ -17,6 +17,9 @@ import (
 func (Provider) Status(name, confdir string) (provider.Status, error) {
 	isolated := filepath.Join(confdir, name)
 	last, dir := profile.AzureScheme().LastTouch(name, confdir)
+	last = provider.LatestMtime(last,
+		filepath.Join(isolated, "msal_token_cache.json"),
+		filepath.Join(isolated, "azureProfile.json"))
 	return provider.Status{
 		ProfileName: name,
 		Identity:    azureIdentity(isolated),
