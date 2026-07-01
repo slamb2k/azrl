@@ -47,7 +47,8 @@ var loginCmd = &cobra.Command{
 		}
 		conf, err := profile.LoadConf(name, config.ProfilesDir())
 		if err != nil {
-			return err
+			// Azure can't create-on-login (a profile needs a tenant); route to init.
+			return fmt.Errorf("azrl: no profile %q — run 'azrl init %s' to create it (it sets the tenant)", name, name)
 		}
 		cfgDir := filepath.Join(config.ProfilesDir(), name)
 		os.MkdirAll(cfgDir, 0o755)

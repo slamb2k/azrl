@@ -97,6 +97,26 @@ func TestLoginZeroProfilesTenantless(t *testing.T) {
 	}
 }
 
+// TestLoginUnknownNameRoutesToInit proves an explicit unknown profile name is
+// not silently created (azure needs a tenant): it errors, routing to `azrl init`,
+// and writes no conf.
+func TestLoginUnknownNameRoutesToInit(t *testing.T) {
+	seedAzLoginEnv(t, map[string]string{"work": "AZ_TENANT=work.example.com\n"})
+	home := os.Getenv("HOME")
+	chdirClean(t)
+
+	out, err := execRoot(t, "login", "ghostazure")
+	if err == nil {
+		t.Fatalf("unknown azure profile should error (out=%q)", out)
+	}
+	if !strings.Contains(err.Error(), "run 'azrl init ghostazure'") {
+		t.Fatalf("wrong error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".azure-profiles", "ghostazure.conf")); !os.IsNotExist(statErr) {
+		t.Fatal("azure login must not create a conf")
+	}
+}
+
 // TestLoginSingleProfileAutoSelect proves the sole profile is announced and used
 // (its tenant reaches az login) without any interactive prompt.
 func TestLoginSingleProfileAutoSelect(t *testing.T) {
