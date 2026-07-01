@@ -27,6 +27,17 @@ func AccountShow() ([]byte, error) {
 	return runAz("account", "show", "-o", "json")
 }
 
+// AccountShowIn reports the signed-in account for a specific AZURE_CONFIG_DIR
+// (the profile's isolated token dir), rather than the ambient ~/.azure session.
+// An empty configDir falls back to the inherited environment.
+func AccountShowIn(configDir string) ([]byte, error) {
+	cmd := exec.Command("az", "account", "show", "-o", "json")
+	if configDir != "" {
+		cmd.Env = append(os.Environ(), "AZURE_CONFIG_DIR="+configDir)
+	}
+	return cmd.Output()
+}
+
 // SetSubscription selects the given subscription.
 func SetSubscription(sub string) error {
 	return exec.Command("az", "account", "set", "--subscription", sub).Run()

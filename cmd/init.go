@@ -38,7 +38,11 @@ var initCmd = &cobra.Command{
 		if err := runLogin("", g, false, cmd.OutOrStdout()); err != nil {
 			return err
 		}
-		return captureSession(name, pwd, cmd.OutOrStdout())
+		if err := captureSession(name, pwd, cmd.OutOrStdout()); err != nil {
+			return err
+		}
+		offerEnvrc(pwd, cmd.OutOrStdout(), os.Stdin)
+		return nil
 	},
 }
 

@@ -7,13 +7,18 @@ import (
 
 func TestBannerContents(t *testing.T) {
 	b := Banner()
-	if !strings.Contains(b, "Azure Remote Login") {
-		t.Fatalf("banner missing tagline:\n%s", b)
+	if !strings.Contains(b, "█") {
+		t.Fatalf("banner missing block letters:\n%s", b)
 	}
-	if strings.TrimSpace(AngelArt) == "" {
-		t.Fatal("angel art is empty")
+	// at least one braille glyph (U+2800..U+28FF) for the wings
+	hasBraille := false
+	for _, r := range b {
+		if r >= 0x2800 && r <= 0x28FF {
+			hasBraille = true
+			break
+		}
 	}
-	if strings.Count(AngelArt, "\n") < 6 {
-		t.Fatalf("angel should be multi-line (>=7 rows), got:\n%s", AngelArt)
+	if !hasBraille {
+		t.Fatalf("banner missing braille wings:\n%s", b)
 	}
 }
