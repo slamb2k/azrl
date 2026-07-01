@@ -14,11 +14,11 @@ import (
 
 // noViewProvider is a provider whose Name() has no entry in the views map. Only
 // Name()/Title() are exercised by providerTabs, so the embedded nil interface is
-// never dereferenced.
+// never dereferenced. It uses an unregistered name so it stays view-less.
 type noViewProvider struct{ provider.Provider }
 
-func (noViewProvider) Name() string  { return "gcp" }
-func (noViewProvider) Title() string { return "GCP" }
+func (noViewProvider) Name() string  { return "acmecloud" }
+func (noViewProvider) Title() string { return "AcmeCloud" }
 
 // TestProviderTabsSkipsProviderWithoutView proves a provider missing a view is
 // skipped rather than appended as a nil-model tab (which would nil-panic).
@@ -75,13 +75,14 @@ func TestTabsRendersDashboardActiveByDefault(t *testing.T) {
 func TestTabsSwitchToGitHubAndBack(t *testing.T) {
 	m := seedTabs(t)
 
-	// ']' three times advances dashboard → AWS → Azure → GitHub.
+	// ']' four times advances dashboard → AWS → Azure → GCP → GitHub.
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	gh := nm.(tabsModel)
-	if gh.active != 3 {
-		t.Fatalf("after ']]]', active = %d, want 3 (GitHub)", gh.active)
+	if gh.active != 4 {
+		t.Fatalf("after ']]]]', active = %d, want 4 (GitHub)", gh.active)
 	}
 	v := gh.View()
 	if !strings.Contains(v, "PROFILES") || !strings.Contains(v, "work") {
@@ -92,23 +93,24 @@ func TestTabsSwitchToGitHubAndBack(t *testing.T) {
 		t.Fatalf("banner missing from the GitHub tab:\n%s", v)
 	}
 
-	// '[' returns to Azure.
+	// '[' returns to the GCP tab.
 	nm2, _ := gh.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
-	if nm2.(tabsModel).active != 2 {
-		t.Fatal("'[' did not return to the Azure tab")
+	if nm2.(tabsModel).active != 3 {
+		t.Fatal("'[' did not return to the GCP tab")
 	}
 }
 
 func TestTabsForwardsKeysToActiveTab(t *testing.T) {
 	m := seedTabs(t)
-	// Advance to the GitHub tab (index 3): 'tab' toggles inner pane focus.
+	// Advance to the GitHub tab (index 4): 'tab' toggles inner pane focus.
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	gh := nm.(tabsModel)
-	before := gh.tabs[3].model.(githubView).focus
+	before := gh.tabs[4].model.(githubView).focus
 	nm2, _ := gh.Update(tea.KeyMsg{Type: tea.KeyTab})
-	after := nm2.(tabsModel).tabs[3].model.(githubView).focus
+	after := nm2.(tabsModel).tabs[4].model.(githubView).focus
 	if before == after {
 		t.Fatal("tab key was not forwarded to the active GitHub view")
 	}
@@ -117,7 +119,7 @@ func TestTabsForwardsKeysToActiveTab(t *testing.T) {
 func TestTabsSwitchTabMsgSelectsProvider(t *testing.T) {
 	m := seedTabs(t)
 	nm, _ := m.Update(switchTabMsg{provider: "github", profile: "work"})
-	if nm.(tabsModel).active != 3 {
+	if nm.(tabsModel).active != 4 {
 		t.Fatalf("switchTabMsg did not select the GitHub tab: active=%d", nm.(tabsModel).active)
 	}
 }
@@ -140,7 +142,7 @@ func TestSwitchTabMsgPreselectsProfile(t *testing.T) {
 
 	// Jumping to GitHub's "work" (2nd, sorted after "play") moves its cursor there.
 	gm, _ := tm.Update(switchTabMsg{provider: "github", profile: "work"})
-	gv := gm.(tabsModel).tabs[3].model.(githubView)
+	gv := gm.(tabsModel).tabs[4].model.(githubView)
 	if got := gv.profiles[gv.cursor].Name; got != "work" {
 		t.Fatalf("github cursor on %q, want work", got)
 	}

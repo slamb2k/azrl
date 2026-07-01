@@ -37,7 +37,7 @@ func NewTabs() tabsModel { return NewTabsOn(0) }
 // providers sort).
 func NewTabsOn(active int) tabsModel {
 	provs := provider.All()
-	views := map[string]tea.Model{"azure": NewModel(), "github": newGithubView(), "aws": newAwsView()}
+	views := map[string]tea.Model{"azure": NewModel(), "github": newGithubView(), "aws": newAwsView(), "gcp": newGcpView()}
 	tabs := append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(provs, views)...)
 	if active < 0 || active >= len(tabs) {
 		active = 0
