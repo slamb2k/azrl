@@ -58,17 +58,20 @@ func profileDelegate() list.DefaultDelegate {
 // set, the slug is shown alongside the tenant so it stays discoverable.
 type item struct{ name, label, tenant string }
 
+// aliasMark flags a row whose display name is a custom label. The real slug is
+// hidden (it lives in the .conf and the rename/edit dialogs), so the marker is
+// what distinguishes a relabeled profile from a plain one at a glance. A "*"
+// footnote in the help bar (see helpBar) explains it on screen.
+const aliasMark = " *"
+
 func (i item) Title() string {
-	if i.label != "" {
-		return i.label
+	if i.label != "" && i.label != i.name {
+		return i.label + aliasMark
 	}
 	return i.name
 }
 
 func (i item) Description() string {
-	if i.label != "" && i.label != i.name {
-		return i.tenant + "  ·  " + i.name
-	}
 	return i.tenant
 }
 
@@ -575,9 +578,33 @@ func (m Model) helpBar() string {
 			mutedStyle.Render("i") + " new profile   " + mutedStyle.Render("x") + " edit   " + mutedStyle.Render("n") + " rename   " + mutedStyle.Render("d") + " remove",
 			mutedStyle.Render("↑↓") + " select · " + mutedStyle.Render("⇥") + " switch pane · " + mutedStyle.Render("↵") + " run · " + mutedStyle.Render("r") + " refresh · " + mutedStyle.Render("?") + " less · " + mutedStyle.Render("q") + " quit",
 		}
+		if m.hasAlias() {
+			lines = append(lines, aliasLegend())
+		}
 		return strings.Join(lines, "\n")
 	}
-	return mutedStyle.Render("↑↓ select · ⇥ pane · ↵ run · l/u/c/i/x/n/d actions · r refresh · ? help · q quit")
+	bar := mutedStyle.Render("↑↓ select · ⇥ pane · ↵ run · l/u/c/i/x/n/d actions · r refresh · ? help · q quit")
+	if m.hasAlias() {
+		bar += mutedStyle.Render(" · ") + accentStyle.Render("*") + mutedStyle.Render(" renamed")
+	}
+	return bar
+}
+
+// hasAlias reports whether any listed profile carries a custom label, so the
+// "*" legend is only shown when it is actually relevant.
+func (m Model) hasAlias() bool {
+	for _, it := range m.list.Items() {
+		if p, ok := it.(item); ok && p.label != "" && p.label != p.name {
+			return true
+		}
+	}
+	return false
+}
+
+// aliasLegend is the on-screen footnote explaining the "*" marker on renamed
+// profiles: the display name is a custom label, not the profile's real slug.
+func aliasLegend() string {
+	return accentStyle.Render("*") + mutedStyle.Render(" renamed — display name differs from the profile slug")
 }
 
 // contextLine describes the current directory's relationship to profiles.
