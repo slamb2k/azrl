@@ -32,17 +32,38 @@ type tabsModel struct {
 func NewTabs() tabsModel { return NewTabsOn(0) }
 
 // NewTabsOn builds the tabbed container preselected on tab index active. Tab 0 is
-// the cross-provider dashboard; the provider tabs follow provider.All()'s order,
-// each paired with its view by provider name (so the mapping is stable however
-// providers sort).
+// the cross-provider dashboard; Azure leads the provider tabs (the flagship
+// provider), followed by the rest in provider.All()'s order, each paired with its
+// view by provider name (so the mapping is stable however providers sort). The
+// dashboard keeps the full provider.All() list — its table sort is by last-used,
+// independent of the tab strip order.
 func NewTabsOn(active int) tabsModel {
 	provs := provider.All()
 	views := map[string]tea.Model{"azure": NewModel(), "github": newGithubView(), "aws": newAwsView(), "gcp": newGcpView()}
-	tabs := append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(provs, views)...)
+	tabs := append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(azureFirst(provs), views)...)
 	if active < 0 || active >= len(tabs) {
 		active = 0
 	}
 	return tabsModel{tabs: tabs, active: active}
+}
+
+// azureFirst returns provs with the "azure" provider moved to the front, leaving
+// the rest in their original order. It drives the tab strip so Azure sits first
+// after the Dashboard.
+func azureFirst(provs []provider.Provider) []provider.Provider {
+	out := make([]provider.Provider, 0, len(provs))
+	var azure provider.Provider
+	for _, p := range provs {
+		if p.Name() == "azure" {
+			azure = p
+			continue
+		}
+		out = append(out, p)
+	}
+	if azure != nil {
+		out = append([]provider.Provider{azure}, out...)
+	}
+	return out
 }
 
 // providerTabs pairs each provider with its registered view by name. A provider
@@ -126,6 +147,21 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
+// Close tears down any tab model that owns OS resources by calling its Close if
+// it implements one (e.g. the dashboard's fsnotify watcher). It is best-effort:
+// per-tab errors are ignored. run.go calls it once after the program loop ends,
+// so teardown happens on every quit path regardless of the active tab or the
+// quit key — the alternative of closing in a tab's Update would leak whenever
+// the container intercepts the quit key or another tab is active.
+func (m tabsModel) Close() error {
+	for _, t := range m.tabs {
+		if c, ok := t.model.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}
+	return nil
+}
+
 // broadcast forwards msg to every tab, collecting their commands.
 func (m tabsModel) broadcast(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -150,7 +186,13 @@ func (m tabsModel) View() string {
 		}
 	}
 	bar := strings.Join(cells, tabSepStyle.Render("│"))
-	out := bannerFor(m.width) + "\n" + bar + "\n" + m.tabs[m.active].model.View()
+	// Center the banner block within the full terminal width (each line kept ≤
+	// width; centering only pads with spaces).
+	banner := bannerFor(m.width)
+	if m.width > 0 {
+		banner = lipgloss.PlaceHorizontal(m.width, lipgloss.Center, banner)
+	}
+	out := banner + "\n" + bar + "\n" + m.tabs[m.active].model.View()
 	// Backstop invariant: no line may exceed the terminal width, whatever a child
 	// renders. Truncate every line (ANSI-aware) to guarantee it.
 	if m.width > 0 {
