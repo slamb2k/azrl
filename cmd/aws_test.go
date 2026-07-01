@@ -176,6 +176,50 @@ func TestAwsLoginRejectsWrongAccountAndSkipsTouch(t *testing.T) {
 	}
 }
 
+func TestAwsLoginUnknownWithoutStartURLErrors(t *testing.T) {
+	home := seedAwsHome(t)
+	chdirClean(t)
+
+	err := runRootErr(t, "aws", "login", "brandnew")
+	if err == nil {
+		t.Fatal("unknown profile without --sso-start-url should error")
+	}
+	if !strings.Contains(err.Error(), "provide --sso-start-url") {
+		t.Fatalf("wrong error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".aws-profiles", "brandnew.conf")); !os.IsNotExist(statErr) {
+		t.Fatal("no conf must be written without a start URL")
+	}
+}
+
+func TestAwsLoginCreatesWithStartURLAndYes(t *testing.T) {
+	seedAwsLoginEnv(t, "AWS_SSO_START_URL=https://acme.awsapps.com/start\n")
+	home := os.Getenv("HOME")
+	work := t.TempDir()
+	old, _ := os.Getwd()
+	os.Chdir(work)
+	defer os.Chdir(old)
+
+	buf := new(bytes.Buffer)
+	RootCmd.SetOut(buf)
+	RootCmd.SetErr(buf)
+	RootCmd.SetArgs([]string{"aws", "login", "fresh",
+		"--sso-start-url", "https://fresh.awsapps.com/start", "--yes"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatalf("create-on-login should succeed: %v (out=%q)", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), `created profile "fresh" (https://fresh.awsapps.com/start)`) {
+		t.Fatalf("missing created-profile announce:\n%s", buf.String())
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".aws-profiles", "fresh.conf"))
+	if err != nil {
+		t.Fatalf("fresh.conf not written: %v", err)
+	}
+	if !strings.Contains(string(b), "AWS_SSO_START_URL=https://fresh.awsapps.com/start") {
+		t.Fatalf("created conf missing start URL:\n%s", b)
+	}
+}
+
 func TestValidAwsNameRejectsReserved(t *testing.T) {
 	if err := validAwsName("aws"); err == nil {
 		t.Fatal("expected the reserved name 'aws' to be rejected")

@@ -185,6 +185,41 @@ func TestGcpLoginIsolateEmitsGKEWarning(t *testing.T) {
 	}
 }
 
+func TestGcpLoginCreatesWithYes(t *testing.T) {
+	seedGcpLoginEnv(t, "GCP_CONFIG_NAME=work\nGCP_PROJECT=acme-prod\n")
+	home := os.Getenv("HOME")
+	work := t.TempDir()
+	old, _ := os.Getwd()
+	os.Chdir(work)
+	defer os.Chdir(old)
+
+	out := runRoot(t, "gcp", "login", "fresh", "--yes")
+	if !strings.Contains(out, `created profile "fresh" (fresh)`) {
+		t.Fatalf("missing created-profile announce:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".gcp-profiles", "fresh.conf")); err != nil {
+		t.Fatalf("fresh.conf not written: %v", err)
+	}
+}
+
+func TestGcpLoginUnknownNonInteractiveErrors(t *testing.T) {
+	home := seedGcpHome(t)
+	chdirClean(t)
+	stubInteractive(t, false)
+
+	// --yes=false is explicit so a prior test's persisted flag can't leak in.
+	err := runRootErr(t, "gcp", "login", "ghost", "--yes=false")
+	if err == nil {
+		t.Fatal("unknown profile non-interactive should error")
+	}
+	if !strings.Contains(err.Error(), `no profile "ghost"`) {
+		t.Fatalf("wrong error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".gcp-profiles", "ghost.conf")); !os.IsNotExist(statErr) {
+		t.Fatal("no conf should be written when creation is declined")
+	}
+}
+
 func TestValidGcpNameRejectsReserved(t *testing.T) {
 	if err := validGcpName("gcp"); err == nil {
 		t.Fatal("expected the reserved name 'gcp' to be rejected")

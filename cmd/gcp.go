@@ -34,7 +34,7 @@ func gcpConfPath(dir, name string) string {
 
 func newGcpLoginCmd() *cobra.Command {
 	var configName, project, region string
-	var isolate bool
+	var isolate, gcpYes bool
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a Google Cloud account (browser pops on your local machine)",
@@ -51,15 +51,23 @@ func newGcpLoginCmd() *cobra.Command {
 			}
 			conf, err := gcp.LoadConf(name, dir)
 			if err != nil {
-				// New profile: seed a conf from the flags.
+				// Unknown profile: confirm before creating (never silently).
 				cn := configName
 				if cn == "" {
 					cn = name
+				}
+				detail := project
+				if detail == "" {
+					detail = cn
+				}
+				if !confirmCreateProfile(cmd, "azrl gcp", name, detail, gcpYes) {
+					return fmt.Errorf("azrl gcp: no profile %q — pass --yes to create it (%s) or run interactively", name, detail)
 				}
 				conf = gcp.Conf{ConfigName: cn, Project: project, Region: region, Isolate: isolate}
 				if werr := conf.Write(gcpConfPath(dir, name)); werr != nil {
 					return werr
 				}
+				cmd.Printf("azrl gcp: created profile %q (%s)\n", name, detail)
 			} else if isolate && !conf.Isolate {
 				conf.Isolate = true
 				if serr := gcp.SetIsolate(dir, name, true); serr != nil {
@@ -94,6 +102,7 @@ func newGcpLoginCmd() *cobra.Command {
 	c.Flags().StringVar(&project, "project", "", "GCP project to bind")
 	c.Flags().StringVar(&region, "region", "", "Default compute region to bind")
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own CLOUDSDK_CONFIG dir")
+	c.Flags().BoolVarP(&gcpYes, "yes", "y", false, "Create a missing profile without prompting.")
 	return c
 }
 

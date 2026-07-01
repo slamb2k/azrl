@@ -18,6 +18,31 @@ import (
 // tests can stub the picker's TTY branch deterministically.
 var isInteractive = func() bool { return isatty.IsTerminal(os.Stdin.Fd()) }
 
+// confirmCreateProfile reports whether to create a missing profile. With
+// assumeYes it returns true without prompting. On a non-interactive stream
+// without assumeYes it returns false (the caller should error with guidance).
+// Otherwise it prompts "[y/N]" (default No) reading from cmd.InOrStdin().
+func confirmCreateProfile(cmd *cobra.Command, label, name, detail string, assumeYes bool) bool {
+	if assumeYes {
+		return true
+	}
+	if !isInteractive() {
+		return false
+	}
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "%s: profile %q doesn't exist. Create it (%s)? [y/N]: ", label, name, detail)
+	sc := bufio.NewScanner(cmd.InOrStdin())
+	if !sc.Scan() {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(sc.Text())) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 // resolveLoginTarget returns the profile to log into: the explicit arg, else the
 // directory-pinned profile, else an interactive pick among existing profiles.
 // label is the provider's CLI label ("ghrl", "azrl", "azrl aws", "azrl gcp"),

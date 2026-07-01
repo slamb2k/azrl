@@ -75,6 +75,50 @@ func TestGhUsePinsRepo(t *testing.T) {
 	}
 }
 
+func TestGhLoginCreatesWithYes(t *testing.T) {
+	home := seedGhHome(t)
+	installFakeGhGit(t)
+	chdirClean(t)
+
+	out := runRoot(t, "gh", "login", "fresh", "--yes")
+	if !strings.Contains(out, `created profile "fresh" (github.com)`) {
+		t.Fatalf("missing created-profile announce:\n%s", out)
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".github-profiles", "fresh.conf"))
+	if err != nil {
+		t.Fatalf("fresh.conf not written: %v", err)
+	}
+	if !strings.Contains(string(b), "GH_HOST=github.com") {
+		t.Fatalf("created conf missing host:\n%s", b)
+	}
+}
+
+func TestGhLoginUnknownNonInteractiveErrors(t *testing.T) {
+	home := seedGhHome(t)
+	installFakeGhGit(t)
+	chdirClean(t)
+	stubInteractive(t, false)
+
+	buf := new(bytes.Buffer)
+	RootCmd.SetOut(buf)
+	RootCmd.SetErr(buf)
+	// --yes=false is explicit so a prior test's persisted flag can't leak in.
+	RootCmd.SetArgs([]string{"gh", "login", "ghost", "--yes=false"})
+	err := RootCmd.Execute()
+	if err == nil {
+		t.Fatalf("unknown profile non-interactive should error (out=%q)", buf.String())
+	}
+	if !strings.Contains(err.Error(), `no profile "ghost"`) {
+		t.Fatalf("wrong error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".github-profiles", "ghost.conf")); !os.IsNotExist(statErr) {
+		t.Fatal("no conf should be written when creation is declined")
+	}
+	if strings.Contains(buf.String(), "Usage:") {
+		t.Fatalf("runtime error must not dump usage:\n%s", buf.String())
+	}
+}
+
 func TestGhRmRemovesProfile(t *testing.T) {
 	home := seedGhHome(t)
 	runRoot(t, "gh", "rm", "work")

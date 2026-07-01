@@ -27,6 +27,7 @@ func validGhName(name string) error {
 
 func newGhLoginCmd() *cobra.Command {
 	var hostname string
+	var ghYes bool
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a GitHub account (browser pops on your local machine)",
@@ -43,11 +44,15 @@ func newGhLoginCmd() *cobra.Command {
 			}
 			conf, err := github.LoadConf(name, dir)
 			if err != nil {
-				// New profile: seed a conf from the hostname flag.
+				// Unknown profile: confirm before creating (never silently).
+				if !confirmCreateProfile(cmd, "ghrl", name, hostname, ghYes) {
+					return fmt.Errorf("ghrl: no profile %q — pass --yes to create it (host %s) or run interactively", name, hostname)
+				}
 				conf = github.Conf{Host: hostname, Protocol: "https"}
 				if werr := conf.Write(ghConfPath(dir, name)); werr != nil {
 					return werr
 				}
+				cmd.Printf("ghrl: created profile %q (%s)\n", name, hostname)
 			}
 			cmd.Printf("ghrl: signing in to %s as profile %q\n", conf.Host, name)
 			if err := github.Login(dir, name, conf); err != nil {
@@ -58,6 +63,7 @@ func newGhLoginCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host (github.com, a *.ghe.com tenant, or a GHES hostname)")
+	c.Flags().BoolVarP(&ghYes, "yes", "y", false, "Create a missing profile without prompting.")
 	return c
 }
 

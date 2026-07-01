@@ -58,6 +58,46 @@ func stubInteractive(t *testing.T, v bool) {
 	t.Cleanup(func() { isInteractive = orig })
 }
 
+func TestConfirmCreateProfileAssumeYesSkipsPrompt(t *testing.T) {
+	stubInteractive(t, false) // even non-interactive, --yes wins without prompting
+	c, out := pickCmd("")
+	if !confirmCreateProfile(c, "ghrl", "new", "github.com", true) {
+		t.Fatal("assumeYes should return true")
+	}
+	if out.String() != "" {
+		t.Fatalf("assumeYes must not prompt, got: %q", out.String())
+	}
+}
+
+func TestConfirmCreateProfileNonInteractiveDeclines(t *testing.T) {
+	stubInteractive(t, false)
+	c, _ := pickCmd("")
+	if confirmCreateProfile(c, "ghrl", "new", "github.com", false) {
+		t.Fatal("non-interactive without --yes should return false")
+	}
+}
+
+func TestConfirmCreateProfileInteractiveYes(t *testing.T) {
+	stubInteractive(t, true)
+	c, out := pickCmd("y\n")
+	if !confirmCreateProfile(c, "ghrl", "new", "github.com", false) {
+		t.Fatal(`interactive "y" should return true`)
+	}
+	if !strings.Contains(out.String(), `profile "new" doesn't exist`) {
+		t.Fatalf("missing prompt: %q", out.String())
+	}
+}
+
+func TestConfirmCreateProfileInteractiveDeclines(t *testing.T) {
+	stubInteractive(t, true)
+	for _, in := range []string{"n\n", "\n", ""} {
+		c, _ := pickCmd(in)
+		if confirmCreateProfile(c, "ghrl", "new", "github.com", false) {
+			t.Fatalf("interactive %q should return false", in)
+		}
+	}
+}
+
 func TestResolveLoginTargetExplicitArg(t *testing.T) {
 	seedGhProfiles(t, "work", "emu")
 	c, _ := pickCmd("")
