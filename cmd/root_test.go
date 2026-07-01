@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+func TestRootsSilenceUsage(t *testing.T) {
+	if !RootCmd.SilenceUsage {
+		t.Fatal("RootCmd.SilenceUsage should be true so runtime errors don't dump usage")
+	}
+	if !GhrlRoot().SilenceUsage {
+		t.Fatal("GhrlRoot().SilenceUsage should be true")
+	}
+}
+
 func TestRootVersionFlag(t *testing.T) {
 	buf := new(bytes.Buffer)
 	RootCmd.SetOut(buf)

@@ -42,12 +42,9 @@ func newGcpLoginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prov := gcp.NewProvider()
 			dir := prov.ProfilesDir()
-			name := ""
-			if len(args) == 1 {
-				name = args[0]
-			} else {
-				pwd, _ := os.Getwd()
-				name, _ = prov.Resolve("", pwd)
+			name, err := resolveLoginTarget(cmd, prov, args, "azrl gcp")
+			if err != nil {
+				return err
 			}
 			if err := validGcpName(name); err != nil {
 				return err

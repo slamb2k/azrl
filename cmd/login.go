@@ -25,21 +25,25 @@ var loginCmd = &cobra.Command{
 		}
 		out := cmd.OutOrStdout()
 		pwd, _ := os.Getwd()
-		arg := ""
-		if len(args) == 1 {
-			arg = args[0]
-		}
-		name, rErr := profile.Resolve(arg, pwd)
+		prov := azure.NewProvider()
+		name, profs, rErr := resolveLoginTargetWithProfiles(cmd, prov, args, "azrl")
 		if rErr != nil {
-			// No profile: tenant-less sign-in into default ~/.azure.
-			fmt.Fprintln(out, "azrl: no profile resolved — tenant-less sign-in into default ~/.azure")
-			fmt.Fprintln(out, "      tip: run 'azrl init <name>' to save this as a profile")
-			if err := runLogin("", g, loginPaste, out); err != nil {
-				return err
+			// Preserve azure's tenant-less fallback: with no arg, no directory
+			// pin and no saved profiles, sign in to the default ~/.azure instead
+			// of erroring like the other providers do. profs is non-nil only when
+			// the profiles directory was read successfully, so a genuine read
+			// error propagates rather than being mistaken for "no profiles".
+			if len(args) == 0 && profs != nil && len(profs) == 0 {
+				fmt.Fprintln(out, "azrl: no profile resolved — tenant-less sign-in into default ~/.azure")
+				fmt.Fprintln(out, "      tip: run 'azrl init <name>' to save this as a profile")
+				if err := runLogin("", g, loginPaste, out); err != nil {
+					return err
+				}
+				acct, _ := azure.AccountShow()
+				printSignedIn(out, acct)
+				return nil
 			}
-			acct, _ := azure.AccountShow()
-			printSignedIn(out, acct)
-			return nil
+			return rErr
 		}
 		conf, err := profile.LoadConf(name, config.ProfilesDir())
 		if err != nil {
