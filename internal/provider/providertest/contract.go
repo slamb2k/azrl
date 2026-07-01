@@ -75,6 +75,28 @@ func RunContract(t *testing.T, p provider.Provider) {
 		t.Fatalf("relabel: %+v", profs[0])
 	}
 
+	// Status is a disk-only snapshot; it must never shell out to a provider CLI.
+	sentinel := shimNoNetwork(t)
+	if err := p.Scheme().Touch("acme", confdir, pwd); err != nil {
+		t.Fatalf("Touch: %v", err)
+	}
+	st, err := p.Status("acme", confdir)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if st.ProfileName != "acme" {
+		t.Fatalf("Status.ProfileName = %q", st.ProfileName)
+	}
+	if st.LastUsed.IsZero() {
+		t.Fatal("Status.LastUsed not populated after Touch")
+	}
+	if st.Directory != pwd {
+		t.Fatalf("Status.Directory = %q, want %q", st.Directory, pwd)
+	}
+	if _, err := os.Stat(sentinel); err == nil {
+		t.Fatal("Status shelled out to a provider CLI (network call)")
+	}
+
 	// Removing an unknown profile via Use must error.
 	if err := p.Use("ghost", confdir, t.TempDir()); err == nil {
 		t.Fatal("Use of unknown profile should error")
@@ -91,4 +113,20 @@ func RunContract(t *testing.T, p provider.Provider) {
 	if _, err := os.Stat(conf); !os.IsNotExist(err) {
 		t.Fatal("conf not removed")
 	}
+}
+
+// shimNoNetwork installs az/gh/aws/gcloud fakes on PATH that touch a sentinel
+// and exit 1, so a Status() that shells out is caught. Returns the sentinel path.
+func shimNoNetwork(t *testing.T) string {
+	t.Helper()
+	bin := t.TempDir()
+	sentinel := filepath.Join(bin, "invoked")
+	for _, name := range []string{"az", "gh", "aws", "gcloud"} {
+		script := "#!/usr/bin/env bash\ntouch \"" + sentinel + "\"\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return sentinel
 }

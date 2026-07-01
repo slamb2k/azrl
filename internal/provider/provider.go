@@ -4,7 +4,21 @@
 // contract suite in providertest.
 package provider
 
-import "github.com/slamb2k/azrl/internal/profile"
+import (
+	"time"
+
+	"github.com/slamb2k/azrl/internal/profile"
+)
+
+// Status is a normalized, disk-only snapshot of one profile for the dashboard.
+type Status struct {
+	ProfileName string
+	Identity    string
+	Directory   string
+	Expiry      *time.Time
+	Drifted     bool
+	LastUsed    time.Time
+}
 
 // Provider is one login target. The profile-mechanic methods delegate to the
 // provider's Scheme so behaviour stays identical across providers; provider-
@@ -28,4 +42,7 @@ type Provider interface {
 	Remove(name, confdir, pwd string) ([]string, error)
 	// SetLabel sets a profile's display label ("" reverts to the slug).
 	SetLabel(name, confdir, label string) error
+	// Status returns a per-profile snapshot from local cache/config only. It MUST
+	// NOT make network calls or spawn az/gh; callers poll it on a short timer.
+	Status(name, confdir string) (Status, error)
 }
