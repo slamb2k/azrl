@@ -47,6 +47,14 @@ func TestAwsProfilesDir(t *testing.T) {
 	}
 }
 
+func TestGcpProfilesDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got := GcpProfilesDir(); got != filepath.Join(home, ".gcp-profiles") {
+		t.Fatalf("GcpProfilesDir = %q", got)
+	}
+}
+
 func TestDashboardPollSecs(t *testing.T) {
 	if got := DashboardPollSecs(t.TempDir()); got != 3 {
 		t.Fatalf("missing conf: got %d, want 3", got)
