@@ -186,13 +186,19 @@ rather than assuming a fixed port.
 
 ### CLI
 
-- Namespaced per provider: `<bin> gh login [--hostname H] [profile]`,
-  `gh use`, `gh list`, `gh switch`, `gh rm`, `gh capture`, `gh status`;
-  `<bin> az …` for Azure. Hidden `<bin> __browser <url>` shim.
-- **Back-compat:** ship thin alias entrypoints — `azrl` (preselects Azure, maps
-  its existing top-level commands unchanged) and `ghrl` (preselects GitHub) — so
-  `azrl login` still works and `ghrl login` is natural. Unified binary uses
-  `az …`/`gh …`. Bare `azrl`/`ghrl`/`<unified>` → tabbed TUI on the relevant tab.
+- GitHub is grouped: `<bin> gh login [--hostname H] [profile]`, `gh use`,
+  `gh list`, `gh switch`, `gh rm`, `gh capture`, `gh status`. Hidden
+  `<bin> __browser <url>` shim.
+- **As shipped (deviation from the original plan):** Azure was **not** moved
+  under an `az …` group — its verbs (`login`, `init`, `capture`, `use`, `rm`,
+  `list`) stay **top-level** so the existing `azrl login` surface is preserved
+  unchanged, and only GitHub is namespaced (`gh …`). This kept back-compat without
+  a compatibility-shim layer; a symmetric `az` group can be added later if the
+  asymmetry ever grates. (AWS/GCP in Phases 8–9 follow the *grouped* `gh` pattern:
+  `<bin> aws …` / `<bin> gcp …`.)
+- **Back-compat:** thin alias entrypoints — `azrl` (top-level Azure verbs, as
+  today) and `ghrl` (preselects GitHub, `gh` verbs promoted to top level). Bare
+  `azrl`/`ghrl` → tabbed TUI on the relevant tab.
 - **Unified binary name:** deferred (keep `azrl` as primary vs a neutral name).
 
 ## Error handling & GHES gotcha
