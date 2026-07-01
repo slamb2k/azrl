@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -33,6 +34,7 @@ func azureIdentity(confdir string) string {
 	if err != nil {
 		return ""
 	}
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
 	var p struct {
 		Subscriptions []struct {
 			User struct {
@@ -63,6 +65,7 @@ func azureExpiry(confdir string) *time.Time {
 	if err != nil {
 		return nil
 	}
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
 	var c struct {
 		AccessToken map[string]struct {
 			ExpiresOn string `json:"expires_on"`

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/slamb2k/azrl/internal/provider"
@@ -39,16 +40,16 @@ var statusCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			cmd.Println(string(b))
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
 			return nil
 		}
-		cmd.Printf("%-8s %-14s %-28s %-8s %s\n", "PROVIDER", "PROFILE", "IDENTITY", "DRIFT", "DIR")
+		fmt.Fprintf(cmd.OutOrStdout(), "%-8s %-14s %-28s %-8s %s\n", "PROVIDER", "PROFILE", "IDENTITY", "DRIFT", "DIR")
 		for _, r := range rows {
 			drift := ""
 			if r.Drifted {
 				drift = "drift"
 			}
-			cmd.Printf("%-8s %-14s %-28s %-8s %s\n", r.Provider, r.ProfileName, dash(r.Identity), drift, r.Directory)
+			fmt.Fprintf(cmd.OutOrStdout(), "%-8s %-14s %-28s %-8s %s\n", r.Provider, r.ProfileName, dash(r.Identity), drift, r.Directory)
 		}
 		return nil
 	},
