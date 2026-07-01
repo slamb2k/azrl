@@ -38,16 +38,21 @@ var homeActions = []radioOption{
 // specific profile config dir.
 var accountShowFn = azure.AccountShowIn
 
+// selectionBar is the azure-palette selection marker shared by the profile list:
+// a blue thick left bar with one column of padding. Both the bubbles list
+// delegate and the provider tabs' hand-rendered profile pane reuse it so the
+// selected-row look is identical everywhere.
+var selectionBar = lipgloss.NewStyle().
+	Border(lipgloss.ThickBorder(), false, false, false, true).
+	BorderForeground(azureBlue).PaddingLeft(1)
+
 // profileDelegate renders profile rows in the azure palette: a blue selection
 // bar with a gold name, replacing the bubbles default magenta.
 func profileDelegate() list.DefaultDelegate {
 	d := list.NewDefaultDelegate()
 	d.SetSpacing(0)
-	bar := lipgloss.NewStyle().
-		Border(lipgloss.ThickBorder(), false, false, false, true).
-		BorderForeground(azureBlue).PaddingLeft(1)
-	d.Styles.SelectedTitle = bar.Foreground(gold).Bold(true)
-	d.Styles.SelectedDesc = bar.Foreground(azureSky)
+	d.Styles.SelectedTitle = selectionBar.Foreground(gold).Bold(true)
+	d.Styles.SelectedDesc = selectionBar.Foreground(azureSky)
 	d.Styles.NormalTitle = lipgloss.NewStyle().Foreground(white).PaddingLeft(2)
 	d.Styles.NormalDesc = lipgloss.NewStyle().Foreground(gray).PaddingLeft(2)
 	return d
@@ -172,12 +177,13 @@ func userOf(b []byte, err error) string {
 	return a.User.Name
 }
 
-// dims computes the shared content width and pane sizes so layout() and View()
-// stay in lockstep. contentW tracks the real terminal width (the banner now
-// lives in the tab container, so this view no longer floors to the art width);
-// the container truncates any residual overflow.
-func (m Model) dims() (contentW, leftW, rightW, listH int) {
-	contentW = m.width - 4
+// paneDims computes the shared content and two-pane column widths for a given
+// terminal width. It is the single source of truth for the canonical layout,
+// used by the Azure Model, the provider tabs, and the frame renderer so every
+// tab lines its panes up identically. contentW is the room inside the frame
+// (border + padding), leftW/rightW the two column widths flanking the seam.
+func paneDims(width int) (contentW, leftW, rightW int) {
+	contentW = width - 4
 	if contentW < 1 {
 		contentW = 1
 	}
@@ -189,6 +195,15 @@ func (m Model) dims() (contentW, leftW, rightW, listH int) {
 	if rightW < 10 {
 		rightW = 10
 	}
+	return
+}
+
+// dims computes the shared content width and pane sizes so layout() and View()
+// stay in lockstep. contentW tracks the real terminal width (the banner now
+// lives in the tab container, so this view no longer floors to the art width);
+// the container truncates any residual overflow.
+func (m Model) dims() (contentW, leftW, rightW, listH int) {
+	contentW, leftW, rightW = paneDims(m.width)
 	// chrome: 3 rules + identity + status + help + frame.
 	listH = m.height - 9
 	if listH < 3 {
@@ -456,7 +471,7 @@ func (m Model) dispatch(key string) (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 func (m Model) View() string {
-	contentW, leftW, rightW, _ := m.dims()
+	_, _, rightW, _ := m.dims()
 
 	// The bubbles list emits its own leading blank line, so no extra spacer is
 	// needed here — that keeps the first profile row aligned with the first
@@ -465,39 +480,96 @@ func (m Model) View() string {
 		paneTitle(fmt.Sprintf("PROFILES (%d)", len(m.list.Items())), m.focus == focusProfiles),
 		m.list.View(),
 	)
-	body := joinColumns(left, m.rightPane(rightW), leftW, contentW)
 
 	statusLine := m.status
 	if m.busy {
 		statusLine = m.spin.View() + mutedStyle.Render(" working…")
 	}
+	return renderPaneFrame(m.width, m.height, m.identityStrip(), left, m.rightPane(rightW), statusLine, m.helpBar())
+}
 
-	center := func(s string) string {
-		return lipgloss.PlaceHorizontal(contentW, lipgloss.Center, s)
+// renderPaneFrame draws the canonical azrl layout that every tab shares so they
+// look identical: a header rule, a centered identity strip, a rule, a two-pane
+// body (left/right already rendered), a rule, a centered status line, and a
+// centered footer — filled to the full terminal width and height and wrapped in
+// the frame. All content lines are padded to the content width so the frame
+// spans the terminal edge-to-edge, and truncated so no line ever overflows it.
+func renderPaneFrame(width, height int, identity, left, right, status, footer string) string {
+	contentW, leftW, _ := paneDims(width)
+	center := func(s string) string { return lipgloss.PlaceHorizontal(contentW, lipgloss.Center, s) }
+
+	head := lipgloss.JoinVertical(lipgloss.Left, rule(contentW), center(identity), rule(contentW))
+	foot := lipgloss.JoinVertical(lipgloss.Left, rule(contentW), center(status), center(footer))
+
+	// Vertical fill: grow the body so the frame bottom sits near the terminal
+	// bottom (frame border = 2 rows) instead of a short box with dead space below.
+	bodyH := height - 2 - lipgloss.Height(head) - lipgloss.Height(foot)
+	if bodyH < 1 {
+		bodyH = 1
 	}
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		rule(contentW),
-		center(m.identityStrip()),
-		rule(contentW),
-		body,
-		rule(contentW),
-		center(statusLine),
-		center(m.helpBar()),
-	)
-	return frameStyle.Render(content)
+	body := joinColumns(left, right, leftW, contentW, bodyH)
+
+	content := lipgloss.JoinVertical(lipgloss.Left, head, body, foot)
+	// Normalize every line to exactly contentW: truncate overflow (invariant) and
+	// pad short lines so the frame border reaches the terminal's right edge.
+	lines := strings.Split(content, "\n")
+	for i, l := range lines {
+		lines[i] = padTo(truncateLine(l, contentW), contentW)
+	}
+	return frameStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderProfilePane hand-renders a PROFILES(n) pane for a slice of profiles,
+// mirroring the Azure list delegate (selectionBar on the focused row, muted
+// details) so the provider tabs match the Azure Model without a bubbles list.
+func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, leftW int) string {
+	var b strings.Builder
+	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), focused))
+	b.WriteString("\n\n")
+	if len(profiles) == 0 {
+		b.WriteString(mutedStyle.Render("  (none yet — Sign in to add one)"))
+		return b.String()
+	}
+	textW := leftW - 2
+	if textW < 1 {
+		textW = 1
+	}
+	for i, p := range profiles {
+		name := truncateLine(p.Display(), textW)
+		detail := truncateLine(p.Detail, textW)
+		switch {
+		case i == cursor && focused:
+			b.WriteString(selectionBar.Foreground(gold).Bold(true).Render(name) + "\n")
+			b.WriteString(selectionBar.Foreground(azureSky).Render(detail) + "\n")
+		case i == cursor:
+			b.WriteString(selectionBar.Foreground(white).Render(name) + "\n")
+			b.WriteString(selectionBar.Foreground(gray).Render(detail) + "\n")
+		default:
+			b.WriteString(lipgloss.NewStyle().Foreground(white).PaddingLeft(2).Render(name) + "\n")
+			b.WriteString(mutedStyle.PaddingLeft(2).Render(detail) + "\n")
+		}
+	}
+	return b.String()
 }
 
 // joinColumns zips two blocks into a two-pane body of exactly totalW columns,
 // with a vertical seam between them; both columns are padded so the seam runs
-// full height and the right edge lines up with the rules and frame.
-func joinColumns(left, right string, leftW, totalW int) string {
+// full height and the right edge lines up with the rules and frame. The body is
+// grown to at least minH rows so it fills the available vertical space.
+func joinColumns(left, right string, leftW, totalW, minH int) string {
 	seam := dividerStyle.Render("│")
 	rightW := totalW - leftW - 3
+	if rightW < 0 {
+		rightW = 0
+	}
 	ll := strings.Split(left, "\n")
 	rl := strings.Split(right, "\n")
 	n := len(ll)
 	if len(rl) > n {
 		n = len(rl)
+	}
+	if minH > n {
+		n = minH
 	}
 	rows := make([]string, n)
 	for i := 0; i < n; i++ {
