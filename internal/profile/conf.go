@@ -32,12 +32,16 @@ type DomainsJSON struct {
 	Value []Domain `json:"value"`
 }
 
-// Conf holds a per-profile configuration.
+// Conf holds a per-profile configuration. Label is an optional human-facing
+// display name; the profile's identity remains its slug (the .conf filename),
+// so the label can be changed at will without moving files or breaking any
+// .azprofile pointers.
 type Conf struct {
 	Tenant     string
 	TenantID   string
 	DefaultSub string
 	ExpectUser string
+	Label      string
 }
 
 // Resolve returns arg when non-empty, otherwise the trimmed contents of the
@@ -85,7 +89,7 @@ func LoadConf(name, confdir string) (Conf, error) {
 	if err != nil {
 		return c, err
 	}
-	c = Conf{Tenant: m["AZ_TENANT"], TenantID: m["AZ_TENANT_ID"], DefaultSub: m["AZ_DEFAULT_SUB"], ExpectUser: m["AZ_EXPECT_USER"]}
+	c = Conf{Tenant: m["AZ_TENANT"], TenantID: m["AZ_TENANT_ID"], DefaultSub: m["AZ_DEFAULT_SUB"], ExpectUser: m["AZ_EXPECT_USER"], Label: m["AZ_LABEL"]}
 	if c.Tenant == "" {
 		return c, fmt.Errorf("azrl: AZ_TENANT not set in %s", path)
 	}
@@ -110,8 +114,8 @@ func (c Conf) Write(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	body := fmt.Sprintf("AZ_TENANT=%s\nAZ_TENANT_ID=%s\nAZ_DEFAULT_SUB=%s\nAZ_EXPECT_USER=%s\n",
-		c.Tenant, c.TenantID, c.DefaultSub, c.ExpectUser)
+	body := fmt.Sprintf("AZ_TENANT=%s\nAZ_TENANT_ID=%s\nAZ_DEFAULT_SUB=%s\nAZ_EXPECT_USER=%s\nAZ_LABEL=%s\n",
+		c.Tenant, c.TenantID, c.DefaultSub, c.ExpectUser, c.Label)
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
 	if err != nil {
 		return err
@@ -125,10 +129,30 @@ func (c Conf) Write(path string) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-// Listed is a profile name with its tenant.
+// SetLabel updates only the AZ_LABEL of profile name, preserving its other
+// fields. An empty label reverts the display name to the slug.
+func SetLabel(name, confdir, label string) error {
+	c, err := LoadConf(name, confdir)
+	if err != nil {
+		return err
+	}
+	c.Label = label
+	return c.Write(filepath.Join(confdir, name+".conf"))
+}
+
+// Listed is a profile slug with its tenant and optional display label.
 type Listed struct {
 	Name   string
 	Tenant string
+	Label  string
+}
+
+// Display returns the label when set, otherwise the slug.
+func (l Listed) Display() string {
+	if l.Label != "" {
+		return l.Label
+	}
+	return l.Name
 }
 
 // List returns every <name>.conf in confdir (except azrl.conf) with its tenant,
@@ -152,10 +176,12 @@ func List(confdir string) ([]Listed, error) {
 			continue
 		}
 		tenant := "?"
+		label := ""
 		if c, err := LoadConf(name, confdir); err == nil {
 			tenant = c.Tenant
+			label = c.Label
 		}
-		out = append(out, Listed{Name: name, Tenant: tenant})
+		out = append(out, Listed{Name: name, Tenant: tenant, Label: label})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil

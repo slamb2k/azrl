@@ -85,3 +85,42 @@ func TestList(t *testing.T) {
 		}
 	}
 }
+
+func TestLabelRoundTripAndSetLabel(t *testing.T) {
+	confdir := t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+
+	// no label yet: List.Display falls back to the slug.
+	profs, _ := List(confdir)
+	if len(profs) != 1 || profs[0].Display() != "acme" {
+		t.Fatalf("display fallback: %+v", profs)
+	}
+
+	// set a label with spaces; the slug (filename) is untouched.
+	if err := SetLabel("acme", confdir, "Acme Production"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(confdir, "acme.conf")); err != nil {
+		t.Fatal("slug conf must remain acme.conf after relabel")
+	}
+	c, err := LoadConf("acme", confdir)
+	if err != nil || c.Label != "Acme Production" {
+		t.Fatalf("label not persisted: label=%q err=%v", c.Label, err)
+	}
+	if c.Tenant != "acme.com" {
+		t.Fatalf("relabel clobbered tenant: %q", c.Tenant)
+	}
+	profs, _ = List(confdir)
+	if profs[0].Display() != "Acme Production" || profs[0].Name != "acme" {
+		t.Fatalf("list display/slug: %+v", profs[0])
+	}
+
+	// empty label reverts display to the slug.
+	if err := SetLabel("acme", confdir, ""); err != nil {
+		t.Fatal(err)
+	}
+	profs, _ = List(confdir)
+	if profs[0].Display() != "acme" {
+		t.Fatalf("empty label should revert to slug: %+v", profs[0])
+	}
+}
