@@ -5,8 +5,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version is the azrl version string.
-const Version = "0.2.0"
+// Version is the azrl version string. Overridden at release time via
+// -ldflags "-X github.com/slamb2k/azrl/cmd.Version=<tag>".
+var Version = "0.2.0"
 
 // RootCmd is the base command. With no subcommand it launches the TUI.
 var RootCmd = &cobra.Command{

@@ -21,3 +21,6 @@ token.json
 # OS files
 .DS_Store
 Thumbs.db
+
+# GoReleaser output
+/dist/
