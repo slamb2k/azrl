@@ -39,3 +39,32 @@ release:
   github:
     owner: slamb2k
     name: azrl
+
+brews:
+  - name: azrl
+    repository:
+      owner: slamb2k
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/slamb2k/azrl"
+    description: "Azure Remote Login — manage multiple Azure accounts via isolated, directory-scoped profiles"
+    # Don't fail the release if HOMEBREW_TAP_TOKEN isn't configured yet — just
+    # skip pushing the formula to the tap. Binaries/packages still publish.
+    skip_upload: '{{ if eq .Env.HOMEBREW_TAP_TOKEN "" }}true{{ else }}false{{ end }}'
+    install: |
+      bin.install "azrl"
+    test: |
+      system "#{bin}/azrl", "--version"
+
+nfpms:
+  - id: azrl
+    package_name: azrl
+    vendor: slamb2k
+    homepage: "https://github.com/slamb2k/azrl"
+    maintainer: "slamb2k <slamb2k@users.noreply.github.com>"
+    description: "Azure Remote Login — manage multiple Azure accounts via isolated, directory-scoped profiles"
+    formats:
+      - deb
+      - rpm

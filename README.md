@@ -142,10 +142,32 @@ Names default to the sanitized current directory when omitted.
 
 ## Install
 
+**Quick install** (Linux/macOS — pulls the latest release binary):
+
 ```bash
-./install.sh               # go build + install azrl into ~/.local/bin,
-                           # ensure .azprofile is globally gitignored,
-                           # bootstrap ~/.azure-profiles/azrl.conf from the template
+curl -fsSL https://raw.githubusercontent.com/slamb2k/azrl/main/scripts/install.sh | sh
+```
+
+**Homebrew** (macOS/Linux):
+
+```bash
+brew install slamb2k/tap/azrl
+```
+
+**Go** (any platform with a recent Go toolchain):
+
+```bash
+go install github.com/slamb2k/azrl@latest
+```
+
+**Binaries & packages** — download a `.tar.gz`, `.deb`, or `.rpm` for your
+platform from the [latest release](https://github.com/slamb2k/azrl/releases/latest).
+
+**From source** (contributors):
+
+```bash
+./install.sh   # go build + install into ~/.local/bin, gitignore .azprofile,
+               # bootstrap ~/.azure-profiles/azrl.conf from the template
 ```
 
 ## Configuration
