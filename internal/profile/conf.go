@@ -53,6 +53,10 @@ var azureScheme = Scheme{
 	Prefix:    "azrl",
 }
 
+// AzureScheme returns the Scheme carrying azrl's Azure profile mechanics, for
+// providers and callers that drive the generic Scheme methods directly.
+func AzureScheme() Scheme { return azureScheme }
+
 // Resolve returns arg when non-empty, otherwise the trimmed contents of the
 // nearest .azprofile found walking up from dir.
 func Resolve(arg, dir string) (string, error) {
