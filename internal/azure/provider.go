@@ -15,6 +15,8 @@ type Provider struct{}
 // NewProvider returns the Azure provider.
 func NewProvider() provider.Provider { return Provider{} }
 
+func init() { provider.Register(NewProvider()) }
+
 func (Provider) Name() string  { return "azure" }
 func (Provider) Title() string { return "Azure" }
 

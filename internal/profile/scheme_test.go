@@ -3,6 +3,7 @@ package profile
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -78,6 +79,43 @@ func TestSchemeListExcludesReserved(t *testing.T) {
 		if p.Name == "work" && p.Detail != "github.com" {
 			t.Fatalf("detail from GH_HOST: %+v", p)
 		}
+	}
+}
+
+func TestSchemeTouchAndLastTouch(t *testing.T) {
+	confdir := t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "work.conf"), []byte("GH_HOST=github.com\nGH_USER=octocat\n"), 0o644)
+	if lu, dir := ghScheme.LastTouch("work", confdir); !lu.IsZero() || dir != "" {
+		t.Fatalf("untouched profile: lu=%v dir=%q", lu, dir)
+	}
+	bound := t.TempDir()
+	if err := ghScheme.Touch("work", confdir, bound); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(confdir, "work.conf"))
+	for _, want := range []string{"GH_HOST=github.com", "GH_USER=octocat", "LAST_USED=", "LAST_DIR=" + bound} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("conf missing %q:\n%s", want, b)
+		}
+	}
+	lu, dir := ghScheme.LastTouch("work", confdir)
+	if lu.IsZero() {
+		t.Fatal("LAST_USED not read back")
+	}
+	if dir != bound {
+		t.Fatalf("LAST_DIR = %q, want %q", dir, bound)
+	}
+	// A second touch updates in place, not appending duplicate keys.
+	next := t.TempDir()
+	if err := ghScheme.Touch("work", confdir, next); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(filepath.Join(confdir, "work.conf"))
+	if strings.Count(string(b), "LAST_DIR=") != 1 || strings.Count(string(b), "LAST_USED=") != 1 {
+		t.Fatalf("touch duplicated keys:\n%s", b)
+	}
+	if _, dir := ghScheme.LastTouch("work", confdir); dir != next {
+		t.Fatalf("LAST_DIR not updated: %q", dir)
 	}
 }
 

@@ -53,7 +53,11 @@ func newGhLoginCmd() *cobra.Command {
 				}
 			}
 			cmd.Printf("ghrl: signing in to %s as profile %q\n", conf.Host, name)
-			return github.Login(dir, name, conf)
+			if err := github.Login(dir, name, conf); err != nil {
+				return err
+			}
+			pwd, _ := os.Getwd()
+			return github.Scheme().Touch(name, dir, pwd)
 		},
 	}
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host (github.com, a *.ghe.com tenant, or a GHES hostname)")
@@ -171,6 +175,10 @@ func newGhCaptureCmd() *cobra.Command {
 			}
 			conf := github.Conf{Host: hostname, User: login, Protocol: "https"}
 			if err := conf.Write(ghConfPath(dir, name)); err != nil {
+				return err
+			}
+			pwd, _ := os.Getwd()
+			if err := github.Scheme().Touch(name, dir, pwd); err != nil {
 				return err
 			}
 			cmd.Printf("ghrl: captured %s@%s into profile %q\n", login, hostname, name)

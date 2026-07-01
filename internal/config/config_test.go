@@ -38,3 +38,24 @@ func TestLoadGlobalMissing(t *testing.T) {
 		t.Fatal("expected error for missing azrl.conf")
 	}
 }
+
+func TestDashboardPollSecs(t *testing.T) {
+	if got := DashboardPollSecs(t.TempDir()); got != 3 {
+		t.Fatalf("missing conf: got %d, want 3", got)
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "azrl.conf"), []byte("DASHBOARD_POLL_SECS=7\n"), 0o644)
+	if got := DashboardPollSecs(dir); got != 7 {
+		t.Fatalf("got %d, want 7", got)
+	}
+	bad := t.TempDir()
+	os.WriteFile(filepath.Join(bad, "azrl.conf"), []byte("DASHBOARD_POLL_SECS=nope\n"), 0o644)
+	if got := DashboardPollSecs(bad); got != 3 {
+		t.Fatalf("bad value: got %d, want 3", got)
+	}
+	zero := t.TempDir()
+	os.WriteFile(filepath.Join(zero, "azrl.conf"), []byte("DASHBOARD_POLL_SECS=0\n"), 0o644)
+	if got := DashboardPollSecs(zero); got != 3 {
+		t.Fatalf("zero value: got %d, want 3", got)
+	}
+}

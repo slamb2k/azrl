@@ -5,10 +5,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/slamb2k/azrl/internal/provider"
 )
 
-// tab pairs a provider view with its tab-bar title.
+// tab pairs a provider view with its tab-bar title. name is the provider's
+// stable identifier for switchTabMsg matching ("" for the dashboard).
 type tab struct {
+	name  string
 	title string
 	model tea.Model
 }
@@ -24,19 +28,40 @@ type tabsModel struct {
 	height int
 }
 
-// NewTabs builds the tabbed container with one tab per provider, on the Azure tab.
+// NewTabs builds the tabbed container on the dashboard (the default landing view).
 func NewTabs() tabsModel { return NewTabsOn(0) }
 
-// NewTabsOn builds the tabbed container preselected on tab index active.
+// NewTabsOn builds the tabbed container preselected on tab index active. Tab 0 is
+// the cross-provider dashboard; the provider tabs follow provider.All()'s order,
+// each paired with its hand-zipped view.
 func NewTabsOn(active int) tabsModel {
-	tabs := []tab{
-		{title: "Azure", model: NewModel()},
-		{title: "GitHub", model: newGithubView()},
+	provs := provider.All()
+	views := []tea.Model{NewModel(), newGithubView()}
+	tabs := []tab{{title: "Dashboard", model: newDashboard(provs)}}
+	for i, p := range provs {
+		var mdl tea.Model
+		if i < len(views) {
+			mdl = views[i]
+		}
+		tabs = append(tabs, tab{name: p.Name(), title: p.Title(), model: mdl})
 	}
 	if active < 0 || active >= len(tabs) {
 		active = 0
 	}
 	return tabsModel{tabs: tabs, active: active}
+}
+
+// NewTabsForProvider builds the tabbed container preselected on the tab whose
+// provider Name() matches name (falling back to the dashboard).
+func NewTabsForProvider(name string) tabsModel {
+	m := NewTabsOn(0)
+	for i, t := range m.tabs {
+		if t.name == name {
+			m.active = i
+			break
+		}
+	}
+	return m
 }
 
 func (m tabsModel) Init() tea.Cmd {
@@ -70,6 +95,16 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nm, c := m.tabs[m.active].model.Update(msg)
 		m.tabs[m.active].model = nm
 		return m, c
+	case switchTabMsg:
+		for i, t := range m.tabs {
+			if t.name == msg.provider {
+				m.active = i
+				nm, c := m.tabs[i].model.Update(msg)
+				m.tabs[i].model = nm
+				return m, c
+			}
+		}
+		return m, nil
 	default:
 		// Background messages (spinner ticks, identity, op-done) can belong to any
 		// tab; forward to all so each tab's own async work resolves.

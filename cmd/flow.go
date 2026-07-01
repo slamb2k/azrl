@@ -85,6 +85,9 @@ func captureSession(name, pwd string, out io.Writer) error {
 	if err := os.WriteFile(filepath.Join(pwd, ".azprofile"), []byte(name+"\n"), 0o644); err != nil {
 		return err
 	}
+	if err := profile.AzureScheme().Touch(name, config.ProfilesDir(), pwd); err != nil {
+		return err
+	}
 	fmt.Fprintf(out, "azrl: wrote %s and %s/.azprofile\n", confPath, pwd)
 	return nil
 }

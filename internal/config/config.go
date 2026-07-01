@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -40,6 +41,26 @@ func ProfilesDir() string {
 func GithubProfilesDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".github-profiles")
+}
+
+// DashboardPollSecs reads DASHBOARD_POLL_SECS from <dir>/azrl.conf, returning 3
+// on any missing/parse failure or a non-positive value. It does not require the
+// other azrl.conf keys, so the dashboard works standalone.
+func DashboardPollSecs(dir string) int {
+	f, err := os.Open(filepath.Join(dir, "azrl.conf"))
+	if err != nil {
+		return 3
+	}
+	defer f.Close()
+	m, err := ParseKV(f)
+	if err != nil {
+		return 3
+	}
+	n, err := strconv.Atoi(m["DASHBOARD_POLL_SECS"])
+	if err != nil || n <= 0 {
+		return 3
+	}
+	return n
 }
 
 // Global holds the values from azrl.conf.

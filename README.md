@@ -99,14 +99,16 @@ azrl capture [name]        # record the CURRENT az session as conf + .azprofile
 azrl use <name>            # link this dir to an existing profile
 azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
 azrl list                  # list configured profiles and their tenants
+azrl status [--json]       # "who am I, everywhere?" — cross-provider table (disk-only)
 azrl --help                # usage; azrl --version prints the version
 ```
 
 `init`, `capture`, and `login` all **offer to write an `.envrc`** (and run
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
-Bare `azrl` opens a **tabbed TUI** — an **Azure** tab and a **GitHub** tab,
-switch between them with `[` and `]`.
+Bare `azrl` opens a **tabbed TUI** — landing on a cross-provider **status
+dashboard** ("who am I, everywhere?"), plus an **Azure** tab and a **GitHub**
+tab; switch between them with `[` and `]`.
 
 ## GitHub accounts (`gh`)
 
@@ -239,19 +241,20 @@ numbered phases behind the shared `Provider` interface (see `specs/`):
   `specs/multi-cloud-providers.md` — each a new provider behind the same
   interface, reusing the SSH browser-bridge unchanged; for GCP the bridge
   replaces `gcloud --no-browser` outright.
-- **Richer auditability — "who am I, everywhere?"** *(scoped — Phase 5.5,
-  `specs/status-dashboard.md`)*. A cross-provider status dashboard as the
-  default landing view: every profile's identity, bound directory, expiry, and
-  ambient-drift in one glanceable table, refreshed from local cache only (no
-  network). A per-directory *history* beyond a single last-used timestamp
-  remains a later direction.
+- **Richer auditability — "who am I, everywhere?"** *(shipped — Phase 5.5,
+  `specs/status-dashboard.md`)*. A cross-provider status dashboard is now the
+  default landing view of the TUI (and `azrl status [--json]` on the CLI): every
+  profile's identity, bound directory, expiry, and ambient-drift in one
+  glanceable table, refreshed from local cache only (no network). A
+  per-directory *history* beyond a single last-used timestamp remains a later
+  direction.
 - **Unified profiles** *(direction, not yet scoped)*. A single `.azprofile`-style
   pointer that can carry the right identity for *several* providers at once, so
   one `cd` lines up Azure, Git, and your cloud CLI together.
 
-Azure and GitHub are what work today; the dashboard and the AWS/GCP providers are
-committed, numbered phases (see `specs/`). "Unified profiles" remains a direction,
-not a commitment.
+Azure and GitHub are what work today, along with the cross-provider dashboard; the
+AWS/GCP providers are committed, numbered phases (see `specs/`). "Unified profiles"
+remains a direction, not a commitment.
 
 ## Requirements
 

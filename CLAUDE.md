@@ -19,7 +19,13 @@ go build ./...             # build the binary
 go test ./...              # run the unit + integration suite
 gofmt -l .                 # check formatting (empty output = clean)
 ./install.sh               # go build + install into ~/.local/bin, gitignore .azprofile, bootstrap config
+lefthook install           # activate the pre-commit/pre-push git hooks (once per clone)
 ```
+
+CI runs in `.github/workflows/`: `ci.yml` (build/test/gofmt on PRs) and
+`release.yml` (GoReleaser cross-platform binaries, Homebrew tap, `.deb`/`.rpm`,
+curl installer). `scripts/install.sh` is the packaged curl-based installer; the
+top-level `./install.sh` is the local dev installer.
 
 ## Architecture
 
@@ -28,15 +34,15 @@ Cobra subcommands, split across packages:
 
 - **`main.go`** — `azrl` entrypoint; calls `cmd.Execute()`.
 - **`cmd/ghrl/`** — `ghrl` entrypoint; calls `cmd.ExecuteGhrl()` (GitHub subcommands promoted to top level, TUI preselected on the GitHub tab).
-- **`cmd/`** — Cobra tree. Azure at top level (`login`, `init`, `capture`, `use`, `rm`, `list`); a `gh` group (`gh login/list/use/switch/rm/capture/status`); hidden `__browser` (smart shim) and `__browser-capture` self-shims. Bare `azrl` launches the `internal/ui` tabbed TUI.
+- **`cmd/`** — Cobra tree. Azure at top level (`login`, `init`, `capture`, `use`, `rm`, `list`); cross-provider `status [--json]` (disk-only aggregation); a `gh` group (`gh login/list/use/switch/rm/capture/status`); hidden `__browser` (smart shim) and `__browser-capture` self-shims. Bare `azrl` launches the `internal/ui` tabbed TUI (dashboard is the default landing view).
 - **`internal/config/`** — loads `~/.azure-profiles/azrl.conf`, parses `KEY=value`; `ProfilesDir()` / `GithubProfilesDir()`.
 - **`internal/profile/`** — pure profile logic with a parameterized `Scheme` (pointer filename, reserved conf name, detail/label keys) shared by Azure (`.azprofile`/`AZ_*`) and GitHub (`.ghprofile`/`GH_*`). No side effects; fully unit-tested.
-- **`internal/provider/`** — the `Provider` interface (Name/Title/ProfilesDir/Scheme/ListProfiles/Resolve/Use/Remove/SetLabel); `providertest.RunContract` is the shared suite both providers pass.
+- **`internal/provider/`** — the `Provider` interface (Name/Title/ProfilesDir/Scheme/ListProfiles/Resolve/Use/Remove/SetLabel/`Status`); `providertest.RunContract` is the shared suite both providers pass. `Status(name, confdir)` returns a **disk-only** snapshot (identity, directory, expiry, drift, last-used — no network). Shared helpers: `Drifted` (cwd pinned to profile AND ambient `*_CONFIG_DIR` ≠ isolated dir), and a self-registering `All()`/`Collect()` registry (providers register via `init()`).
 - **`internal/azure/`** — the `az`/`ssh` login lifecycle: `CleanSlate`, `LoginCapture`, `WaitForLogin`, `AssertAccount`, `SetSubscription`, plus the Azure `Provider`.
 - **`internal/github/`** — the `gh`/`git` lifecycle: `Login` (`--insecure-storage`, isolated `GH_CONFIG_DIR`), `SetupRepo` (`gh auth setup-git` + repo-local credential username), `Switch`/`Current`, `WhoAmI`/`AssertAccount`, plus the GitHub `Provider`.
 - **`internal/bridge/`** — shared SSH reverse-tunnel (`ssh -R` path B) / paste-line (path A) browser bridge, plus `PasteLine`.
 - **`internal/browsercapture/`** — the smart `__browser` shim: `Classify` (device vs loopback), `ParseCallbackPort`, `Run` (relay or tunnel), and `XdgOpenShimScript` (shadow `xdg-open` for GCM).
-- **`internal/ui/`** — tabbed Bubble Tea TUI: `tabsModel` container (`[`/`]` to switch), the existing Azure `Model`, and the GitHub `githubView`.
+- **`internal/ui/`** — tabbed Bubble Tea TUI: `tabsModel` container (`[`/`]` to switch), the existing Azure `Model`, the GitHub `githubView`, and the `dashboard` view. The dashboard is the default landing view for bare `azrl` (tab 0): a cross-provider table sorted by last-used with a `⚠ drift` marker and relative expiry, `tea.Tick` polled (`DASHBOARD_POLL_SECS`, default 3s); `Enter` drills into the provider tab with the profile pre-selected, `[r]` refreshes all, `[w]` rechecks drift. `ghrl` still opens on the GitHub tab.
 
 ### The login flow
 
@@ -48,8 +54,8 @@ Cobra subcommands, split across packages:
 
 ### Configuration model
 
-- `~/.azure-profiles/azrl.conf` — global: `LOCAL_HOST`, `LOCAL_BROWSER_CMD`, `VM_HOST`.
-- `~/.azure-profiles/<profile>.conf` — per-profile: `AZ_TENANT` (required), `AZ_TENANT_ID` (GUID — required for guest/B2B where `tenantDefaultDomain` is null), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER`.
+- `~/.azure-profiles/azrl.conf` — global: `LOCAL_HOST`, `LOCAL_BROWSER_CMD`, `VM_HOST`, `DASHBOARD_POLL_SECS` (optional, default 3).
+- `~/.azure-profiles/<profile>.conf` — per-profile: `AZ_TENANT` (required), `AZ_TENANT_ID` (GUID — required for guest/B2B where `tenantDefaultDomain` is null), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER`. `LAST_USED`/`LAST_DIR` are auto-managed (bumped on use/login/capture) — not hand-edited.
 - `<repo>/.azprofile` — one line naming the profile; resolved by walking up from `$PWD`. Globally gitignored (never commit it).
 - `~/.azure-profiles/<profile>/` — isolated `AZURE_CONFIG_DIR` per profile.
 - `~/.github-profiles/<profile>.conf` — per-profile GitHub: `GH_HOST` (required), `GH_USER`, `GH_LABEL`, `GH_PROTOCOL`.
@@ -73,8 +79,13 @@ The `mad-skills` pipeline drives feature work here:
 - `/ship` commits, opens a PR, waits for CI, squash-merges, and cleans up
 - `/sync` brings `main` up to date before new work
 
-`specs/` holds specifications; `context/` holds domain knowledge and references;
-`.tmp/` is gitignored scratch.
+`specs/` holds specifications (`github-remote-login.*` shipped in #17;
+`status-dashboard.*` shipped as Phase 5.5; `multi-cloud-providers.*` is
+scoped/designed but not yet built). `context/` holds domain knowledge and
+references. `docs/` holds
+design notes and historical plans: `docs/HANDOVER-origin.md` (full historical
+context), `docs/design.md`, `docs/build-plan.md`, and dated design plans under
+`docs/plans/` and `docs/superpowers/plans/`. `.tmp/` is gitignored scratch.
 
 ## Branch Discipline
 
