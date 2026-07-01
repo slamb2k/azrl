@@ -120,13 +120,14 @@ func TestItemDisplaysLabelOverSlug(t *testing.T) {
 	if plain.Title() != "acme" || plain.Description() != "acme.com" {
 		t.Fatalf("plain item: title=%q desc=%q", plain.Title(), plain.Description())
 	}
-	// with a label: title is the label, and the slug stays visible in the desc.
-	labeled := item{name: "acme", label: "Acme Production", tenant: "acme.com"}
-	if labeled.Title() != "Acme Production" {
-		t.Fatalf("labeled title=%q", labeled.Title())
+	// with a label: title is the label plus an alias marker; the slug is hidden
+	// and the description is just the tenant.
+	labeled := item{name: "acme", label: "Acme Production", tenant: "contoso.com"}
+	if !strings.Contains(labeled.Title(), "Acme Production") || labeled.Title() == "Acme Production" {
+		t.Fatalf("labeled title should be the label plus a marker: %q", labeled.Title())
 	}
-	if !strings.Contains(labeled.Description(), "acme") {
-		t.Fatalf("labeled desc should keep the slug: %q", labeled.Description())
+	if labeled.Description() != "contoso.com" {
+		t.Fatalf("labeled desc should be just the tenant: %q", labeled.Description())
 	}
 	// filtering matches on both slug and label.
 	if !strings.Contains(labeled.FilterValue(), "acme") || !strings.Contains(labeled.FilterValue(), "Production") {
