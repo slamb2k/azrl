@@ -236,6 +236,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.drift = msg.drift
 		m.ambientEmpty = msg.ambientEmpty
 		return m, nil
+	case switchTabMsg:
+		// The dashboard jumped to this tab for a specific profile; move the cursor
+		// onto it so it's pre-selected. No-op when the profile isn't listed here.
+		for i, it := range m.list.Items() {
+			if p, ok := it.(item); ok && p.name == msg.profile {
+				m.list.Select(i)
+				break
+			}
+		}
+		return m, nil
 	case opDoneMsg:
 		nm := m.refresh()
 		nm.busy = false

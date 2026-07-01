@@ -51,6 +51,15 @@ func (v githubView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		v.width, v.height = msg.Width, msg.Height
+	case switchTabMsg:
+		// The dashboard jumped to this tab for a specific profile; move the cursor
+		// onto it so it's pre-selected. No-op when the profile isn't listed here.
+		for i, p := range v.profiles {
+			if p.Name == msg.profile {
+				v.cursor = i
+				break
+			}
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
