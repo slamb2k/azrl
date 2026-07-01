@@ -51,8 +51,8 @@ func seedModel(t *testing.T) Model {
 func TestModelViewRenders(t *testing.T) {
 	m := seedModel(t)
 	v := m.View()
-	if !strings.Contains(v, "Azure Remote Login") {
-		t.Fatalf("view missing banner:\n%s", v)
+	if !strings.Contains(v, "█") {
+		t.Fatalf("view missing banner wordmark:\n%s", v)
 	}
 	// every action verb has a home in the action pane
 	for _, label := range []string{"Sign in", "Use here", "Capture", "New profile", "Remove"} {

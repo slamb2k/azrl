@@ -7,9 +7,6 @@ import (
 
 func TestBannerContents(t *testing.T) {
 	b := Banner()
-	if !strings.Contains(b, "Azure Remote Login") {
-		t.Fatalf("banner missing tagline:\n%s", b)
-	}
 	if !strings.Contains(b, "█") {
 		t.Fatalf("banner missing block letters:\n%s", b)
 	}

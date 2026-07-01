@@ -11,6 +11,8 @@ var (
 	azureSky  = lipgloss.Color("#7cc4ff")
 	azureDeep = lipgloss.Color("#0a4d8c")
 	gold      = lipgloss.Color("#f2c14e")
+	goldLight = lipgloss.Color("#ffe6a3")
+	goldDeep  = lipgloss.Color("#d99a2b")
 	white     = lipgloss.Color("#f5f7fa")
 	green     = lipgloss.Color("#3fb950")
 	red       = lipgloss.Color("#f85149")

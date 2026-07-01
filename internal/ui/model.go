@@ -152,8 +152,9 @@ func userOf(b []byte, err error) string {
 // stay in lockstep. contentW is at least the banner width, so every line packs
 // to the same width and the frame border wraps cleanly.
 func (m Model) dims() (contentW, leftW, rightW, listH int) {
+	b := Banner()
 	contentW = m.width - 4
-	if bw := lipgloss.Width(Banner()); contentW < bw {
+	if bw := lipgloss.Width(b); contentW < bw {
 		contentW = bw
 	}
 	if contentW < 40 {
@@ -167,9 +168,10 @@ func (m Model) dims() (contentW, leftW, rightW, listH int) {
 	if rightW < 10 {
 		rightW = 10
 	}
-	listH = m.height - 17
-	if listH < 4 {
-		listH = 4
+	// chrome below the banner: 3 rules + identity + status + help + frame.
+	listH = m.height - lipgloss.Height(b) - 9
+	if listH < 3 {
+		listH = 3
 	}
 	return
 }
