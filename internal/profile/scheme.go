@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Scheme parameterizes the provider-agnostic profile mechanics so the same
@@ -59,7 +60,49 @@ func (s Scheme) Use(name, confdir, pwd string) error {
 	if _, err := os.Stat(conf); err != nil {
 		return fmt.Errorf("%s: no such profile %q (missing %s)", s.Prefix, name, conf)
 	}
-	return os.WriteFile(filepath.Join(pwd, s.Pointer), []byte(name+"\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(pwd, s.Pointer), []byte(name+"\n"), 0o644); err != nil {
+		return err
+	}
+	return s.Touch(name, confdir, pwd)
+}
+
+// Touch bumps LAST_USED (now, RFC3339 UTC) and LAST_DIR (dir) in profile name's
+// conf, adding either key if absent and preserving every other key and its order.
+func (s Scheme) Touch(name, confdir, dir string) error {
+	path := filepath.Join(confdir, name+".conf")
+	m, order, err := readOrderedKV(path)
+	if err != nil {
+		return err
+	}
+	set := func(k, v string) {
+		if _, ok := m[k]; !ok {
+			order = append(order, k)
+		}
+		m[k] = v
+	}
+	set("LAST_USED", time.Now().UTC().Format(time.RFC3339))
+	set("LAST_DIR", dir)
+	var b strings.Builder
+	for _, k := range order {
+		fmt.Fprintf(&b, "%s=%s\n", k, m[k])
+	}
+	return writeAtomic(path, b.String())
+}
+
+// LastTouch reads LAST_USED and LAST_DIR back from profile name's conf, returning
+// the zero time and "" when absent or unparseable.
+func (s Scheme) LastTouch(name, confdir string) (time.Time, string) {
+	m, _, err := readOrderedKV(filepath.Join(confdir, name+".conf"))
+	if err != nil {
+		return time.Time{}, ""
+	}
+	var t time.Time
+	if v := m["LAST_USED"]; v != "" {
+		if parsed, perr := time.Parse(time.RFC3339, v); perr == nil {
+			t = parsed
+		}
+	}
+	return t, m["LAST_DIR"]
 }
 
 // RemoveTargets returns the existing paths Remove would delete: the conf, the
