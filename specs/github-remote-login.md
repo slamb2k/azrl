@@ -272,5 +272,22 @@ Original verification checklist (now answered):
 4. **Smart shim** — classify + relay/tunnel; install as `$BROWSER` (gh) + shadow
    `xdg-open` (GCM). VS Code needs no bridge (Remote-SSH handles it).
 5. **Tabbed TUI** — tab container + GitHub tab.
+5.5. **Status dashboard** — `Provider.Status()`, `LastUsed`, default landing
+   view, drill-through. Depends only on the Phase 5 tab container; independent of
+   Phase 6, so it can land at any point after the GitHub work. See
+   `specs/status-dashboard.md`.
 6. **CLI namespacing** + `azrl`/`ghrl` alias entrypoints + goreleaser targets.
 7. **Docs + release.**
+
+Phases 1–7 shipped in #17. The provider-aware roadmap then continues (scoped in
+separate spec files):
+
+5.5. **Status dashboard** — `specs/status-dashboard.md`.
+8. **AWS provider** (`internal/aws`) — opens with the bridge-generalization
+   audit (confirm `internal/bridge` + `internal/browsercapture` carry no
+   Azure-isms; AWS/GCP loopback classification tests), then `aws sso login` PKCE
+   bridge, device-code fallback, `AWS_PROFILE`/`.envrc`, opt-in file isolation,
+   `sts get-caller-identity` guardrail. See `specs/multi-cloud-providers.md`.
+9. **GCP provider** (`internal/gcp`) — `gcloud auth login` bridge (replaces
+   `--no-browser`), named configs/`.envrc`, opt-in `CLOUDSDK_CONFIG`, GKE
+   warning, `auth list` guardrail. See `specs/multi-cloud-providers.md`.

@@ -228,20 +228,30 @@ See `azrl.conf.example` and `profile.conf.example` for templates.
 
 The pattern at azrl's core — **named, isolated, directory-scoped credential
 profiles + an interactive browser login that works from anywhere + automatic
-per-directory switching** — isn't specific to Azure. Planned directions:
+per-directory switching** — isn't specific to Azure. It's now a
+**provider-aware binary**, and the next providers + dashboard are scoped,
+numbered phases behind the shared `Provider` interface (see `specs/`):
 
-- **More login providers.** **GitHub** now ships (see [GitHub accounts](#github-accounts-gh)).
-  Next candidates for the same "sign in from a headless box, switch by `cd`"
-  experience: **AWS** (IAM Identity Center / `aws sso login`) and **Google Cloud**
-  (`gcloud auth login`).
-- **Unified profiles.** A single `.azprofile`-style pointer that can carry the
-  right identity for *several* providers at once, so one `cd` lines up Azure, Git,
-  and your cloud CLI together.
-- **Richer auditability.** A quick "who am I, everywhere?" view and history of
-  which account was active in which directory.
+- **More login providers** *(scoped)*. **GitHub** now ships (see
+  [GitHub accounts](#github-accounts-gh); `specs/github-remote-login.md`,
+  Phases 1–7). **AWS** (IAM Identity Center / `aws sso login`) and **Google
+  Cloud** (`gcloud auth login`) are Phases 8–9 in
+  `specs/multi-cloud-providers.md` — each a new provider behind the same
+  interface, reusing the SSH browser-bridge unchanged; for GCP the bridge
+  replaces `gcloud --no-browser` outright.
+- **Richer auditability — "who am I, everywhere?"** *(scoped — Phase 5.5,
+  `specs/status-dashboard.md`)*. A cross-provider status dashboard as the
+  default landing view: every profile's identity, bound directory, expiry, and
+  ambient-drift in one glanceable table, refreshed from local cache only (no
+  network). A per-directory *history* beyond a single last-used timestamp
+  remains a later direction.
+- **Unified profiles** *(direction, not yet scoped)*. A single `.azprofile`-style
+  pointer that can carry the right identity for *several* providers at once, so
+  one `cd` lines up Azure, Git, and your cloud CLI together.
 
-These are directions, not commitments — the Azure experience above is what ships
-today.
+Azure and GitHub are what work today; the dashboard and the AWS/GCP providers are
+committed, numbered phases (see `specs/`). "Unified profiles" remains a direction,
+not a commitment.
 
 ## Requirements
 
