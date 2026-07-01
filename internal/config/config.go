@@ -50,6 +50,13 @@ func AwsProfilesDir() string {
 	return filepath.Join(home, ".aws-profiles")
 }
 
+// GcpProfilesDir returns ~/.gcp-profiles, the root for GCP profile confs and
+// their per-profile isolated CLOUDSDK_CONFIG dirs.
+func GcpProfilesDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".gcp-profiles")
+}
+
 // DashboardPollSecs reads DASHBOARD_POLL_SECS from <dir>/azrl.conf, returning 3
 // on any missing/parse failure or a non-positive value. It does not require the
 // other azrl.conf keys, so the dashboard works standalone.
