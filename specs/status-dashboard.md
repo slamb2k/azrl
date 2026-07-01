@@ -110,7 +110,7 @@ the profile's config dir / conf file):
 |---|---|---|---|---|
 | `Identity` | signed-in user / tenant from MSAL cache in `AZURE_CONFIG_DIR` | `GH_USER` + host from `hosts.yml` under `GH_CONFIG_DIR` | SSO account/role from `~/.aws/sso/cache` + profile | active account from `gcloud` config / `credentials.db` |
 | `Directory` | last-bound dir (see `LastUsed` tracking) | same | same | same |
-| `Expiry` | `accessToken` expiry in MSAL cache, if present | `gh` tokens don't expire → `nil` | SSO cached token `expiresAt` | cached credential expiry, if present |
+| `Expiry` | `accessToken` expiry in MSAL cache, if present | `gh` tokens don't expire → `nil` | SSO cached token `expiresAt` (plain JSON) | `nil` in v1 (expiry is in SQLite `access_tokens.db`; see multi-cloud spec) |
 | `Drifted` | ambient `AZURE_CONFIG_DIR`/active-sub ≠ this profile's | ambient `GH_CONFIG_DIR` ≠ this profile's | ambient `AWS_PROFILE` ≠ this profile's | ambient `CLOUDSDK_ACTIVE_CONFIG_NAME` ≠ this profile's |
 
 **Drift is computed from environment + disk only** — compare the ambient env var

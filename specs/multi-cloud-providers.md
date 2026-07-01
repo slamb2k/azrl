@@ -102,6 +102,9 @@ foundation.
 
 ## A1. AWS provider (`internal/aws`) — Phase 8
 
+> **Phase 8 opens with the bridge-generalization audit in [A3](#a3-shared-browser-bridge-generalization-phase-8-step-1)
+> below**, landed first; the AWS provider described here builds on it.
+
 ### Profile switching — native `AWS_PROFILE`, driven by `.envrc`
 
 AWS already supports multiple named profiles coexisting safely in a single
@@ -127,13 +130,23 @@ customers' credentials never share a file). This is the non-default path; the
 
 ### Login flow — reuse the bridge unmodified
 
-`aws sso login` (CLI v2.22+, PKCE default) starts a local listener and opens a
-browser at an authorize URL whose `redirect_uri` is `http://127.0.0.1:<port>`.
+`aws sso login` (CLI **v2.22.0+**, PKCE default since Nov 2024; earlier versions
+defaulted to device-authorization) starts a local listener and opens a browser at
+an authorize URL whose `redirect_uri` is `http://127.0.0.1:<port>/oauth/callback`.
 This is the **same shape as the Azure case**: parse the port, reuse the existing
 `Bridge` (path B reverse `ssh -R`, path A `ssh -fNL` paste fallback) and the
 `browsercapture` shim to pop the laptop browser and tunnel the callback home.
 **No bridge changes required** — the shim already classifies loopback
 `redirect_uri` and tunnels it.
+
+**Browser-launch interception (must confirm — see spike).** The bridge only fires
+if the shim is actually *invoked* when `aws` opens the browser. This is the exact
+trap the GitHub phase hit (`gh` honored `$BROWSER`, but GCM did **not** and needed
+the `xdg-open` shadow). `aws` is Python and likely respects `$BROWSER` via the
+`webbrowser` module, but that is **unverified** — the spike must confirm whether
+setting `$BROWSER` fires the shim or whether we fall back to the existing
+`xdg-open` shadow (already available from Phase 4). No new mechanism either way,
+but the install point per provider is not assumable.
 
 ### Fallback — device code
 
@@ -144,18 +157,24 @@ is blocked** (locked-down egress, no reachable local host). The shim's existing
 device-vs-loopback classification routes it (device → relay the code/URL to the
 laptop; no tunnel).
 
-Note for the spec record: there is an open upstream AWS CLI issue requesting a
-`--redirect-host` flag so a remote `aws sso login` can advertise a non-localhost
-`redirect_uri`. **azrl's browser bridge already solves this natively** (it
-tunnels the localhost callback rather than rewriting it), so azrl carries **no
-upstream dependency** on that flag landing.
+Note for the spec record: there is an open upstream AWS CLI issue
+(**aws/aws-cli #9148**, "allow to customize ip address for redirect_uri";
+related #9228, #5061) requesting a `--redirect-host`-style flag so a remote
+`aws sso login` can advertise a non-localhost `redirect_uri`. **azrl's browser
+bridge already solves this natively** (it tunnels the localhost callback rather
+than rewriting it), so azrl carries **no upstream dependency** on that flag
+landing.
 
 ### Guardrail — `AssertAccount` via `aws sts get-caller-identity`
 
 **High priority.** After login (and available as a standalone assert / drill-in
 action), run `aws sts get-caller-identity` under the profile and verify the
 resolved account/ARN matches the profile's expectation
-(`AWS_EXPECT_ACCOUNT` / `AWS_EXPECT_ARN`). Wrong-account destructive AWS commands
+(`AWS_EXPECT_ACCOUNT` / `AWS_EXPECT_ARN`). Note the ARN for an SSO session is an
+**assumed-role** ARN (`arn:aws:sts::<acct>:assumed-role/AWSReservedSSO_<permset>_<hash>/<user>`),
+not an IAM-user ARN, so `AWS_EXPECT_ARN` matching should normalize/prefix-match
+the `AWSReservedSSO_<permset>` portion rather than expect an exact string.
+Wrong-account destructive AWS commands
 are a well-known footgun class — the same category of problem `aws-vault` and
 `aws-whoami` exist to solve — so this guardrail is a first-class part of the
 provider, not an afterthought. (This is the one *network* assertion; it is **not**
@@ -172,14 +191,18 @@ network check.)
   - `AWS_LABEL` — optional display label (reuses the `*`-marker / relabel).
   - `AWS_ISOLATE` — `1` if this profile uses opt-in file isolation.
   - `LAST_USED` — the shared dashboard timestamp.
-- **Native profile mapping** — `Use` ensures a matching `[profile <name>]`
-  stanza exists in `~/.aws/config` (sso-session wired), then writes `.awsprofile`
-  + `.envrc` (`export AWS_PROFILE=<name>`, or the two file-path vars under
-  `--isolate`).
+- **Native profile mapping** — `Use` **creates if absent** a matching
+  `[profile <name>]` stanza in `~/.aws/config` (wired to a `[sso-session]`
+  block), **never overwriting** a hand-maintained stanza, then writes
+  `.awsprofile` + `.envrc` (`export AWS_PROFILE=<name>`, or the two file-path
+  vars under `--isolate`).
 - **Repo pin** — `<repo>/.awsprofile` (one line, gitignored), walk-up resolved.
 - **`Status()`** (disk-only) — read SSO cached token `expiresAt` from
-  `~/.aws/sso/cache` for `Expiry`, account/role for `Identity`, compare ambient
-  `AWS_PROFILE` vs pinned for `Drifted`. No `sts` call.
+  `~/.aws/sso/cache/*.json` (plain JSON, no dep needed) for `Expiry`,
+  account/role for `Identity`. `Drifted` compares the pinned profile against the
+  ambient selector — `AWS_PROFILE` in the default path, or the
+  `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` pair under `--isolate` (the
+  basis differs by mode). No `sts` call.
 
 ### Contract test
 
@@ -211,13 +234,22 @@ default multi-account mechanism — named configurations are.
 ### Login flow — bridge replaces `--no-browser` (highest-value adapter)
 
 `gcloud auth login`'s remote story, `--no-browser`, requires **gcloud installed
-on the machine with the browser** to complete the handshake — worse UX than
-device code or Azure's flow. Spec azrl's **reverse-SSH-tunnel browser bridge as a
-full replacement for `--no-browser`**: run the normal `gcloud auth login` (which
-opens a `127.0.0.1:<port>` loopback), let the shim tunnel the callback, and pop
+on the machine with the browser** — it emits a `gcloud auth login
+--remote-bootstrap="…"` command you must run there (gcloud ≥372.0 on that
+machine). The lighter, older `--no-launch-browser` only needs a browser (prints a
+URL, asks you to paste a code back) but was deprecated Feb 2022. Both are worse UX
+than Azure's flow. Spec azrl's **reverse-SSH-tunnel browser bridge as a full
+replacement for `--no-browser`**: run the normal `gcloud auth login` (which opens
+a `http://localhost:<port>/` loopback), let the shim tunnel the callback, and pop
 the laptop browser at the authorize URL. The laptop needs only a browser — no
 gcloud install. **This is the highest-value part of the whole feature**, a bigger
 UX win than the AWS case, and it uses the existing bridge unmodified.
+
+**Browser-launch interception (must confirm — see spike).** As with AWS, the shim
+only fires if `gcloud` invokes it when opening the browser. `gcloud` has its own
+browser-launch logic; whether it honors `$BROWSER` or needs the `xdg-open` shadow
+(the GCM pattern from Phase 4) is **unverified** and a spike item — not
+assumable.
 
 ### Guardrail — `AssertAccount` via active-account check
 
@@ -229,14 +261,18 @@ db / config files directly).
 
 ### Known gap to document (not necessarily solved in v1)
 
-`gke-gcloud-auth-plugin` **does not respect `CLOUDSDK_CONFIG`**. So if a user
-opts into full config-dir isolation for GCP, `kubectl`/GKE credential resolution
-can **silently use the wrong cached account** — a genuinely dangerous
+`gke-gcloud-auth-plugin` **does not respect `CLOUDSDK_CONFIG`** — it always
+reads/writes its cache at the default `~/.kube/gke_gcloud_auth_plugin_cache`
+regardless of the config dir (tracked as **kubernetes/cloud-provider-gcp #554**,
+which was closed **"not planned"** — so this is a permanent known limitation, not
+a fix we can wait on; duplicate at GoogleCloudPlatform/cloud-sdk-docker #333). So
+if a user opts into full config-dir isolation for GCP, `kubectl`/GKE credential
+resolution can **silently use the wrong cached account** — a genuinely dangerous
 wrong-cluster footgun. **v1 spec: surface a warning** when *both* full isolation
 (`CLOUDSDK_CONFIG`) **and** GKE usage are detected (e.g. a `gke-gcloud-auth-
 plugin` on `PATH` or a GKE context in kubeconfig), rather than attempting to fix
-the upstream bug. The warning fires at `use`/login time and is reflected in the
-dashboard drift column for that profile. Solving the upstream bug is out of scope.
+the upstream limitation. The warning fires at `use`/login time and is reflected in
+the dashboard drift column for that profile.
 
 ### Profile / conf model
 
@@ -248,14 +284,19 @@ dashboard drift column for that profile. Solving the upstream bug is out of scop
   - `GCP_ISOLATE` — `1` if this profile uses opt-in `CLOUDSDK_CONFIG`.
   - `LAST_USED` — shared dashboard timestamp.
 - **Native config mapping** — `Use` ensures `gcloud config configurations create
-  <name>` has run (idempotent), writes `.gcpprofile` + `.envrc`
-  (`CLOUDSDK_ACTIVE_CONFIG_NAME`, or `CLOUDSDK_CONFIG` under `--isolate`), and
-  emits the GKE warning if applicable.
+  <name>` has run (idempotent; create-if-absent, never clobbering an existing
+  named config), writes `.gcpprofile` + `.envrc` (`CLOUDSDK_ACTIVE_CONFIG_NAME`,
+  or `CLOUDSDK_CONFIG` under `--isolate`), and emits the GKE warning if
+  applicable.
 - **Repo pin** — `<repo>/.gcpprofile` (one line, gitignored), walk-up resolved.
-- **`Status()`** (disk-only) — active account from the gcloud config /
-  `credentials.db`, cached credential expiry for `Expiry`, ambient
-  `CLOUDSDK_ACTIVE_CONFIG_NAME` vs pinned for `Drifted`. No `gcloud auth list`
-  call on the timer.
+- **`Status()`** (disk-only) — `Identity` (active account) is read from the
+  plain-text `configurations/config_<name>` INI file; `Drifted` compares ambient
+  `CLOUDSDK_ACTIVE_CONFIG_NAME` vs pinned. **`Expiry` caveat:** gcloud caches
+  token expiry in `access_tokens.db` (SQLite), which can't be read disk-only in Go
+  without adding a SQLite dependency (banned by "no new deps") and can't be
+  fetched via `gcloud` (banned by the no-network `Status()` contract). So
+  **GCP `Expiry` returns `nil` in v1** (an honest blank cell) unless a scoped
+  SQLite reader is added later. No `gcloud auth list` call on the timer.
 
 ### Contract test
 
@@ -287,6 +328,11 @@ Concretely, this step must:
   URL, not assumed fixed (already true for GCM; AWS/GCP also use random ports).
 - **Confirm the tunnel window / teardown is provider-neutral** — the ~180s
   bounded auth window and no-daemon teardown apply unchanged.
+- **Confirm the browser-launch install point per CLI** — the shim only fires if
+  `aws`/`gcloud` actually invokes it. Determine, per provider, whether setting
+  `$BROWSER` fires the shim or whether the `xdg-open` shadow (Phase 4) is needed
+  (the GCM lesson). This is the highest-risk unknown in the phase; the classify/
+  tunnel path is already generic, but the *install point* is not assumable.
 - **Note (don't necessarily do) any refactor** needed to strip lingering
   Azure-specific naming/assumptions from the shared packages, so the code reads
   as provider-agnostic. If the audit finds none, this step is a short
@@ -304,9 +350,14 @@ Some load-bearing facts should be confirmed in the target environment before
 committing feature code (mirrors the GitHub Phase 0 discipline; produce a short
 findings note, and flag anything that needs a real laptop+VM to close):
 
+0. **Browser-launch install point (highest risk)** — for *each* CLI, confirm how
+   it opens the browser and whether the shim fires via `$BROWSER` or needs the
+   `xdg-open` shadow (the GitHub/GCM lesson). Without this the bridge never
+   engages, so it gates everything else.
 1. **AWS PKCE loopback** — confirm `aws sso login` on the installed CLI version
-   (v2.22+) uses PKCE with a `127.0.0.1:<port>` `redirect_uri` the shim can
-   parse; confirm `--use-device-code` produces a classifiable device flow.
+   (v2.22.0+) uses PKCE with a `127.0.0.1:<port>/oauth/callback` `redirect_uri`
+   the shim can parse; confirm `--use-device-code` produces a classifiable device
+   flow.
 2. **AWS isolation** — confirm `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE`
    fully isolate a profile (opt-in path) and that the default `AWS_PROFILE` path
    coexists safely in shared files.
@@ -357,9 +408,12 @@ findings note, and flag anything that needs a real laptop+VM to close):
 
 ## Roadmap position
 
-Continues the `specs/github-remote-login.md` roadmap after Phase 7 (shipped, #17):
+Continues the `specs/github-remote-login.md` roadmap after Phase 7 (shipped, #17).
+Both phases below **depend on Phase 5.5** (the `Status()` contract they must
+satisfy):
 
 ```
+5.5 Status dashboard — Provider.Status() contract.          (prereq of 8 & 9)
 7.  Docs + release (GitHub feature ships).                  (shipped, #17)
 8.  AWS provider (internal/aws) —                           (A3 + A1)
     step 1: bridge generalization — audit/confirm bridge +
