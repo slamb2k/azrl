@@ -13,7 +13,12 @@ import (
 // profile. It skips silently when one already exists, and a closed/non-tty
 // stdin reads as a decline (never hangs).
 func offerEnvrc(pwd string, out io.Writer, in io.Reader) {
-	if profile.HasEnvrc(pwd) {
+	// .envrc must live beside the .azprofile it reads, which may be an ancestor.
+	dir := pwd
+	if d, ok := profile.LocateAzprofile(pwd); ok {
+		dir = d
+	}
+	if profile.HasEnvrc(dir) {
 		return
 	}
 	fmt.Fprint(out, "azrl: also write .envrc so `az` in this dir follows this profile? [y/N] ")
@@ -25,7 +30,7 @@ func offerEnvrc(pwd string, out io.Writer, in io.Reader) {
 	if ans := strings.TrimSpace(sc.Text()); !strings.HasPrefix(strings.ToLower(ans), "y") {
 		return
 	}
-	wrote, err := profile.WriteEnvrc(pwd)
+	wrote, err := profile.WriteEnvrc(dir)
 	if err != nil {
 		fmt.Fprintf(out, "azrl: could not write .envrc: %v\n", err)
 		return
@@ -33,9 +38,9 @@ func offerEnvrc(pwd string, out io.Writer, in io.Reader) {
 	if !wrote {
 		return
 	}
-	if ran, aerr := profile.DirenvAllow(pwd); ran && aerr == nil {
-		fmt.Fprintf(out, "azrl: wrote %s and ran `direnv allow` — `az` follows this profile from now on\n", profile.EnvrcPath(pwd))
+	if ran, aerr := profile.DirenvAllow(dir); ran && aerr == nil {
+		fmt.Fprintf(out, "azrl: wrote %s and ran `direnv allow` — `az` follows this profile from now on\n", profile.EnvrcPath(dir))
 	} else {
-		fmt.Fprintf(out, "azrl: wrote %s — run `direnv allow` (or export AZURE_CONFIG_DIR) to activate\n", profile.EnvrcPath(pwd))
+		fmt.Fprintf(out, "azrl: wrote %s — run `direnv allow` (or export AZURE_CONFIG_DIR) to activate\n", profile.EnvrcPath(dir))
 	}
 }

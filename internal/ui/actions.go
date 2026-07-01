@@ -42,14 +42,18 @@ func runDelete(name string) tea.Cmd {
 func runWriteEnvrc() tea.Cmd {
 	return func() tea.Msg {
 		pwd, _ := os.Getwd()
-		wrote, err := profile.WriteEnvrc(pwd)
+		dir := pwd
+		if d, ok := profile.LocateAzprofile(pwd); ok {
+			dir = d
+		}
+		wrote, err := profile.WriteEnvrc(dir)
 		if err != nil {
 			return opDoneMsg{err: err}
 		}
 		if !wrote {
 			return opDoneMsg{msg: ".envrc already present"}
 		}
-		if ran, aerr := profile.DirenvAllow(pwd); ran && aerr == nil {
+		if ran, aerr := profile.DirenvAllow(dir); ran && aerr == nil {
 			return opDoneMsg{msg: "wrote .envrc + direnv allow — shell now follows this profile"}
 		}
 		return opDoneMsg{msg: "wrote .envrc — run direnv allow to activate"}

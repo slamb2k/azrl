@@ -71,6 +71,7 @@ type Model struct {
 	confirming    bool
 	showHelp      bool
 	drift         bool
+	ambientEmpty  bool
 	pendingDelete string
 }
 
@@ -103,8 +104,9 @@ func (m Model) Init() tea.Cmd { return m.identityCmd() }
 // ("" when that profile has no live session) and whether the ambient `az`
 // session differs from it with no .envrc pinning it (drift).
 type identityMsg struct {
-	who   string
-	drift bool
+	who          string
+	drift        bool
+	ambientEmpty bool
 }
 
 // identityCmd reads the account from the resolved profile's token dir, so the
@@ -121,8 +123,14 @@ func (m Model) identityCmd() tea.Cmd {
 		}
 		who := userOf(accountShowFn(dir))
 		msg := identityMsg{who: who}
-		if rErr == nil && who != "" && !profile.HasEnvrc(pwd) {
-			msg.drift = userOf(accountShowFn("")) != who
+		envrcDir := pwd
+		if d, ok := profile.LocateAzprofile(pwd); ok {
+			envrcDir = d
+		}
+		if rErr == nil && who != "" && !profile.HasEnvrc(envrcDir) {
+			ambient := userOf(accountShowFn(""))
+			msg.drift = ambient != who
+			msg.ambientEmpty = ambient == ""
 		}
 		return msg
 	}
@@ -184,6 +192,7 @@ func (m Model) refresh() Model {
 	nm.actions.cursor = m.actions.cursor
 	nm.signedIn = m.signedIn
 	nm.drift = m.drift
+	nm.ambientEmpty = m.ambientEmpty
 	nm.status = m.status
 	nm.layout()
 	return nm
@@ -199,6 +208,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case identityMsg:
 		m.signedIn = msg.who
 		m.drift = msg.drift
+		m.ambientEmpty = msg.ambientEmpty
 		return m, nil
 	case opDoneMsg:
 		nm := m.refresh()
@@ -275,6 +285,8 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // updateConfirm handles the remove confirmation sub-state.
 func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
 	case "esc", "n", "q":
 		m.confirming = false
 		m.pendingDelete = ""
@@ -456,7 +468,11 @@ func (m Model) identityStrip() string {
 	}
 	strip := left + mutedStyle.Render("   ·   ") + right
 	if m.drift {
-		strip += "\n" + failureStyle.Render("⚠ your shell's az uses a different account — press e to write .envrc")
+		what := "uses a different account"
+		if m.ambientEmpty {
+			what = "has no active session"
+		}
+		strip += "\n" + failureStyle.Render("⚠ your shell's az "+what+" — press e to write .envrc")
 	}
 	return strip
 }

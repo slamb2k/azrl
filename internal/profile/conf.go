@@ -57,6 +57,21 @@ func Resolve(arg, dir string) (string, error) {
 	return "", fmt.Errorf("azrl: no profile arg and no .azprofile found from %s", dir)
 }
 
+// LocateAzprofile walks up from dir to the nearest directory that holds an
+// .azprofile, returning that directory. ok is false when none is found. This is
+// the directory an .envrc must live in, since its `cat .azprofile` is resolved
+// relative to the .envrc's own location.
+func LocateAzprofile(dir string) (string, bool) {
+	d := dir
+	for d != "" && d != string(filepath.Separator) {
+		if _, err := os.Stat(filepath.Join(d, ".azprofile")); err == nil {
+			return d, true
+		}
+		d = filepath.Dir(d)
+	}
+	return "", false
+}
+
 // LoadConf reads <confdir>/<name>.conf and requires AZ_TENANT.
 func LoadConf(name, confdir string) (Conf, error) {
 	var c Conf

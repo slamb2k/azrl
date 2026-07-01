@@ -16,6 +16,24 @@ func TestOfferEnvrcYesWrites(t *testing.T) {
 	}
 }
 
+func TestOfferEnvrcWritesBesideAzprofile(t *testing.T) {
+	t.Setenv("PATH", "") // no direnv on PATH — skip the allow side effect
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, ".azprofile"), []byte("acme\n"), 0o644)
+	sub := filepath.Join(root, "src")
+	os.MkdirAll(sub, 0o755)
+
+	var out strings.Builder
+	offerEnvrc(sub, &out, strings.NewReader("y\n"))
+
+	if _, err := os.Stat(filepath.Join(root, ".envrc")); err != nil {
+		t.Fatalf(".envrc not written beside .azprofile: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sub, ".envrc")); err == nil {
+		t.Fatal(".envrc wrongly written in the subdir")
+	}
+}
+
 func TestOfferEnvrcNoDeclines(t *testing.T) {
 	dir := t.TempDir()
 	var out strings.Builder

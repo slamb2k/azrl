@@ -27,6 +27,19 @@ func TestWriteEnvrc(t *testing.T) {
 	}
 }
 
+func TestLocateAzprofile(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, ".azprofile"), []byte("acme\n"), 0o644)
+	sub := filepath.Join(root, "a", "b")
+	os.MkdirAll(sub, 0o755)
+	if d, ok := LocateAzprofile(sub); !ok || d != root {
+		t.Fatalf("from subdir: d=%q ok=%v want %q", d, ok, root)
+	}
+	if _, ok := LocateAzprofile(t.TempDir()); ok {
+		t.Fatal("dir with no .azprofile should not be located")
+	}
+}
+
 func TestHasEnvrcFalse(t *testing.T) {
 	if HasEnvrc(t.TempDir()) {
 		t.Fatal("HasEnvrc should be false for empty dir")
