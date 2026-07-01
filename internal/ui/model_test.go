@@ -55,12 +55,12 @@ func TestModelViewRenders(t *testing.T) {
 		t.Fatalf("view missing banner wordmark:\n%s", v)
 	}
 	// every action verb has a home in the action pane
-	for _, label := range []string{"Sign in", "Use here", "Capture", "New profile", "Remove"} {
+	for _, label := range []string{"Sign in", "Use here", "Capture", "New profile", "Edit", "Remove"} {
 		if !strings.Contains(v, label) {
 			t.Fatalf("view missing action %q:\n%s", label, v)
 		}
 	}
-	if !strings.Contains(v, "PROFILES") || !strings.Contains(v, "ACTION") {
+	if !strings.Contains(v, "PROFILES (1)") || !strings.Contains(v, "ACTION") {
 		t.Fatalf("view missing pane titles:\n%s", v)
 	}
 }
@@ -96,6 +96,62 @@ func TestActionHotkeySelectsRadio(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("expected a command from the capture hotkey")
+	}
+}
+
+func TestEditHotkeySelectsRadio(t *testing.T) {
+	m := seedModel(t)
+	// 'x' selects the Edit action against the selected profile and returns a cmd.
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if got := nm.(Model).actions.selected().key; got != "x" {
+		t.Fatalf("hotkey x selected %q", got)
+	}
+	if cmd == nil {
+		t.Fatal("expected a command from the edit hotkey")
+	}
+	if !nm.(Model).busy {
+		t.Fatal("edit hotkey should mark the model busy")
+	}
+}
+
+func TestItemDisplaysLabelOverSlug(t *testing.T) {
+	// no label: title is the slug, description is just the tenant.
+	plain := item{name: "acme", tenant: "acme.com"}
+	if plain.Title() != "acme" || plain.Description() != "acme.com" {
+		t.Fatalf("plain item: title=%q desc=%q", plain.Title(), plain.Description())
+	}
+	// with a label: title is the label, and the slug stays visible in the desc.
+	labeled := item{name: "acme", label: "Acme Production", tenant: "acme.com"}
+	if labeled.Title() != "Acme Production" {
+		t.Fatalf("labeled title=%q", labeled.Title())
+	}
+	if !strings.Contains(labeled.Description(), "acme") {
+		t.Fatalf("labeled desc should keep the slug: %q", labeled.Description())
+	}
+	// filtering matches on both slug and label.
+	if !strings.Contains(labeled.FilterValue(), "acme") || !strings.Contains(labeled.FilterValue(), "Production") {
+		t.Fatalf("filter value: %q", labeled.FilterValue())
+	}
+}
+
+func TestRenameEntersInputState(t *testing.T) {
+	m := seedModel(t)
+	// 'n' opens the rename input seeded with the selected profile's name.
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	mm := nm.(Model)
+	if !mm.renaming {
+		t.Fatal("rename hotkey did not enter the rename state")
+	}
+	if mm.renameOld != "acme" || mm.rename.Value() != "acme" {
+		t.Fatalf("rename input not seeded: old=%q value=%q", mm.renameOld, mm.rename.Value())
+	}
+	if !strings.Contains(mm.View(), "RENAME") {
+		t.Fatal("rename view should show the RENAME prompt")
+	}
+	// esc cancels without renaming.
+	nm2, _ := mm.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm2.(Model).renaming {
+		t.Fatal("esc should cancel the rename")
 	}
 }
 

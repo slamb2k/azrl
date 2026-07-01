@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/slamb2k/azrl/internal/azure"
@@ -28,6 +29,8 @@ var homeActions = []radioOption{
 	{label: "Use here", key: "u", hint: "link this dir"},
 	{label: "Capture session", key: "c", hint: "save current login"},
 	{label: "New profile", key: "i", hint: "init + sign in"},
+	{label: "Edit…", key: "x", hint: "open .conf in $EDITOR"},
+	{label: "Rename…", key: "n", hint: "change profile name"},
 	{label: "Remove…", key: "d", hint: "delete profile"},
 }
 
@@ -50,11 +53,26 @@ func profileDelegate() list.DefaultDelegate {
 	return d
 }
 
-type item struct{ name, tenant string }
+// item is one profile row. name is the immutable slug (identity, used for all
+// operations and the CLI); label is the optional display name. When a label is
+// set, the slug is shown alongside the tenant so it stays discoverable.
+type item struct{ name, label, tenant string }
 
-func (i item) Title() string       { return i.name }
-func (i item) Description() string { return i.tenant }
-func (i item) FilterValue() string { return i.name }
+func (i item) Title() string {
+	if i.label != "" {
+		return i.label
+	}
+	return i.name
+}
+
+func (i item) Description() string {
+	if i.label != "" && i.label != i.name {
+		return i.tenant + "  ·  " + i.name
+	}
+	return i.tenant
+}
+
+func (i item) FilterValue() string { return i.name + " " + i.label }
 
 // Model is the root TUI model.
 type Model struct {
@@ -62,6 +80,7 @@ type Model struct {
 	actions       radio
 	confirm       radio
 	spin          spinner.Model
+	rename        textinput.Model
 	pwd           string
 	width, height int
 	status        string
@@ -69,10 +88,12 @@ type Model struct {
 	focus         int
 	busy          bool
 	confirming    bool
+	renaming      bool
 	showHelp      bool
 	drift         bool
 	ambientEmpty  bool
 	pendingDelete string
+	renameOld     string
 }
 
 // NewModel builds the home model from the profiles on disk.
@@ -81,7 +102,7 @@ func NewModel() Model {
 	var items []list.Item
 	profs, _ := profile.List(config.ProfilesDir())
 	for _, p := range profs {
-		items = append(items, item{name: p.Name, tenant: p.Tenant})
+		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Tenant})
 	}
 	l := list.New(items, profileDelegate(), 0, 0)
 	l.Title = "Profiles"
@@ -232,6 +253,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.confirming {
 			return m.updateConfirm(msg)
 		}
+		if m.renaming {
+			return m.updateRename(msg)
+		}
 		return m.updateKey(msg)
 	}
 	var cmd tea.Cmd
@@ -263,7 +287,7 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.dispatch(m.actions.selected().key)
-	case "l", "u", "c", "i", "d":
+	case "l", "u", "c", "i", "x", "n", "d":
 		m.actions.selectByKey(msg.String())
 		return m.dispatch(msg.String())
 	case "e":
@@ -312,6 +336,33 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateRename handles the rename text-input sub-state.
+func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.renaming = false
+		m.renameOld = ""
+		return m, nil
+	case "enter":
+		label := strings.TrimSpace(m.rename.Value())
+		slug := m.renameOld
+		m.renaming = false
+		m.renameOld = ""
+		// a label equal to the slug is stored as empty (display falls back to slug).
+		if label == slug {
+			label = ""
+		}
+		m.busy = true
+		m.status = ""
+		return m, tea.Batch(m.spin.Tick, runRelabel(slug, label))
+	}
+	var cmd tea.Cmd
+	m.rename, cmd = m.rename.Update(msg)
+	return m, cmd
+}
+
 func (m Model) doRemove() (tea.Model, tea.Cmd) {
 	name := m.pendingDelete
 	m.confirming = false
@@ -354,6 +405,29 @@ func (m Model) dispatch(key string) (tea.Model, tea.Cmd) {
 		m.busy = true
 		m.status = ""
 		return m, runHandoff(handoffArgs("i", ""))
+	case "x":
+		if sel.name == "" {
+			m.status = failureStyle.Render("✗ select a profile to edit")
+			return m, nil
+		}
+		m.busy = true
+		m.status = ""
+		return m, runEdit(sel.name)
+	case "n":
+		if sel.name == "" {
+			m.status = failureStyle.Render("✗ select a profile to rename")
+			return m, nil
+		}
+		ti := textinput.New()
+		ti.SetValue(sel.Title())
+		ti.CursorEnd()
+		ti.Width = 28
+		cmd := ti.Focus()
+		m.rename = ti
+		m.renaming = true
+		m.renameOld = sel.name
+		m.status = ""
+		return m, cmd
 	case "c":
 		m.busy = true
 		m.status = ""
@@ -375,7 +449,7 @@ func (m Model) View() string {
 	contentW, leftW, rightW, _ := m.dims()
 
 	left := lipgloss.JoinVertical(lipgloss.Left,
-		paneTitle("PROFILES", m.focus == focusProfiles),
+		paneTitle(fmt.Sprintf("PROFILES (%d)", len(m.list.Items())), m.focus == focusProfiles),
 		"",
 		m.list.View(),
 	)
@@ -443,6 +517,12 @@ func (m Model) rightPane(w int) string {
 			mutedStyle.Render("Removes its conf, token dir,\nand this dir's .azprofile.") + "\n\n"
 		return prompt + m.confirm.view(w)
 	}
+	if m.renaming {
+		return paneTitle("RENAME", true) + "\n\n" +
+			mutedStyle.Render("New name for "+m.renameOld+":") + "\n\n" +
+			m.rename.View() + "\n\n" +
+			mutedStyle.Render("↵ rename · esc cancel")
+	}
 	return paneTitle("ACTION", m.focus == focusActions) + "\n\n" + m.actions.view(w)
 }
 
@@ -484,15 +564,18 @@ func (m Model) helpBar() string {
 	if m.confirming {
 		return mutedStyle.Render("↑↓ choose · ↵ confirm · y yes · n/esc cancel")
 	}
+	if m.renaming {
+		return mutedStyle.Render("type new name · ↵ rename · esc cancel")
+	}
 	if m.showHelp {
 		lines := []string{
 			mutedStyle.Render("l") + " sign in   " + mutedStyle.Render("u") + " use here   " + mutedStyle.Render("c") + " capture   " + mutedStyle.Render("e") + " write .envrc",
-			mutedStyle.Render("i") + " new profile   " + mutedStyle.Render("d") + " remove",
+			mutedStyle.Render("i") + " new profile   " + mutedStyle.Render("x") + " edit   " + mutedStyle.Render("n") + " rename   " + mutedStyle.Render("d") + " remove",
 			mutedStyle.Render("↑↓") + " select · " + mutedStyle.Render("⇥") + " switch pane · " + mutedStyle.Render("↵") + " run · " + mutedStyle.Render("r") + " refresh · " + mutedStyle.Render("?") + " less · " + mutedStyle.Render("q") + " quit",
 		}
 		return strings.Join(lines, "\n")
 	}
-	return mutedStyle.Render("↑↓ select · ⇥ pane · ↵ run · l/u/c/i/d actions · r refresh · ? help · q quit")
+	return mutedStyle.Render("↑↓ select · ⇥ pane · ↵ run · l/u/c/i/x/n/d actions · r refresh · ? help · q quit")
 }
 
 // contextLine describes the current directory's relationship to profiles.

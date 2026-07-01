@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/slamb2k/azrl/internal/config"
@@ -57,6 +58,51 @@ func runWriteEnvrc() tea.Cmd {
 			return opDoneMsg{msg: "wrote .envrc + direnv allow — shell now follows this profile"}
 		}
 		return opDoneMsg{msg: "wrote .envrc — run direnv allow to activate"}
+	}
+}
+
+// editorCmd resolves the user's preferred editor, honouring $VISUAL then
+// $EDITOR and falling back to vi.
+func editorCmd() string {
+	if e := os.Getenv("VISUAL"); e != "" {
+		return e
+	}
+	if e := os.Getenv("EDITOR"); e != "" {
+		return e
+	}
+	return "vi"
+}
+
+// runEdit suspends the TUI and opens the profile's .conf in $EDITOR, then
+// resumes; the resulting opDoneMsg reloads the list so edits show immediately.
+func runEdit(name string) tea.Cmd {
+	conf := filepath.Join(config.ProfilesDir(), name+".conf")
+	// pass the path as $1 so paths with spaces survive, while still allowing
+	// $EDITOR to carry its own flags (e.g. "code --wait").
+	c := exec.Command("sh", "-c", editorCmd()+` "$1"`, "sh", conf)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return opDoneMsg{err: fmt.Errorf("editor exited: %w", err)}
+		}
+		if _, verr := profile.LoadConf(name, config.ProfilesDir()); verr != nil {
+			return opDoneMsg{err: fmt.Errorf("saved, but %s.conf looks malformed: %v", name, verr)}
+		}
+		return opDoneMsg{msg: fmt.Sprintf("edited %s", name)}
+	})
+}
+
+// runRelabel changes a profile's display label. The slug (identity) is
+// untouched, so no files move and no .azprofile pointers break.
+func runRelabel(slug, label string) tea.Cmd {
+	return func() tea.Msg {
+		if err := profile.SetLabel(slug, config.ProfilesDir(), label); err != nil {
+			return opDoneMsg{err: err}
+		}
+		disp := label
+		if disp == "" {
+			disp = slug
+		}
+		return opDoneMsg{msg: fmt.Sprintf("renamed %s → %s", slug, disp)}
 	}
 }
 
