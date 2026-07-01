@@ -107,8 +107,8 @@ azrl --help                # usage; azrl --version prints the version
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
 Bare `azrl` opens a **tabbed TUI** — landing on a cross-provider **status
-dashboard** ("who am I, everywhere?"), plus **Azure**, **GitHub**, and **AWS**
-tabs; switch between them with `[` and `]`.
+dashboard** ("who am I, everywhere?"), plus **AWS**, **Azure**, **GCP**, and
+**GitHub** tabs; switch between them with `[` and `]`.
 
 ## GitHub accounts (`gh`)
 
@@ -170,6 +170,35 @@ expected account and role boundary. Pass `--isolate` to scope
 `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` to the profile; otherwise the
 `.envrc` just exports `AWS_PROFILE`. Real-tenant browser-interception details are
 still being validated (see `specs/multi-cloud-providers.manual-verify.md`).
+
+## Google Cloud accounts (`gcp`)
+
+The same model extends to **Google Cloud**, built on native `gcloud` **named
+configurations**. Each account is a profile under `~/.gcp-profiles/<name>.conf`,
+pinned to a repo with a gitignored `.gcpprofile`.
+
+```bash
+azrl gcp login [name]   # sign in via `gcloud auth login` over the browser bridge
+azrl gcp list           # list GCP profiles and their projects
+azrl gcp use <name>     # pin this dir (.gcpprofile) + write an .envrc
+azrl gcp capture <name> # record the current gcloud session as a profile
+azrl gcp status         # disk-only "who am I?" from the gcloud config dir
+azrl gcp rm <name>      # remove a GCP profile
+```
+
+`gcloud auth login` reuses the SSH browser bridge unchanged — by default it binds
+a `localhost` loopback callback that is forwarded back to your local browser.
+`azrl gcp status` is disk-only: it reads the gcloud config dir
+(`configurations/config_<name>` for the signed-in account, `active_config` for
+drift), no network — token expiry isn't surfaced in v1. On login `azrl` runs
+`gcloud auth list --filter=status:ACTIVE` to assert you landed on the expected
+account. `gcp use`/`login` idempotently create the named configuration
+(`gcloud config configurations create --no-activate`) and set its project/region.
+By default the `.envrc` exports `CLOUDSDK_ACTIVE_CONFIG_NAME`; pass `--isolate` to
+instead scope the whole `CLOUDSDK_CONFIG` dir to the profile (note:
+`gke-gcloud-auth-plugin` ignores `CLOUDSDK_CONFIG`, so `azrl` warns when GKE is
+detected under isolation). Real-tenant browser-interception details are still
+being validated (see `specs/multi-cloud-providers.manual-verify.md`).
 
 ## Switching accounts by directory
 
@@ -251,6 +280,9 @@ platform from the [latest release](https://github.com/slamb2k/azrl/releases/late
 | `~/.aws-profiles/<profile>.conf` | per-profile AWS SSO: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE` |
 | `<repo>/.awsprofile` | one line: the AWS profile for that repo (uncommitted; globally gitignored) |
 | `~/.aws-profiles/<profile>/` | isolated `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` (only under `--isolate`) |
+| `~/.gcp-profiles/<profile>.conf` | per-profile GCP: `GCP_CONFIG_NAME` (named gcloud configuration; defaults to the profile name), `GCP_PROJECT` (**required**), `GCP_REGION`, `GCP_EXPECT_ACCOUNT`, `GCP_LABEL`, `GCP_ISOLATE` |
+| `<repo>/.gcpprofile` | one line: the GCP profile for that repo (uncommitted; globally gitignored) |
+| `~/.gcp-profiles/<profile>/` | isolated `CLOUDSDK_CONFIG` dir (only under `--isolate`) |
 
 See `azrl.conf.example` and `profile.conf.example` for templates.
 
@@ -267,8 +299,11 @@ numbered phases behind the shared `Provider` interface (see `specs/`):
   Phases 1–7). **AWS** (IAM Identity Center / `aws sso login`) now ships too (see
   [AWS accounts](#aws-accounts-aws); `specs/multi-cloud-providers.md`, Phase 8),
   reusing the SSH browser-bridge unchanged — real-tenant interception is still in
-  manual-verify. **Google Cloud** (`gcloud auth login`) is Phase 9 *(scoped)*,
-  where the bridge replaces `gcloud --no-browser` outright.
+  manual-verify. **Google Cloud** (`gcloud auth login`) now ships too (see
+  [Google Cloud accounts](#google-cloud-accounts-gcp);
+  `specs/multi-cloud-providers.md`, Phase 9), built on native `gcloud` named
+  configurations and reusing the same bridge (default loopback callback) — its
+  real-tenant interception is likewise still in manual-verify.
 - **Richer auditability — "who am I, everywhere?"** *(shipped — Phase 5.5,
   `specs/status-dashboard.md`)*. A cross-provider status dashboard is now the
   default landing view of the TUI (and `azrl status [--json]` on the CLI): every
@@ -280,9 +315,8 @@ numbered phases behind the shared `Provider` interface (see `specs/`):
   pointer that can carry the right identity for *several* providers at once, so
   one `cd` lines up Azure, Git, and your cloud CLI together.
 
-Azure, GitHub, and AWS are what work today, along with the cross-provider
-dashboard; GCP is the next committed, numbered phase (see `specs/`). "Unified
-profiles" remains a direction, not a commitment.
+Azure, GitHub, AWS, and GCP are what work today, along with the cross-provider
+dashboard. "Unified profiles" remains a direction, not a commitment.
 
 ## Requirements
 
@@ -296,17 +330,18 @@ switch-by-directory.
 
 ```
 main.go               # azrl entrypoint
-cmd/                  # Cobra tree: azure top-level + `gh`/`aws` groups; hidden __browser shims
+cmd/                  # Cobra tree: azure top-level + `gh`/`aws`/`gcp` groups; hidden __browser shims
 cmd/ghrl/             # ghrl alias entrypoint (GitHub subcommands promoted to top level)
 internal/config/      # azrl.conf + KEY=value parsing; profile-dir roots
-internal/profile/     # pure profile logic + parameterized Scheme (Azure/GitHub/AWS) — unit-tested
+internal/profile/     # pure profile logic + parameterized Scheme (Azure/GitHub/AWS/GCP) — unit-tested
 internal/provider/    # Provider interface + shared contract suite (providertest)
 internal/azure/       # az/ssh login lifecycle; Azure Provider — shimmed-integration tested
 internal/github/      # gh/git login lifecycle; GitHub Provider — shimmed-integration tested
 internal/aws/         # aws/sts SSO lifecycle; AWS Provider — shimmed-integration tested
+internal/gcp/         # gcloud named-config lifecycle; GCP Provider — shimmed-integration tested
 internal/bridge/      # SSH reverse-tunnel / paste-line browser bridge (shared)
 internal/browsercapture/ # smart __browser shim: classify + relay/tunnel; xdg-open shadow
-internal/ui/          # tabbed Bubble Tea TUI (dashboard | Azure | GitHub | AWS) — model unit tests
+internal/ui/          # tabbed Bubble Tea TUI (dashboard | AWS | Azure | GCP | GitHub) — model unit tests
 install.sh            # go build + install + config bootstrap
 ```
 

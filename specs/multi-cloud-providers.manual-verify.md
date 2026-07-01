@@ -93,3 +93,111 @@ cross-talk; `azrl status` shows the AWS rows with correct identity/expiry and th
 drift marker only when the ambient env diverges from the pin. Also confirm the
 shared (non-isolate) model coexists via `AWS_PROFILE` when both profiles live in
 `~/.aws/config`.
+
+---
+
+# GCP (Phase 9) — Manual Verification
+
+- **Date:** 2026-07-01
+- **Purpose:** Items implemented and unit/contract/shimmed-integration-tested
+  here, but whose end-to-end behaviour can only be *closed out* on a real laptop
+  + remote VM with a live Google account and the real `gcloud` CLI (Cloud SDK).
+  Nothing below is claimed "done" — each is a scripted spike for the user to run
+  in the real environment.
+- **Related:** `specs/multi-cloud-providers.md` (§A2, §Spike), `.tmp/phase-9-gcp.md`.
+
+## What IS verified here (against fakes)
+
+- The GCP `Provider` passes the shared `internal/provider/providertest.RunContract`
+  suite **unchanged**, including the no-network proof (fake `gcloud` that
+  `exit 1` and touches a sentinel the test asserts is never created).
+- `internal/gcp` unit tests: conf round-trip + order-preserving `GCP_ISOLATE`
+  persistence; disk-only `Status` — Identity from
+  `<config-dir>/configurations/config_<name>` INI (`[core] account`), drift for
+  both the default (`CLOUDSDK_ACTIVE_CONFIG_NAME` / `active_config` file) and
+  isolated (`CLOUDSDK_CONFIG`) models, and `Expiry == nil` (v1: no SQLite read of
+  `access_tokens.db`); `AssertAccount` (exact account-email match, empty
+  expectation skips); idempotent `SyncConfig` that creates the named
+  configuration (ignoring "already exists") and binds project/compute-region;
+  `EnvrcContent`/`WriteEnvrc` for both models; the pure-logic GKE isolation
+  warning (fires only when `GCP_ISOLATE=1` AND the plugin is on `PATH` OR a GKE
+  kubeconfig context is present — silent otherwise, matching the probe env).
+- `Login` is tested against shimmed `gcloud` + `ssh` on `PATH`: it starts
+  `gcloud auth login` with the `BROWSER=<self> __browser-capture` shim, captures
+  the authorize URL, parses the loopback callback port, and drives `bridge.Bridge`
+  (path B reverse tunnel / path A paste) — covering the default (`localhost:8085`)
+  loopback and the `--isolate` (`CLOUDSDK_CONFIG`) vs default
+  (`CLOUDSDK_ACTIVE_CONFIG_NAME`) scoping. The bridge/browsercapture code is reused
+  unmodified.
+- `cmd/gcp.go` (`azrl gcp login/list/use/rm/capture/status`) is unit-tested,
+  including the wrong-account guardrail: after `gcp.Login`, `login` calls
+  `gcp.ActiveAccount` + `gcp.AssertAccount` when `GCP_EXPECT_ACCOUNT` is set and
+  **rejects a mismatched account without running Touch**. The tabbed TUI GCP view
+  (list + Sign in / Use here / New profile / Remove; no Switch) is unit-tested;
+  the tab container maps views by provider **name**, so GCP slotting in
+  alphabetically (AWS | Azure | GCP | GitHub) keeps every tab wired to its view.
+
+## Items requiring the real laptop + VM + live Google login (spike)
+
+### 0. Does `$BROWSER` fire the `__browser-capture` shim for `gcloud auth login`?
+
+**Why manual:** the fakes call `$BROWSER` explicitly; the real `gcloud` opens the
+browser via Python's `webbrowser` module (which *should* honour `$BROWSER`) or a
+direct `xdg-open` — only a real login closes which one fires.
+
+**Repro (on the VM):**
+```bash
+azrl gcp login work --project <your-project>
+```
+**Pass:** the sign-in page opens on the LOCAL machine (the shim relayed it).
+**If it fails:** `gcloud` ignored `$BROWSER` — fall back to the `xdg-open` shadow
+(`browsercapture.XdgOpenShimScript`, as used for GCM) prepended to `PATH` for the
+`gcloud` child, mirroring the GitHub/AWS path.
+
+### 1. End-to-end loopback tunnel (`localhost:8085`)
+
+**Why manual:** the tunnel depends on the real callback host/port that `gcloud`
+binds for its OAuth `redirect_uri`.
+
+**Repro:** capture the URL the CLI opens (from the shim's capture file / logs).
+**Pass:** it matches `http://localhost:8085/` (a shape `ParseCallbackPort` already
+handles) and the callback tunnels home over the reverse SSH bridge so sign-in
+completes with **only a laptop browser — no laptop `gcloud` install** (the whole
+point of replacing `--no-browser`). Record the real string here; adjust the regex
+only if the real port/shape differs.
+
+### 2. Simultaneous multi-configuration coexistence + `--isolate`
+
+**Why manual:** confirms two gcloud configurations can hold live credentials
+without colliding, and that the `.envrc` selector flips the active account.
+
+**Repro:**
+```bash
+azrl gcp login prod  --project prod-proj  --region us-central1
+azrl gcp login stage --project stage-proj --region us-central1 --isolate
+cd <repo pinned with `azrl gcp use prod`> && direnv allow
+gcloud auth list --filter=status:ACTIVE --format='value(account)'  # expect prod
+```
+**Pass:** named configurations coexist in the shared `~/.config/gcloud`; an
+`--isolate` profile keeps its own `CLOUDSDK_CONFIG` dir under
+`~/.gcp-profiles/<name>/`; switching directories (`CLOUDSDK_ACTIVE_CONFIG_NAME`)
+switches the account with no cross-talk; `azrl status` shows the GCP rows with the
+correct identity and the drift marker only when the ambient env diverges from the
+pin (Expiry stays blank in v1).
+
+### 3. GKE isolation warning end-to-end
+
+**Why manual:** the warning is pure-logic here; the real trigger needs the
+`gke-gcloud-auth-plugin` installed and/or a GKE kubeconfig context, plus the
+downstream footgun (kubernetes/cloud-provider-gcp#554: the plugin ignores
+`CLOUDSDK_CONFIG`).
+
+**Repro:**
+```bash
+gcloud components install gke-gcloud-auth-plugin
+gcloud container clusters get-credentials <cluster> --region <region>
+azrl gcp use prod --isolate
+```
+**Pass:** `azrl gcp use --isolate` prints the GKE isolation warning, and the
+dashboard drift column reflects the risk. Confirm the warning stays silent when
+neither the plugin nor a GKE context is present.
