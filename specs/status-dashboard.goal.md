@@ -38,16 +38,19 @@ through to them. Provable today against two shipped providers (Azure + GitHub).
    `internal/provider.Provider`. Implement it for Azure (read MSAL cache /
    `AZURE_CONFIG_DIR`, compute drift from ambient env vs pinned pointer). Then
    for GitHub (read `hosts.yml` under `GH_CONFIG_DIR`).
-3. Add `LastUsed` persistence to `internal/profile`: bump on
-   `use`/`login`/`capture`/dir-bind; `Status()` reads it back; blank sorts last.
+3. Add `LastUsed` + `LAST_DIR` persistence to `internal/profile`: bump **both**
+   keys together on `use`/`login`/`capture`/dir-bind (`LAST_DIR` = the bound dir);
+   `Status()` reads them back; blank `LAST_USED` sorts last.
 4. Build the dashboard TUI view (sibling to the tabs, owned by the Phase 5 tab
    container): aggregate all providers → sorted table (by `LastUsed` desc),
-   drift marker, relative expiry, `tea.Tick` poll at 2–5s, `Enter` → switch-tab +
+   drift marker, relative expiry, `tea.Tick` poll at **3s default**
+   (`DASHBOARD_POLL_SECS` in `azrl.conf` overrides), `Enter` → switch-tab +
    preselect, `[r]`/`[w]` read-only refresh.
 5. Make the dashboard the **default landing view** for the bare unified
    invocation; keep alias entrypoints (`azrl`/`ghrl`) preselecting their tab for
    back-compat.
-6. (Optional) `<bin> status` one-shot CLI printing the same aggregation.
+6. `<bin> status` one-shot CLI printing the same aggregation — plain aligned
+   table by default, `--json` for scripting.
 
 ## Constraints
 

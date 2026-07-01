@@ -190,7 +190,8 @@ network check.)
   - `AWS_EXPECT_ACCOUNT` / `AWS_EXPECT_ARN` — for post-auth assertion.
   - `AWS_LABEL` — optional display label (reuses the `*`-marker / relabel).
   - `AWS_ISOLATE` — `1` if this profile uses opt-in file isolation.
-  - `LAST_USED` — the shared dashboard timestamp.
+  - `LAST_USED` / `LAST_DIR` — the shared dashboard tracking keys (timestamp +
+    last-bound dir), managed by `internal/profile`.
 - **Native profile mapping** — `Use` **creates if absent** a matching
   `[profile <name>]` stanza in `~/.aws/config` (wired to a `[sso-session]`
   block), **never overwriting** a hand-maintained stanza, then writes
@@ -282,7 +283,8 @@ the dashboard drift column for that profile.
   - `GCP_EXPECT_ACCOUNT` — for post-auth assertion.
   - `GCP_LABEL` — optional display label.
   - `GCP_ISOLATE` — `1` if this profile uses opt-in `CLOUDSDK_CONFIG`.
-  - `LAST_USED` — shared dashboard timestamp.
+  - `LAST_USED` / `LAST_DIR` — shared dashboard tracking keys (timestamp +
+    last-bound dir), managed by `internal/profile`.
 - **Native config mapping** — `Use` ensures `gcloud config configurations create
   <name>` has run (idempotent; create-if-absent, never clobbering an existing
   named config), writes `.gcpprofile` + `.envrc` (`CLOUDSDK_ACTIVE_CONFIG_NAME`,
