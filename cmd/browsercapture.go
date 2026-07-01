@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/slamb2k/azrl/internal/browsercapture"
 )
 
 var browserCaptureCmd = &cobra.Command{
@@ -12,11 +13,7 @@ var browserCaptureCmd = &cobra.Command{
 	Hidden: true,
 	Args:   cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		capfile := os.Getenv("AZRL_CAPFILE")
-		if capfile == "" {
-			return fmt.Errorf("AZRL_CAPFILE not set")
-		}
-		return os.WriteFile(capfile, []byte(args[0]), 0o600)
+		return browsercapture.Capture(os.Getenv("AZRL_CAPFILE"), args[0])
 	},
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/slamb2k/azrl/internal/azure"
+	"github.com/slamb2k/azrl/internal/bridge"
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
 )
@@ -41,7 +42,7 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 	}
 	defer os.Remove(lg.Capfile)
 	fmt.Fprintf(out, "azrl: callback port %s\n", lg.Port)
-	tunnel, paste, err := azure.Bridge(lg.Port, lg.URL, g, forcePaste)
+	tunnel, paste, err := bridge.Bridge(lg.Port, lg.URL, g, forcePaste)
 	if err != nil {
 		_ = lg.Cmd.Process.Kill()
 		return err
@@ -55,7 +56,7 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 	fmt.Fprintln(out, "azrl: waiting for sign-in to complete...")
 	if err := azure.WaitForLogin(lg, loginTimeout()); err != nil {
 		fmt.Fprintf(out, "✗ %v\n  Recover with:\n  %s\n", err,
-			azure.PasteLine(lg.Port, g.VMHost, g.LocalBrowserCmd, lg.URL))
+			bridge.PasteLine(lg.Port, g.VMHost, g.LocalBrowserCmd, lg.URL))
 		return err
 	}
 	return nil
