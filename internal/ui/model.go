@@ -448,9 +448,11 @@ func (m Model) dispatch(key string) (tea.Model, tea.Cmd) {
 func (m Model) View() string {
 	contentW, leftW, rightW, _ := m.dims()
 
+	// The bubbles list emits its own leading blank line, so no extra spacer is
+	// needed here — that keeps the first profile row aligned with the first
+	// action row (which sits below "ACTION" + one blank line).
 	left := lipgloss.JoinVertical(lipgloss.Left,
 		paneTitle(fmt.Sprintf("PROFILES (%d)", len(m.list.Items())), m.focus == focusProfiles),
-		"",
 		m.list.View(),
 	)
 	body := joinColumns(left, m.rightPane(rightW), leftW, contentW)
