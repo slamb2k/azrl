@@ -8,7 +8,34 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/slamb2k/azrl/internal/provider"
 )
+
+// noViewProvider is a provider whose Name() has no entry in the views map. Only
+// Name()/Title() are exercised by providerTabs, so the embedded nil interface is
+// never dereferenced.
+type noViewProvider struct{ provider.Provider }
+
+func (noViewProvider) Name() string  { return "gcp" }
+func (noViewProvider) Title() string { return "GCP" }
+
+// TestProviderTabsSkipsProviderWithoutView proves a provider missing a view is
+// skipped rather than appended as a nil-model tab (which would nil-panic).
+func TestProviderTabsSkipsProviderWithoutView(t *testing.T) {
+	views := map[string]tea.Model{"azure": NewModel()}
+	tabs := providerTabs([]provider.Provider{noViewProvider{}}, views)
+	if len(tabs) != 0 {
+		t.Fatalf("provider without a view should yield no tab, got %d", len(tabs))
+	}
+	// A registered view is still paired, and never with a nil model.
+	tabs = providerTabs([]provider.Provider{}, views)
+	for _, tb := range tabs {
+		if tb.model == nil {
+			t.Fatalf("tab %q has a nil model", tb.name)
+		}
+	}
+}
 
 // seedTabs returns a sized tab container with one Azure and one GitHub profile
 // on disk.
@@ -48,12 +75,13 @@ func TestTabsRendersDashboardActiveByDefault(t *testing.T) {
 func TestTabsSwitchToGitHubAndBack(t *testing.T) {
 	m := seedTabs(t)
 
-	// ']' twice advances dashboard → Azure → GitHub.
+	// ']' three times advances dashboard → AWS → Azure → GitHub.
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	gh := nm.(tabsModel)
-	if gh.active != 2 {
-		t.Fatalf("after ']]', active = %d, want 2 (GitHub)", gh.active)
+	if gh.active != 3 {
+		t.Fatalf("after ']]]', active = %d, want 3 (GitHub)", gh.active)
 	}
 	v := gh.View()
 	if !strings.Contains(v, "PROFILES") || !strings.Contains(v, "work") {
@@ -66,20 +94,21 @@ func TestTabsSwitchToGitHubAndBack(t *testing.T) {
 
 	// '[' returns to Azure.
 	nm2, _ := gh.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
-	if nm2.(tabsModel).active != 1 {
+	if nm2.(tabsModel).active != 2 {
 		t.Fatal("'[' did not return to the Azure tab")
 	}
 }
 
 func TestTabsForwardsKeysToActiveTab(t *testing.T) {
 	m := seedTabs(t)
-	// Advance to the GitHub tab (index 2): 'tab' toggles inner pane focus.
+	// Advance to the GitHub tab (index 3): 'tab' toggles inner pane focus.
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	gh := nm.(tabsModel)
-	before := gh.tabs[2].model.(githubView).focus
+	before := gh.tabs[3].model.(githubView).focus
 	nm2, _ := gh.Update(tea.KeyMsg{Type: tea.KeyTab})
-	after := nm2.(tabsModel).tabs[2].model.(githubView).focus
+	after := nm2.(tabsModel).tabs[3].model.(githubView).focus
 	if before == after {
 		t.Fatal("tab key was not forwarded to the active GitHub view")
 	}
@@ -88,7 +117,7 @@ func TestTabsForwardsKeysToActiveTab(t *testing.T) {
 func TestTabsSwitchTabMsgSelectsProvider(t *testing.T) {
 	m := seedTabs(t)
 	nm, _ := m.Update(switchTabMsg{provider: "github", profile: "work"})
-	if nm.(tabsModel).active != 2 {
+	if nm.(tabsModel).active != 3 {
 		t.Fatalf("switchTabMsg did not select the GitHub tab: active=%d", nm.(tabsModel).active)
 	}
 }
@@ -111,14 +140,14 @@ func TestSwitchTabMsgPreselectsProfile(t *testing.T) {
 
 	// Jumping to GitHub's "work" (2nd, sorted after "play") moves its cursor there.
 	gm, _ := tm.Update(switchTabMsg{provider: "github", profile: "work"})
-	gv := gm.(tabsModel).tabs[2].model.(githubView)
+	gv := gm.(tabsModel).tabs[3].model.(githubView)
 	if got := gv.profiles[gv.cursor].Name; got != "work" {
 		t.Fatalf("github cursor on %q, want work", got)
 	}
 
 	// Jumping to Azure's "beta" (2nd, sorted after "acme") pre-selects it.
 	am, _ := tm.Update(switchTabMsg{provider: "azure", profile: "beta"})
-	av := am.(tabsModel).tabs[1].model.(Model)
+	av := am.(tabsModel).tabs[2].model.(Model)
 	if sel, _ := av.list.SelectedItem().(item); sel.name != "beta" {
 		t.Fatalf("azure cursor on %q, want beta", sel.name)
 	}

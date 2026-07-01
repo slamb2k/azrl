@@ -33,22 +33,32 @@ func NewTabs() tabsModel { return NewTabsOn(0) }
 
 // NewTabsOn builds the tabbed container preselected on tab index active. Tab 0 is
 // the cross-provider dashboard; the provider tabs follow provider.All()'s order,
-// each paired with its hand-zipped view.
+// each paired with its view by provider name (so the mapping is stable however
+// providers sort).
 func NewTabsOn(active int) tabsModel {
 	provs := provider.All()
-	views := []tea.Model{NewModel(), newGithubView()}
-	tabs := []tab{{title: "Dashboard", model: newDashboard(provs)}}
-	for i, p := range provs {
-		var mdl tea.Model
-		if i < len(views) {
-			mdl = views[i]
-		}
-		tabs = append(tabs, tab{name: p.Name(), title: p.Title(), model: mdl})
-	}
+	views := map[string]tea.Model{"azure": NewModel(), "github": newGithubView(), "aws": newAwsView()}
+	tabs := append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(provs, views)...)
 	if active < 0 || active >= len(tabs) {
 		active = 0
 	}
 	return tabsModel{tabs: tabs, active: active}
+}
+
+// providerTabs pairs each provider with its registered view by name. A provider
+// with no view entry is skipped rather than paired with a nil tea.Model, which
+// would nil-panic in Update/View — this guards future providers (GCP, …) added
+// to provider.All() before their view lands here.
+func providerTabs(provs []provider.Provider, views map[string]tea.Model) []tab {
+	var tabs []tab
+	for _, p := range provs {
+		mdl, ok := views[p.Name()]
+		if !ok {
+			continue
+		}
+		tabs = append(tabs, tab{name: p.Name(), title: p.Title(), model: mdl})
+	}
+	return tabs
 }
 
 // NewTabsForProvider builds the tabbed container preselected on the tab whose
