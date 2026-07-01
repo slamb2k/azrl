@@ -192,11 +192,23 @@ func (v githubView) View() string {
 		fmt.Fprintf(&right, "%s%s %s\n", marker, keycapStyle.Render("["+a.key+"]"), label)
 	}
 
+	leftW := 40
+	if v.width > 0 {
+		leftW = min(40, max(20, v.width/2))
+	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(40).Render(left.String()),
+		lipgloss.NewStyle().Width(leftW).Render(left.String()),
 		dividerStyle.Render(" │ "),
 		right.String(),
 	)
+	// Keep the two-pane body inside the frame at narrow widths.
+	if v.width > 0 {
+		lines := strings.Split(body, "\n")
+		for i, l := range lines {
+			lines[i] = truncateLine(l, max(1, v.width-4))
+		}
+		body = strings.Join(lines, "\n")
+	}
 
 	header := paneTitleStyle.Render("GitHub") + mutedStyle.Render(" — github.com · *.ghe.com · GHES")
 	help := mutedStyle.Render("[ ]") + " tab · " + mutedStyle.Render("⇥") + " pane · " +

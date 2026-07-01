@@ -95,6 +95,32 @@ func TestDashboardTickReaggregates(t *testing.T) {
 	}
 }
 
+func TestDashboardDropsColumnsWhenNarrow(t *testing.T) {
+	seedDashHome(t)
+	wide := newDashboard(provider.All())
+	wm, _ := wide.Update(tea.WindowSizeMsg{Width: 120, Height: 34})
+	if !strings.Contains(wm.(dashboardModel).View(), "Last used") {
+		t.Fatal("wide dashboard should show the Last used column")
+	}
+
+	narrow := newDashboard(provider.All())
+	nm, _ := narrow.Update(tea.WindowSizeMsg{Width: 46, Height: 34})
+	nv := nm.(dashboardModel).View()
+	if strings.Contains(nv, "Last used") {
+		t.Fatalf("narrow dashboard should drop the Last used column:\n%s", nv)
+	}
+	// Highest-priority columns must survive the squeeze.
+	for _, keep := range []string{"Provider", "Profile", "Identity", "Drift"} {
+		if !strings.Contains(nv, keep) {
+			t.Fatalf("narrow dashboard dropped priority column %q:\n%s", keep, nv)
+		}
+	}
+	// Also drop the mid-priority Expiry and Dir columns at this width.
+	if strings.Contains(nv, "Expiry") {
+		t.Fatalf("narrow dashboard should drop the Expiry column:\n%s", nv)
+	}
+}
+
 func TestDashboardDriftAndExpiryRendering(t *testing.T) {
 	future := time.Now().Add(42 * time.Minute)
 	m := dashboardModel{width: 120, rows: []dashboardRow{

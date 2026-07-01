@@ -173,16 +173,13 @@ func userOf(b []byte, err error) string {
 }
 
 // dims computes the shared content width and pane sizes so layout() and View()
-// stay in lockstep. contentW is at least the banner width, so every line packs
-// to the same width and the frame border wraps cleanly.
+// stay in lockstep. contentW tracks the real terminal width (the banner now
+// lives in the tab container, so this view no longer floors to the art width);
+// the container truncates any residual overflow.
 func (m Model) dims() (contentW, leftW, rightW, listH int) {
-	b := Banner()
 	contentW = m.width - 4
-	if bw := lipgloss.Width(b); contentW < bw {
-		contentW = bw
-	}
-	if contentW < 40 {
-		contentW = 40
+	if contentW < 1 {
+		contentW = 1
 	}
 	leftW = contentW * 40 / 100
 	if leftW < 18 {
@@ -192,8 +189,8 @@ func (m Model) dims() (contentW, leftW, rightW, listH int) {
 	if rightW < 10 {
 		rightW = 10
 	}
-	// chrome below the banner: 3 rules + identity + status + help + frame.
-	listH = m.height - lipgloss.Height(b) - 9
+	// chrome: 3 rules + identity + status + help + frame.
+	listH = m.height - 9
 	if listH < 3 {
 		listH = 3
 	}
@@ -479,7 +476,6 @@ func (m Model) View() string {
 		return lipgloss.PlaceHorizontal(contentW, lipgloss.Center, s)
 	}
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		center(Banner()),
 		rule(contentW),
 		center(m.identityStrip()),
 		rule(contentW),

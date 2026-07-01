@@ -51,8 +51,9 @@ func seedModel(t *testing.T) Model {
 func TestModelViewRenders(t *testing.T) {
 	m := seedModel(t)
 	v := m.View()
-	if !strings.Contains(v, "█") {
-		t.Fatalf("view missing banner wordmark:\n%s", v)
+	// The banner now lives in the tab container, not the Azure view.
+	if strings.Contains(v, "█") {
+		t.Fatalf("Azure view should no longer render the banner wordmark:\n%s", v)
 	}
 	// every action verb has a home in the action pane
 	for _, label := range []string{"Sign in", "Use here", "Capture", "New profile", "Edit", "Remove"} {
