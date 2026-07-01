@@ -5,10 +5,11 @@ service_principal_entries.json
 *.log
 
 # --- brace scaffold ---
-.tmp/                 # scratch (gitignored)
-.azprofile            # per-repo profile pointer (also globally ignored)
-.envrc                # direnv AZURE_CONFIG_DIR pin (also globally ignored)
-/azrl                 # built binary
+# scratch, per-repo profile pointers (also globally ignored), built binary
+.tmp/
+.azprofile
+.envrc
+/azrl
 
 # Credentials & secrets
 .env
