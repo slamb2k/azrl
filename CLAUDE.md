@@ -8,9 +8,10 @@ forwarding the random OAuth callback port back to the VM — even when Condition
 Access blocks device-code flow.
 
 It is **provider-aware**: the same binary also manages multiple **GitHub**
-accounts (`azrl gh …`, or the `ghrl` alias). Bare invocation opens a tabbed TUI
-(Azure | GitHub). Each provider implements a shared `Provider` interface and both
-pass one contract suite.
+accounts (`azrl gh …`, or the `ghrl` alias) and **AWS** SSO profiles
+(`azrl aws …`). Bare invocation opens a tabbed TUI (dashboard | Azure | GitHub |
+AWS). Each provider implements a shared `Provider` interface and all pass one
+contract suite.
 
 ## Commands
 
@@ -34,15 +35,16 @@ Cobra subcommands, split across packages:
 
 - **`main.go`** — `azrl` entrypoint; calls `cmd.Execute()`.
 - **`cmd/ghrl/`** — `ghrl` entrypoint; calls `cmd.ExecuteGhrl()` (GitHub subcommands promoted to top level, TUI preselected on the GitHub tab).
-- **`cmd/`** — Cobra tree. Azure at top level (`login`, `init`, `capture`, `use`, `rm`, `list`); cross-provider `status [--json]` (disk-only aggregation); a `gh` group (`gh login/list/use/switch/rm/capture/status`); hidden `__browser` (smart shim) and `__browser-capture` self-shims. Bare `azrl` launches the `internal/ui` tabbed TUI (dashboard is the default landing view).
-- **`internal/config/`** — loads `~/.azure-profiles/azrl.conf`, parses `KEY=value`; `ProfilesDir()` / `GithubProfilesDir()`.
+- **`cmd/`** — Cobra tree. Azure at top level (`login`, `init`, `capture`, `use`, `rm`, `list`); cross-provider `status [--json]` (disk-only aggregation); a `gh` group (`gh login/list/use/switch/rm/capture/status`); an `aws` group (`aws login/list/use/rm/capture/status` — no `switch` verb, self-wired via `init()`); hidden `__browser` (smart shim) and `__browser-capture` self-shims. Bare `azrl` launches the `internal/ui` tabbed TUI (dashboard is the default landing view).
+- **`internal/config/`** — loads `~/.azure-profiles/azrl.conf`, parses `KEY=value`; `ProfilesDir()` / `GithubProfilesDir()` / `AwsProfilesDir()`.
 - **`internal/profile/`** — pure profile logic with a parameterized `Scheme` (pointer filename, reserved conf name, detail/label keys) shared by Azure (`.azprofile`/`AZ_*`) and GitHub (`.ghprofile`/`GH_*`). No side effects; fully unit-tested.
 - **`internal/provider/`** — the `Provider` interface (Name/Title/ProfilesDir/Scheme/ListProfiles/Resolve/Use/Remove/SetLabel/`Status`); `providertest.RunContract` is the shared suite both providers pass. `Status(name, confdir)` returns a **disk-only** snapshot (identity, directory, expiry, drift, last-used — no network). Shared helpers: `Drifted` (cwd pinned to profile AND ambient `*_CONFIG_DIR` ≠ isolated dir), and a self-registering `All()`/`Collect()` registry (providers register via `init()`).
 - **`internal/azure/`** — the `az`/`ssh` login lifecycle: `CleanSlate`, `LoginCapture`, `WaitForLogin`, `AssertAccount`, `SetSubscription`, plus the Azure `Provider`.
 - **`internal/github/`** — the `gh`/`git` lifecycle: `Login` (`--insecure-storage`, isolated `GH_CONFIG_DIR`), `SetupRepo` (`gh auth setup-git` + repo-local credential username), `Switch`/`Current`, `WhoAmI`/`AssertAccount`, plus the GitHub `Provider`.
+- **`internal/aws/`** — the `aws`/`sts` SSO lifecycle: `Login` (`aws sso login` reusing the browser bridge unmodified — PKCE loopback `127.0.0.1` callback, `--use-device-code` fallback), `Status` (disk-only — reads `~/.aws/sso/cache/*.json` for identity/expiry, no network), `AssertAccount` (`aws sts get-caller-identity` guardrail: exact account + `AWSReservedSSO_<permset>` role-boundary match), `SyncConfig`, `.envrc` (`WriteEnvrc`), plus the self-registering AWS `Provider`. `--isolate` opt-in scopes `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE`.
 - **`internal/bridge/`** — shared SSH reverse-tunnel (`ssh -R` path B) / paste-line (path A) browser bridge, plus `PasteLine`.
 - **`internal/browsercapture/`** — the smart `__browser` shim: `Classify` (device vs loopback), `ParseCallbackPort`, `Run` (relay or tunnel), and `XdgOpenShimScript` (shadow `xdg-open` for GCM).
-- **`internal/ui/`** — tabbed Bubble Tea TUI: `tabsModel` container (`[`/`]` to switch), the existing Azure `Model`, the GitHub `githubView`, and the `dashboard` view. The dashboard is the default landing view for bare `azrl` (tab 0): a cross-provider table sorted by last-used with a `⚠ drift` marker and relative expiry, `tea.Tick` polled (`DASHBOARD_POLL_SECS`, default 3s); `Enter` drills into the provider tab with the profile pre-selected, `[r]` refreshes all, `[w]` rechecks drift. `ghrl` still opens on the GitHub tab.
+- **`internal/ui/`** — tabbed Bubble Tea TUI: `tabsModel` container (`[`/`]` to switch), the existing Azure `Model`, the GitHub `githubView`, name-keyed provider tabs (AWS included), and the `dashboard` view. The dashboard is the default landing view for bare `azrl` (tab 0): a cross-provider table (Azure, GitHub, and AWS) sorted by last-used with a `⚠ drift` marker and relative expiry, `tea.Tick` polled (`DASHBOARD_POLL_SECS`, default 3s); `Enter` drills into the provider tab with the profile pre-selected, `[r]` refreshes all, `[w]` rechecks drift. `ghrl` still opens on the GitHub tab.
 
 ### The login flow
 
@@ -61,6 +63,9 @@ Cobra subcommands, split across packages:
 - `~/.github-profiles/<profile>.conf` — per-profile GitHub: `GH_HOST` (required), `GH_USER`, `GH_LABEL`, `GH_PROTOCOL`.
 - `<repo>/.ghprofile` — one line naming the GitHub profile; resolved the same way. Globally gitignored.
 - `~/.github-profiles/<profile>/` — isolated `GH_CONFIG_DIR` per profile (its own `hosts.yml`/token; requires `gh auth login --insecure-storage`).
+- `~/.aws-profiles/<profile>.conf` — per-profile AWS: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE`. `LAST_USED`/`LAST_DIR` are auto-managed.
+- `<repo>/.awsprofile` — one line naming the AWS profile; resolved the same way. Globally gitignored. The `.envrc` exports `AWS_PROFILE=<name>` (default) or the isolate file-path vars.
+- `~/.aws-profiles/<profile>/` — isolated `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` per profile (only under `--isolate`).
 
 ## Testing approach
 
