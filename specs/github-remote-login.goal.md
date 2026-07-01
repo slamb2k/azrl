@@ -45,6 +45,10 @@ assumed.
 
 ## Constraints
 
+- **Strict TDD at all times** — red/green/refactor: write a failing test first,
+  watch it fail, implement the minimum to pass, then refactor. No production code
+  without a failing test first. Use the `superpowers:test-driven-development`
+  skill.
 - Conventional commits, scope `ui`/`github`/`bridge`/`profile` as apt.
 - Test pattern: shim `gh`/`ssh`/`git` onto `PATH` with fakes; provider contract
   test; TUI model tests. No new deps unless justified.
@@ -59,6 +63,14 @@ assumed.
 - `gh login` relays the device code to the local browser; a git-HTTPS push from
   a pinned repo bridges the GCM loopback (verified per Phase 0 capabilities).
 - Existing `azrl login`/`use`/etc. still work via the alias entrypoint.
+
+## Exit — auto-ship
+
+When the Definition of Done is met and everything is green, **auto-ship**: run
+the ship flow (`mad-skills:ship`) — commit/push, open the PR, wait for CI,
+squash-merge, and sync `main`. Report the merged PR URL. Only skip shipping (and
+report instead) if CI cannot be made to pass after its fix attempts, or a
+manual-verify item is a hard blocker.
 
 ## Out of scope (v1)
 
