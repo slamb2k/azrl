@@ -66,6 +66,9 @@ var loginCmd = &cobra.Command{
 		if err := azure.AssertAccount(acct, expTenant, conf.ExpectUser); err != nil {
 			return err
 		}
+		if err := profile.AzureScheme().Touch(name, config.ProfilesDir(), pwd); err != nil {
+			return err
+		}
 		printSignedIn(out, acct)
 		// The profile's session lives in its isolated dir; plain `az` in this
 		// shell still uses ~/.azure. Offer to pin it so they match.
