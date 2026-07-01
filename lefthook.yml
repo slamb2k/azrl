@@ -1,0 +1,23 @@
+# Git hooks for azrl. Activate once per clone with:  lefthook install
+# https://lefthook.dev
+
+pre-commit:
+  parallel: true
+  commands:
+    gofmt:
+      glob: "*.go"
+      run: |
+        bad=$(gofmt -l {staged_files})
+        if [ -n "$bad" ]; then
+          echo "gofmt needed:"; echo "$bad"; echo "fix with: gofmt -w ."; exit 1
+        fi
+    vet:
+      run: go vet ./...
+
+pre-push:
+  parallel: false
+  commands:
+    build:
+      run: go build ./...
+    test:
+      run: go test ./...
