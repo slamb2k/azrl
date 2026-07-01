@@ -14,6 +14,9 @@ var RootCmd = &cobra.Command{
 	Use:     "azrl",
 	Short:   "Azure Remote Login — interactive az login from a headless VM",
 	Version: Version,
+	// Runtime errors (e.g. an unresolved login target) shouldn't dump the full
+	// usage block; cobra inherits this to subcommands. Errors are still printed.
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return ui.Run()
 	},

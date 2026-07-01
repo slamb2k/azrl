@@ -15,6 +15,8 @@ func GhrlRoot() *cobra.Command {
 		Use:     "ghrl",
 		Short:   "GitHub Remote Login — interactive gh sign-in from a headless VM",
 		Version: Version,
+		// Match RootCmd: runtime errors don't dump usage (inherited to subcommands).
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return ui.RunGitHub()
 		},
