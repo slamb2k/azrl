@@ -89,8 +89,26 @@ Nothing on the interface changes. Both packages implement the current
 `internal/provider.Provider` surface (`Name`/`Title`/`ProfilesDir`/`Scheme`/
 `ListProfiles`/`Resolve`/`Use`/`Remove`/`SetLabel`/`Status`) plus their own
 concrete sign-in orchestration (`Login`, `AssertAccount`, device-code fallback)
-that lives on the concrete type, exactly as Azure/GitHub do. They self-register
-so the TUI tab container and CLI dispatch pick them up without edits.
+that lives on the concrete type, exactly as Azure/GitHub do. Concrete identity
+metadata:
+
+| | `Name()` | `Title()` | `ProfilesDir()` | `Scheme.Pointer` |
+|---|---|---|---|---|
+| AWS | `aws` | `AWS` | `~/.aws-profiles` | `.awsprofile` |
+| GCP | `gcp` | `Google Cloud` | `~/.gcp-profiles` | `.gcpprofile` |
+
+Registration (corrected against the actual post-#17 code — there is **no**
+provider registry today, so "zero edits" was aspirational):
+
+- **TUI** — Phase 5.5 introduces `provider.All()` (a single ordered slice,
+  replacing the hardcoded `internal/ui/tabs.go` literal). AWS/GCP **append one
+  line each** to that list; the tab bar and dashboard both read it. So it's
+  *one central edit*, not zero — but a single well-known site, not N.
+- **CLI** — genuinely zero-edit: a new `cmd/aws.go` / `cmd/gcp.go` with its own
+  `init() { RootCmd.AddCommand(...) }` auto-wires via Cobra, touching no existing
+  file. Note the CLI shape: **there is no `az` group** — Azure verbs are
+  top-level and only GitHub is grouped (`gh …`). AWS/GCP follow the **`gh`-group
+  pattern**: `<bin> aws …` / `<bin> gcp …`.
 
 The only shared-code work is **A3 (bridge generalization)** — an audit-and-tidy
 pass to confirm the bridge/browsercapture packages carry no Azure-specific
@@ -384,29 +402,41 @@ findings note, and flag anything that needs a real laptop+VM to close):
 - **Pure logic unit tests:** conf parsing, `.envrc` emission
   (`AWS_PROFILE`/`CLOUDSDK_ACTIVE_CONFIG_NAME` vs isolation vars), URL
   classification for AWS/GCP authorize URLs, GKE-warning trigger.
-- **TUI:** the new tabs render via the existing tab container with no view-layer
-  changes beyond registration; dashboard rows for AWS/GCP verified by the
-  Phase 5.5 model tests once these providers exist.
+- **TUI:** the new tabs render via the existing tab container; the only edit is
+  appending each provider to `provider.All()` (introduced in Phase 5.5) plus a new
+  per-provider view file. Dashboard rows for AWS/GCP are verified by the Phase 5.5
+  model tests once these providers exist.
 
 ## Packaging / release
 
-- Two new self-registering packages; the tab container and CLI dispatch pick
-  them up with no edits. No new alias entrypoints required (the neutral unified
-  binary hosts all four providers); optionally add `awsrl`/`gcprl` aliases later
+- Two new packages. CLI groups self-wire via `init()` (zero-edit); the TUI needs
+  one line each appended to `provider.All()` (the central list from Phase 5.5)
+  plus a per-provider view file. No new alias entrypoints required (the neutral
+  unified binary hosts all four providers); optionally add `awsrl`/`gcprl` aliases
+  later
   for symmetry with `azrl`/`ghrl` if there's demand — deferred.
 - No new third-party Go deps expected (shell out to `aws`/`gcloud` like `az`/`gh`).
 
 ## Deferred / open questions
 
-- **`awsrl` / `gcprl` alias entrypoints** — symmetry with `azrl`/`ghrl`; deferred
-  until requested.
-- **AWS non-SSO / static-credential profiles** — out of scope (not browser
-  login); revisit only if users ask.
-- **GCP Application Default Credentials (ADC)** — `gcloud auth application-
-  default login` also uses a loopback and could ride the same bridge; note as a
-  likely-trivial follow-on once `gcloud auth login` works.
-- **Solving the GKE `/CLOUDSDK_CONFIG` bug upstream** vs the v1 warning —
-  warning ships first; upstream fix tracked, not owned.
+Each is **decided as a deferral** (with a reason), not left dangling — nothing
+here blocks Phase 8/9:
+
+- **`awsrl` / `gcprl` alias entrypoints** — **not shipped in v1.** The unified
+  binary's tabs plus the `<bin> aws …` / `<bin> gcp …` CLI namespaces already
+  cover every invocation; standalone aliases are pure convenience and add
+  goreleaser/packaging surface for no capability. Add only if a user asks.
+- **AWS non-SSO / static-credential profiles** — **out of scope, firm.** azrl is
+  about *interactive browser* login; access-key profiles have no browser step and
+  no wrong-account-browser problem to solve. Not revisited unless asked.
+- **GCP Application Default Credentials (ADC)** — **explicit fast-follow after
+  Phase 9, not in it.** `gcloud auth application-default login` uses the same
+  loopback and rides the identical bridge, so it's low-effort — but it's a
+  distinct credential (ADC vs user creds) with its own cache path, so it gets its
+  own small follow-up rather than being smuggled into Phase 9's scope.
+- **Solving the GKE `/CLOUDSDK_CONFIG` limitation upstream** — **not owned.** #554
+  is closed "not planned", so there's nothing to wait on; the v1 warning is the
+  permanent answer unless upstream reopens it.
 
 ## Roadmap position
 

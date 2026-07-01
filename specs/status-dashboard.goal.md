@@ -41,8 +41,11 @@ through to them. Provable today against two shipped providers (Azure + GitHub).
 3. Add `LastUsed` + `LAST_DIR` persistence to `internal/profile`: bump **both**
    keys together on `use`/`login`/`capture`/dir-bind (`LAST_DIR` = the bound dir);
    `Status()` reads them back; blank `LAST_USED` sorts last.
-4. Build the dashboard TUI view (sibling to the tabs, owned by the Phase 5 tab
-   container): aggregate all providers → sorted table (by `LastUsed` desc),
+4. Introduce `provider.All() []provider.Provider` (one ordered slice: Azure,
+   GitHub) and repoint the existing hardcoded `internal/ui/tabs.go` slice at it —
+   the dashboard, tab bar, and future providers then share one list. Then build
+   the dashboard TUI view (sibling to the tabs, owned by the Phase 5 tab
+   container): aggregate `provider.All()` → sorted table (by `LastUsed` desc),
    drift marker, relative expiry, `tea.Tick` poll at **3s default**
    (`DASHBOARD_POLL_SECS` in `azrl.conf` overrides), `Enter` → switch-tab +
    preselect, `[r]`/`[w]` read-only refresh.

@@ -150,14 +150,29 @@ profile — no append-only history, no per-directory ledger. That keeps the conf
 file human-readable and the feature small; the richer "history" ambition (every
 dir a profile was ever active in, over time) stays a future phase.
 
+### Provider enumeration — introduce a small central list
+
+The dashboard's core job is "iterate **every** provider," but today there is **no
+registry**: the tab container hardcodes its providers as a slice literal
+(`internal/ui/tabs.go` — `[]tab{ {"Azure", …}, {"GitHub", …} }`), and each CLI
+command self-wires via its own `init()`. So this phase introduces a single
+ordered source of truth — e.g. `provider.All() []provider.Provider` (Azure,
+GitHub in order) — and **points the existing tab container at it** instead of its
+literal. This is a small, well-scoped refactor, not a plugin system: one slice,
+constructed once. The payoff is that the dashboard, the tab bar, and future
+providers all read/register in **one place** — so when AWS/GCP land (Phase 8/9)
+they append to `provider.All()` rather than editing the tab literal *and* a
+separate dashboard list. (The per-file `init()` CLI wiring already needs no
+central edit and is left as-is.)
+
 ### Dashboard view (TUI)
 
 A new **top-level view**, sibling to the per-provider tabs — *not* nested inside
 any one tab. It is owned by the tab container introduced in Phase 5.
 
-- On mount and on each poll tick, iterate all registered providers, call
-  `ListProfiles` then `Status(name, confdir)` per profile, and flatten into one
-  slice of `(providerTitle, Status)` rows.
+- On mount and on each poll tick, iterate `provider.All()`, call `ListProfiles`
+  then `Status(name, confdir)` per profile, and flatten into one slice of
+  `(providerTitle, Status)` rows.
 - Render as a single table, **sorted by `LastUsed` descending** by default,
   columns: `Provider | Profile | Identity | Dir | Expiry | Drift | Last used`.
   Drift renders as a loud marker (e.g. `⚠ drift`) so it's the thing your eye
