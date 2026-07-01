@@ -6,24 +6,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/slamb2k/azrl/internal/azure"
 	"github.com/slamb2k/azrl/internal/bridge"
+	"github.com/slamb2k/azrl/internal/browsercapture"
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
 )
-
-// loginTimeout returns AZRL_LOGIN_TIMEOUT seconds (default 180).
-func loginTimeout() time.Duration {
-	if v := os.Getenv("AZRL_LOGIN_TIMEOUT"); v != "" {
-		var n int
-		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
-			return time.Duration(n) * time.Second
-		}
-	}
-	return 180 * time.Second
-}
 
 // runLogin performs the capture→bridge→wait sequence. The caller is responsible
 // for CleanSlate and for setting AZURE_CONFIG_DIR when isolation is wanted.
@@ -54,7 +43,7 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 		fmt.Fprintf(out, "azrl: paste this on your LOCAL machine:\n\n%s\n\n", paste)
 	}
 	fmt.Fprintln(out, "azrl: waiting for sign-in to complete...")
-	if err := azure.WaitForLogin(lg, loginTimeout()); err != nil {
+	if err := azure.WaitForLogin(lg, browsercapture.LoginTimeout()); err != nil {
 		fmt.Fprintf(out, "✗ %v\n  Recover with:\n  %s\n", err,
 			bridge.PasteLine(lg.Port, g.VMHost, g.LocalBrowserCmd, lg.URL))
 		return err

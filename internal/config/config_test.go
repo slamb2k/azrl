@@ -39,6 +39,14 @@ func TestLoadGlobalMissing(t *testing.T) {
 	}
 }
 
+func TestAwsProfilesDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got := AwsProfilesDir(); got != filepath.Join(home, ".aws-profiles") {
+		t.Fatalf("AwsProfilesDir = %q", got)
+	}
+}
+
 func TestDashboardPollSecs(t *testing.T) {
 	if got := DashboardPollSecs(t.TempDir()); got != 3 {
 		t.Fatalf("missing conf: got %d, want 3", got)

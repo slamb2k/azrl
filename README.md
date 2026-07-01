@@ -107,8 +107,8 @@ azrl --help                # usage; azrl --version prints the version
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
 Bare `azrl` opens a **tabbed TUI** — landing on a cross-provider **status
-dashboard** ("who am I, everywhere?"), plus an **Azure** tab and a **GitHub**
-tab; switch between them with `[` and `]`.
+dashboard** ("who am I, everywhere?"), plus **Azure**, **GitHub**, and **AWS**
+tabs; switch between them with `[` and `]`.
 
 ## GitHub accounts (`gh`)
 
@@ -145,6 +145,31 @@ How the browser reaches your laptop:
   cross-push.
 - **VS Code** needs no bridge — Remote-SSH already handles GitHub sign-in through
   its own URI handler.
+
+## AWS accounts (`aws`)
+
+The same model extends to **AWS IAM Identity Center (SSO)**. Each account is a
+named profile under `~/.aws-profiles/<name>.conf`, pinned to a repo with a
+gitignored `.awsprofile`.
+
+```bash
+azrl aws login [name]   # sign in via `aws sso login` over the browser bridge
+azrl aws list           # list AWS SSO profiles and their start URLs
+azrl aws use <name>     # pin this dir (.awsprofile) + write an .envrc
+azrl aws capture <name> # record the current SSO session as a profile
+azrl aws status         # disk-only "who am I?" from the SSO token cache
+azrl aws rm <name>      # remove an AWS profile
+```
+
+`aws sso login` reuses the SSH browser bridge unchanged — the PKCE loopback
+`127.0.0.1` callback is forwarded back to your local browser (with
+`--use-device-code` as a fallback). `azrl aws status` is disk-only: it reads
+`~/.aws/sso/cache/*.json` for the signed-in account/role and expiry, no network.
+On login `azrl` runs `aws sts get-caller-identity` to assert you landed on the
+expected account and role boundary. Pass `--isolate` to scope
+`AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` to the profile; otherwise the
+`.envrc` just exports `AWS_PROFILE`. Real-tenant browser-interception details are
+still being validated (see `specs/multi-cloud-providers.manual-verify.md`).
 
 ## Switching accounts by directory
 
@@ -223,6 +248,9 @@ platform from the [latest release](https://github.com/slamb2k/azrl/releases/late
 | `~/.github-profiles/<profile>.conf` | per-profile GitHub: `GH_HOST` (github.com / `*.ghe.com` / GHES host), `GH_USER` (expected login), `GH_LABEL` (optional display name), `GH_PROTOCOL` (`https`) |
 | `<repo>/.ghprofile` | one line: the GitHub profile for that repo (uncommitted; globally gitignored) |
 | `~/.github-profiles/<profile>/` | isolated per-profile `GH_CONFIG_DIR` (its own `hosts.yml`/token) |
+| `~/.aws-profiles/<profile>.conf` | per-profile AWS SSO: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE` |
+| `<repo>/.awsprofile` | one line: the AWS profile for that repo (uncommitted; globally gitignored) |
+| `~/.aws-profiles/<profile>/` | isolated `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` (only under `--isolate`) |
 
 See `azrl.conf.example` and `profile.conf.example` for templates.
 
@@ -234,13 +262,13 @@ per-directory switching** — isn't specific to Azure. It's now a
 **provider-aware binary**, and the next providers + dashboard are scoped,
 numbered phases behind the shared `Provider` interface (see `specs/`):
 
-- **More login providers** *(scoped)*. **GitHub** now ships (see
+- **More login providers**. **GitHub** ships (see
   [GitHub accounts](#github-accounts-gh); `specs/github-remote-login.md`,
-  Phases 1–7). **AWS** (IAM Identity Center / `aws sso login`) and **Google
-  Cloud** (`gcloud auth login`) are Phases 8–9 in
-  `specs/multi-cloud-providers.md` — each a new provider behind the same
-  interface, reusing the SSH browser-bridge unchanged; for GCP the bridge
-  replaces `gcloud --no-browser` outright.
+  Phases 1–7). **AWS** (IAM Identity Center / `aws sso login`) now ships too (see
+  [AWS accounts](#aws-accounts-aws); `specs/multi-cloud-providers.md`, Phase 8),
+  reusing the SSH browser-bridge unchanged — real-tenant interception is still in
+  manual-verify. **Google Cloud** (`gcloud auth login`) is Phase 9 *(scoped)*,
+  where the bridge replaces `gcloud --no-browser` outright.
 - **Richer auditability — "who am I, everywhere?"** *(shipped — Phase 5.5,
   `specs/status-dashboard.md`)*. A cross-provider status dashboard is now the
   default landing view of the TUI (and `azrl status [--json]` on the CLI): every
@@ -252,9 +280,9 @@ numbered phases behind the shared `Provider` interface (see `specs/`):
   pointer that can carry the right identity for *several* providers at once, so
   one `cd` lines up Azure, Git, and your cloud CLI together.
 
-Azure and GitHub are what work today, along with the cross-provider dashboard; the
-AWS/GCP providers are committed, numbered phases (see `specs/`). "Unified profiles"
-remains a direction, not a commitment.
+Azure, GitHub, and AWS are what work today, along with the cross-provider
+dashboard; GCP is the next committed, numbered phase (see `specs/`). "Unified
+profiles" remains a direction, not a commitment.
 
 ## Requirements
 
@@ -268,16 +296,17 @@ switch-by-directory.
 
 ```
 main.go               # azrl entrypoint
-cmd/                  # Cobra tree: azure top-level + `gh` group; hidden __browser shims
+cmd/                  # Cobra tree: azure top-level + `gh`/`aws` groups; hidden __browser shims
 cmd/ghrl/             # ghrl alias entrypoint (GitHub subcommands promoted to top level)
 internal/config/      # azrl.conf + KEY=value parsing; profile-dir roots
-internal/profile/     # pure profile logic + parameterized Scheme (Azure & GitHub) — unit-tested
+internal/profile/     # pure profile logic + parameterized Scheme (Azure/GitHub/AWS) — unit-tested
 internal/provider/    # Provider interface + shared contract suite (providertest)
 internal/azure/       # az/ssh login lifecycle; Azure Provider — shimmed-integration tested
 internal/github/      # gh/git login lifecycle; GitHub Provider — shimmed-integration tested
+internal/aws/         # aws/sts SSO lifecycle; AWS Provider — shimmed-integration tested
 internal/bridge/      # SSH reverse-tunnel / paste-line browser bridge (shared)
 internal/browsercapture/ # smart __browser shim: classify + relay/tunnel; xdg-open shadow
-internal/ui/          # tabbed Bubble Tea TUI (Azure | GitHub) — model unit tests
+internal/ui/          # tabbed Bubble Tea TUI (dashboard | Azure | GitHub | AWS) — model unit tests
 install.sh            # go build + install + config bootstrap
 ```
 

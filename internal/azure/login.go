@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/slamb2k/azrl/internal/browsercapture"
 	"github.com/slamb2k/azrl/internal/profile"
 )
 
@@ -16,19 +17,6 @@ type Login struct {
 	Port    string
 	Capfile string
 	waitErr chan error // receives the result of cmd.Wait(); buffered cap 1
-}
-
-// captureCommand returns the BROWSER value: env AZRL_CAPTURE override, else the
-// running binary invoked as its hidden __browser-capture subcommand.
-func captureCommand() string {
-	if c := os.Getenv("AZRL_CAPTURE"); c != "" {
-		return c
-	}
-	self, err := os.Executable()
-	if err != nil {
-		self = "azrl"
-	}
-	return self + " __browser-capture"
 }
 
 // LoginCapture starts az login in the background with the BROWSER shim and polls
@@ -50,7 +38,7 @@ func LoginCapture(tenant string) (*Login, error) {
 	cmd := exec.Command("az", args...)
 	cmd.Env = append(os.Environ(),
 		"AZRL_CAPFILE="+capfile,
-		"BROWSER="+captureCommand()+" %s",
+		"BROWSER="+browsercapture.CaptureCommand()+" %s",
 	)
 	if err := cmd.Start(); err != nil {
 		os.Remove(capfile)
