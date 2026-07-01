@@ -35,6 +35,13 @@ func ProfilesDir() string {
 	return filepath.Join(home, ".azure-profiles")
 }
 
+// GithubProfilesDir returns ~/.github-profiles, the root for GitHub profile
+// confs and their per-profile GH_CONFIG_DIRs.
+func GithubProfilesDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".github-profiles")
+}
+
 // Global holds the values from azrl.conf.
 type Global struct {
 	LocalHost       string

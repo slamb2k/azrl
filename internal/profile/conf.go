@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/slamb2k/azrl/internal/config"
 )
@@ -44,21 +42,25 @@ type Conf struct {
 	Label      string
 }
 
+// azureScheme parameterizes the shared profile mechanics for Azure: .azprofile
+// pins, AZ_TENANT as the headline detail, AZ_LABEL as the display label, and the
+// reserved global-conf basename azrl.
+var azureScheme = Scheme{
+	Pointer:   ".azprofile",
+	Reserved:  "azrl",
+	DetailKey: "AZ_TENANT",
+	LabelKey:  "AZ_LABEL",
+	Prefix:    "azrl",
+}
+
+// AzureScheme returns the Scheme carrying azrl's Azure profile mechanics, for
+// providers and callers that drive the generic Scheme methods directly.
+func AzureScheme() Scheme { return azureScheme }
+
 // Resolve returns arg when non-empty, otherwise the trimmed contents of the
 // nearest .azprofile found walking up from dir.
 func Resolve(arg, dir string) (string, error) {
-	if arg != "" {
-		return arg, nil
-	}
-	d := dir
-	for d != "" && d != string(filepath.Separator) {
-		b, err := os.ReadFile(filepath.Join(d, ".azprofile"))
-		if err == nil {
-			return strings.TrimSpace(string(b)), nil
-		}
-		d = filepath.Dir(d)
-	}
-	return "", fmt.Errorf("azrl: no profile arg and no .azprofile found from %s", dir)
+	return azureScheme.Resolve(arg, dir)
 }
 
 // LocateAzprofile walks up from dir to the nearest directory that holds an
@@ -66,14 +68,7 @@ func Resolve(arg, dir string) (string, error) {
 // the directory an .envrc must live in, since its `cat .azprofile` is resolved
 // relative to the .envrc's own location.
 func LocateAzprofile(dir string) (string, bool) {
-	d := dir
-	for d != "" && d != string(filepath.Separator) {
-		if _, err := os.Stat(filepath.Join(d, ".azprofile")); err == nil {
-			return d, true
-		}
-		d = filepath.Dir(d)
-	}
-	return "", false
+	return azureScheme.Locate(dir)
 }
 
 // LoadConf reads <confdir>/<name>.conf and requires AZ_TENANT.
@@ -132,18 +127,14 @@ func (c Conf) Write(path string) error {
 // SetLabel updates only the AZ_LABEL of profile name, preserving its other
 // fields. An empty label reverts the display name to the slug.
 func SetLabel(name, confdir, label string) error {
-	c, err := LoadConf(name, confdir)
-	if err != nil {
-		return err
-	}
-	c.Label = label
-	return c.Write(filepath.Join(confdir, name+".conf"))
+	return azureScheme.SetLabel(name, confdir, label)
 }
 
-// Listed is a profile slug with its tenant and optional display label.
+// Listed is a profile slug with its headline detail (tenant/host) and optional
+// display label.
 type Listed struct {
 	Name   string
-	Tenant string
+	Detail string
 	Label  string
 }
 
@@ -158,31 +149,5 @@ func (l Listed) Display() string {
 // List returns every <name>.conf in confdir (except azrl.conf) with its tenant,
 // sorted by name.
 func List(confdir string) ([]Listed, error) {
-	entries, err := os.ReadDir(confdir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var out []Listed
-	for _, e := range entries {
-		n := e.Name()
-		if e.IsDir() || !strings.HasSuffix(n, ".conf") {
-			continue
-		}
-		name := strings.TrimSuffix(n, ".conf")
-		if name == "azrl" {
-			continue
-		}
-		tenant := "?"
-		label := ""
-		if c, err := LoadConf(name, confdir); err == nil {
-			tenant = c.Tenant
-			label = c.Label
-		}
-		out = append(out, Listed{Name: name, Tenant: tenant, Label: label})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
+	return azureScheme.List(confdir)
 }

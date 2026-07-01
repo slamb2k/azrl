@@ -15,7 +15,7 @@ var listCmd = &cobra.Command{
 			return err
 		}
 		for _, p := range profs {
-			cmd.Printf("%-24s %s\n", p.Name, p.Tenant)
+			cmd.Printf("%-24s %s\n", p.Name, p.Detail)
 		}
 		return nil
 	},

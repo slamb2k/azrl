@@ -105,7 +105,7 @@ func NewModel() Model {
 	var items []list.Item
 	profs, _ := profile.List(config.ProfilesDir())
 	for _, p := range profs {
-		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Tenant})
+		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail})
 	}
 	l := list.New(items, profileDelegate(), 0, 0)
 	l.Title = "Profiles"

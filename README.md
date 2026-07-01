@@ -105,6 +105,45 @@ azrl --help                # usage; azrl --version prints the version
 `init`, `capture`, and `login` all **offer to write an `.envrc`** (and run
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
+Bare `azrl` opens a **tabbed TUI** — an **Azure** tab and a **GitHub** tab,
+switch between them with `[` and `]`.
+
+## GitHub accounts (`gh`)
+
+The same "sign in from a headless box, switch by `cd`" model now covers GitHub.
+Each account gets an isolated `GH_CONFIG_DIR` under `~/.github-profiles/<name>/`,
+signed in with the browser on your **local** machine.
+
+```bash
+azrl gh login [name] [--hostname H]  # sign in (github.com, *.ghe.com, or a GHES host)
+azrl gh list                         # list GitHub profiles and their hosts
+azrl gh use <name>                   # pin this repo (.ghprofile) + wire git-HTTPS creds
+azrl gh switch <name>                # set the active account (default when a repo has no pin)
+azrl gh capture <name> [--hostname H]# record the currently signed-in gh session
+azrl gh status                       # show the active and repo-pinned accounts
+azrl gh rm <name>                    # remove a GitHub profile and its config dir
+```
+
+The **`ghrl`** alias promotes these to the top level (`ghrl login`, `ghrl use`, …)
+and opens the TUI on the GitHub tab.
+
+How the browser reaches your laptop:
+
+- **`gh` sign-in** uses GitHub's device flow — no localhost callback and no
+  Conditional-Access kill switch. `azrl` sets `$BROWSER` to its shim, which
+  **relays** the activation page to your local browser; `gh` polls for the token.
+  Sign-in is forced into the per-profile `hosts.yml` with `--insecure-storage`
+  (the OS keyring is global and would otherwise collide across accounts).
+- **git-HTTPS via Git Credential Manager** *does* use a random `127.0.0.1:PORT`
+  callback. GCM ignores `$BROWSER` on Linux and execs `xdg-open`, so `azrl`
+  shadows `xdg-open` on `PATH` with a wrapper that forwards to the same shim; the
+  shim parses the callback port and opens a reverse SSH tunnel (or prints a paste
+  line). `gh use` also sets the repo-local
+  `credential.https://<host>.username` so two accounts on one host never
+  cross-push.
+- **VS Code** needs no bridge — Remote-SSH already handles GitHub sign-in through
+  its own URI handler.
+
 ## Switching accounts by directory
 
 `azrl` runs as a subprocess, so its per-profile isolation only covers the login
@@ -179,6 +218,9 @@ platform from the [latest release](https://github.com/slamb2k/azrl/releases/late
 | `<repo>/.azprofile` | one line: the profile name for that repo (uncommitted; globally gitignored) |
 | `<repo>/.envrc` | direnv stanza pinning `AZURE_CONFIG_DIR` to the profile (uncommitted; globally gitignored) |
 | `~/.azure-profiles/<profile>/` | isolated per-profile token cache (`AZURE_CONFIG_DIR`) |
+| `~/.github-profiles/<profile>.conf` | per-profile GitHub: `GH_HOST` (github.com / `*.ghe.com` / GHES host), `GH_USER` (expected login), `GH_LABEL` (optional display name), `GH_PROTOCOL` (`https`) |
+| `<repo>/.ghprofile` | one line: the GitHub profile for that repo (uncommitted; globally gitignored) |
+| `~/.github-profiles/<profile>/` | isolated per-profile `GH_CONFIG_DIR` (its own `hosts.yml`/token) |
 
 See `azrl.conf.example` and `profile.conf.example` for templates.
 
@@ -188,10 +230,10 @@ The pattern at azrl's core — **named, isolated, directory-scoped credential
 profiles + an interactive browser login that works from anywhere + automatic
 per-directory switching** — isn't specific to Azure. Planned directions:
 
-- **More login providers.** Bring the same "sign in from a headless box, switch by
-  `cd`" experience to other tools that need an interactive browser login —
-  **GitHub** (`gh auth login`), **AWS** (IAM Identity Center / `aws sso login`),
-  and **Google Cloud** (`gcloud auth login`) are the leading candidates.
+- **More login providers.** **GitHub** now ships (see [GitHub accounts](#github-accounts-gh)).
+  Next candidates for the same "sign in from a headless box, switch by `cd`"
+  experience: **AWS** (IAM Identity Center / `aws sso login`) and **Google Cloud**
+  (`gcloud auth login`).
 - **Unified profiles.** A single `.azprofile`-style pointer that can carry the
   right identity for *several* providers at once, so one `cd` lines up Azure, Git,
   and your cloud CLI together.
@@ -212,13 +254,18 @@ switch-by-directory.
 ## Layout & development
 
 ```
-main.go            # entrypoint
-cmd/               # Cobra subcommands (+ hidden __browser-capture self-shim)
-internal/config/   # azrl.conf + KEY=value parsing
-internal/profile/  # pure profile logic (resolve, conf I/O, use, rm, .envrc) — unit-tested
-internal/azure/    # az/ssh login lifecycle — unit + shimmed-integration tested
-internal/ui/       # Bubble Tea TUI (winged banner, profile list, action pane)
-install.sh         # go build + install + config bootstrap
+main.go               # azrl entrypoint
+cmd/                  # Cobra tree: azure top-level + `gh` group; hidden __browser shims
+cmd/ghrl/             # ghrl alias entrypoint (GitHub subcommands promoted to top level)
+internal/config/      # azrl.conf + KEY=value parsing; profile-dir roots
+internal/profile/     # pure profile logic + parameterized Scheme (Azure & GitHub) — unit-tested
+internal/provider/    # Provider interface + shared contract suite (providertest)
+internal/azure/       # az/ssh login lifecycle; Azure Provider — shimmed-integration tested
+internal/github/      # gh/git login lifecycle; GitHub Provider — shimmed-integration tested
+internal/bridge/      # SSH reverse-tunnel / paste-line browser bridge (shared)
+internal/browsercapture/ # smart __browser shim: classify + relay/tunnel; xdg-open shadow
+internal/ui/          # tabbed Bubble Tea TUI (Azure | GitHub) — model unit tests
+install.sh            # go build + install + config bootstrap
 ```
 
 ```bash
