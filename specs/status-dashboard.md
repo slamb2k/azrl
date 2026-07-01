@@ -1,10 +1,9 @@
 # Status Dashboard ("who am I, everywhere") — Design Spec
 
 - **Date:** 2026-07-01
-- **Status:** Approved (scoped); slots into the provider-aware roadmap as
-  **Phase 5.5**. Phases 1–7 (GitHub Remote Login) shipped in #17, so this lands
-  as the next follow-on and can be proven against two shipped providers
-  (Azure + GitHub).
+- **Status:** Implemented (Phase 5.5, branch `feat/status-dashboard`). Slots into
+  the provider-aware roadmap after Phases 1–7 (GitHub Remote Login, #17); proven
+  against two shipped providers (Azure + GitHub).
 - **Author:** brainstormed with Claude
 - **Related:** extends `specs/github-remote-login.md` (the provider-aware binary +
   tabbed TUI). Formalizes the README roadmap's "Richer auditability — a quick

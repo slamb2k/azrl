@@ -1,5 +1,7 @@
 # Goal Prompt — Status Dashboard ("who am I, everywhere")
 
+> Status: implemented (Phase 5.5, branch `feat/status-dashboard`).
+
 **Spec:** `specs/status-dashboard.md` (read it first; it is authoritative).
 
 ## Objective
