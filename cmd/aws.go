@@ -34,7 +34,7 @@ func awsConfPath(dir, name string) string {
 
 func newAwsLoginCmd() *cobra.Command {
 	var startURL, region, accountID, roleName string
-	var isolate, device bool
+	var isolate, device, awsYes bool
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to an AWS account via SSO (browser pops on your local machine)",
@@ -51,11 +51,19 @@ func newAwsLoginCmd() *cobra.Command {
 			}
 			conf, err := aws.LoadConf(name, dir)
 			if err != nil {
-				// New profile: seed a conf from the flags.
+				// Unknown profile: never create one without an SSO start URL, and
+				// never silently — confirm first (or --yes) when a URL is supplied.
+				if startURL == "" {
+					return fmt.Errorf("azrl aws: no profile %q — provide --sso-start-url (and optionally --sso-region/--account-id/--role-name) to create it", name)
+				}
+				if !confirmCreateProfile(cmd, "azrl aws", name, startURL, awsYes) {
+					return fmt.Errorf("azrl aws: no profile %q — pass --yes to create it (%s) or run interactively", name, startURL)
+				}
 				conf = aws.Conf{SSOStartURL: startURL, SSORegion: region, AccountID: accountID, RoleName: roleName, Isolate: isolate}
 				if werr := conf.Write(awsConfPath(dir, name)); werr != nil {
 					return werr
 				}
+				cmd.Printf("azrl aws: created profile %q (%s)\n", name, startURL)
 			} else if isolate && !conf.Isolate {
 				conf.Isolate = true
 				if serr := aws.SetIsolate(dir, name, true); serr != nil {
@@ -88,6 +96,7 @@ func newAwsLoginCmd() *cobra.Command {
 	c.Flags().StringVar(&roleName, "role-name", "", "Permission-set role to assume")
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own config/credentials files")
 	c.Flags().BoolVar(&device, "use-device-code", false, "Use the device-code flow instead of the PKCE loopback")
+	c.Flags().BoolVarP(&awsYes, "yes", "y", false, "Create a missing profile without prompting.")
 	return c
 }
 
