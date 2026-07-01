@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -21,8 +22,12 @@ type dashboardRow struct {
 	status        provider.Status
 }
 
-// dashboardTickMsg drives the periodic disk re-read.
+// dashboardTickMsg drives the periodic disk re-read (the fallback poll).
 type dashboardTickMsg struct{}
+
+// fsEventMsg fires when a watched provider dir changes on disk (an external
+// az/gh/aws/gcloud token cache write), driving an immediate re-aggregate.
+type fsEventMsg struct{}
 
 // switchTabMsg asks the tab container to jump to a provider's tab with a profile
 // pre-selected; emitted when the user presses Enter on a dashboard row.
@@ -41,17 +46,62 @@ type dashboardModel struct {
 	width     int
 	height    int
 	interval  time.Duration
+	watcher   *fsnotify.Watcher
 }
 
 // newDashboard builds the dashboard over provs, reading the poll interval from
-// azrl.conf and aggregating the initial rows from disk.
+// azrl.conf and aggregating the initial rows from disk. It also creates a
+// best-effort filesystem watcher over each provider's WatchDirs so external
+// token changes refresh the view immediately; on watcher-create failure it
+// falls back to timer-only polling (watcher stays nil).
 func newDashboard(provs []provider.Provider) dashboardModel {
 	m := dashboardModel{
 		providers: provs,
 		interval:  time.Duration(config.DashboardPollSecs(config.ProfilesDir())) * time.Second,
 	}
 	m.rows = aggregate(provs)
+	m.watcher = newDashboardWatcher(provs)
 	return m
+}
+
+// newDashboardWatcher creates an fsnotify watcher and adds every provider
+// WatchDir (fsnotify is not recursive, so WatchDirs already enumerates the
+// per-profile subdirs). It returns nil on create failure so the dashboard falls
+// back to timer-only polling. Individual Add failures are ignored (best-effort).
+func newDashboardWatcher(provs []provider.Provider) *fsnotify.Watcher {
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil
+	}
+	for _, p := range provs {
+		for _, d := range p.WatchDirs() {
+			_ = w.Add(d)
+		}
+	}
+	return w
+}
+
+// watchCmd blocks on the watcher's Events/Errors channels and returns an
+// fsEventMsg on any activity, so Update can re-aggregate and re-arm. It returns
+// nil when the watcher is absent or its channels have closed (stopping the loop).
+func watchCmd(w *fsnotify.Watcher) tea.Cmd {
+	if w == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		select {
+		case _, ok := <-w.Events:
+			if !ok {
+				return nil
+			}
+			return fsEventMsg{}
+		case _, ok := <-w.Errors:
+			if !ok {
+				return nil
+			}
+			return fsEventMsg{}
+		}
+	}
 }
 
 // aggregate flattens every provider's profiles into rows sorted by LastUsed
@@ -71,7 +121,23 @@ func aggregate(provs []provider.Provider) []dashboardRow {
 }
 
 func (m dashboardModel) Init() tea.Cmd {
-	return tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
+	tick := tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
+	if wc := watchCmd(m.watcher); wc != nil {
+		return tea.Batch(tick, wc)
+	}
+	return tick
+}
+
+// Close releases the dashboard's OS resources — currently the fsnotify watcher.
+// It is best-effort and safe to call when the watcher is nil or already closed
+// (fsnotify's "already closed" error is ignored), so centralized teardown in
+// run.go can call it on every quit path without guarding. A pointer field, so
+// the final model returned by tea.Program.Run holds the live watcher.
+func (m dashboardModel) Close() error {
+	if m.watcher != nil {
+		_ = m.watcher.Close()
+	}
+	return nil
 }
 
 func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -82,6 +148,11 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dashboardTickMsg:
 		m.rows = aggregate(m.providers)
 		return m, tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
+	case fsEventMsg:
+		// An external token/config change on a watched dir: re-aggregate now (disk
+		// only, cheap) and re-arm the watch. The timer keeps running as a fallback.
+		m.rows = aggregate(m.providers)
+		return m, watchCmd(m.watcher)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -114,48 +185,70 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m dashboardModel) View() string {
 	header := paneTitleStyle.Render("Dashboard") + mutedStyle.Render(" — who am I, everywhere")
 	help := mutedStyle.Render("↑↓ select · ↵ open tab · r refresh · w recheck drift · [ ] tab · q quit")
+
+	var body []string
 	if len(m.rows) == 0 {
-		empty := mutedStyle.Render("No profiles yet. Create one with `azrl init <name>` or `ghrl login <name>`.")
-		return frameStyle.Render(strings.Join([]string{header, "", empty, "", help}, "\n"))
+		body = []string{"", mutedStyle.Render("No profiles yet. Create one with `azrl init <name>` or `ghrl login <name>`."), ""}
+	} else {
+		cols := []string{"Provider", "Profile", "Identity", "Dir", "Expiry", "Drift", "Last used"}
+		matrix := [][]string{cols}
+		for _, r := range m.rows {
+			matrix = append(matrix, []string{
+				r.providerTitle,
+				r.status.ProfileName,
+				orDash(r.status.Identity),
+				orDash(shortDir(r.status.Directory)),
+				expiryText(r.status.Expiry),
+				driftText(r.status.Drifted),
+				lastUsedText(r.status.LastUsed),
+			})
+		}
+
+		// Fit the table to the terminal: drop lower-priority columns as width
+		// shrinks, then truncate the Identity cell if the survivors still overflow.
+		active, widths := m.fitColumns(matrix)
+
+		for ri, row := range matrix {
+			var cells []string
+			for _, ci := range active {
+				cells = append(cells, padTo(row[ci], widths[ci]))
+			}
+			line := strings.Join(cells, "  ")
+			if ri == 0 {
+				body = append(body, "  "+paneTitleStyle.Render(line))
+				continue
+			}
+			marker := "  "
+			if ri-1 == m.cursor {
+				marker = accentStyle.Render("› ")
+			}
+			body = append(body, marker+line)
+		}
 	}
 
-	cols := []string{"Provider", "Profile", "Identity", "Dir", "Expiry", "Drift", "Last used"}
-	matrix := [][]string{cols}
-	for _, r := range m.rows {
-		matrix = append(matrix, []string{
-			r.providerTitle,
-			r.status.ProfileName,
-			orDash(r.status.Identity),
-			orDash(shortDir(r.status.Directory)),
-			expiryText(r.status.Expiry),
-			driftText(r.status.Drifted),
-			lastUsedText(r.status.LastUsed),
-		})
+	return m.frame(header, body, help)
+}
+
+// frame assembles the dashboard content and fills it to the full terminal width
+// and height: header, a blank row, the body, blank filler rows so the footer
+// sits near the terminal bottom, then the footer — every line padded to the
+// content width (so the frame spans edge-to-edge) and truncated so none overflow.
+func (m dashboardModel) frame(header string, body []string, footer string) string {
+	contentW := m.width - 4
+	if m.width <= 0 || contentW < 1 {
+		contentW = 1
 	}
-
-	// Fit the table to the terminal: drop lower-priority columns as width shrinks,
-	// then truncate the Identity cell if the surviving columns still overflow.
-	active, widths := m.fitColumns(matrix)
-
-	var b strings.Builder
-	for ri, row := range matrix {
-		var cells []string
-		for _, ci := range active {
-			cells = append(cells, padTo(row[ci], widths[ci]))
-		}
-		line := strings.Join(cells, "  ")
-		if ri == 0 {
-			b.WriteString("  " + paneTitleStyle.Render(line) + "\n")
-			continue
-		}
-		marker := "  "
-		if ri-1 == m.cursor {
-			marker = accentStyle.Render("› ")
-		}
-		b.WriteString(marker + line + "\n")
+	lines := append([]string{header, ""}, body...)
+	// Reserve the frame border (2 rows) and the footer row, then pad the middle so
+	// the footer lands at the bottom instead of a short box with dead space below.
+	for len(lines) < m.height-2-1 {
+		lines = append(lines, "")
 	}
-
-	return frameStyle.Render(strings.Join([]string{header, "", b.String(), help}, "\n"))
+	lines = append(lines, footer)
+	for i, l := range lines {
+		lines[i] = padTo(truncateLine(l, contentW), contentW)
+	}
+	return frameStyle.Render(strings.Join(lines, "\n"))
 }
 
 // Dashboard column indices into the full matrix row.

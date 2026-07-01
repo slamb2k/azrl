@@ -22,14 +22,23 @@ func seedDashHome(t *testing.T) {
 	os.MkdirAll(filepath.Join(az, "acme"), 0o755)
 	os.WriteFile(filepath.Join(az, "acme.conf"),
 		[]byte("AZ_TENANT=acme.com\nLAST_USED=2026-06-30T10:00:00Z\nLAST_DIR=/work/acme\n"), 0o644)
-	os.WriteFile(filepath.Join(az, "acme", "azureProfile.json"),
+	azProfile := filepath.Join(az, "acme", "azureProfile.json")
+	os.WriteFile(azProfile,
 		[]byte(`{"subscriptions":[{"user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"g1"}]}`), 0o644)
 	gh := filepath.Join(home, ".github-profiles")
 	os.MkdirAll(filepath.Join(gh, "work"), 0o755)
 	os.WriteFile(filepath.Join(gh, "work.conf"),
 		[]byte("GH_HOST=github.com\nLAST_USED=2026-05-01T10:00:00Z\nLAST_DIR=/work/repo\n"), 0o644)
-	os.WriteFile(filepath.Join(gh, "work", "hosts.yml"),
-		[]byte("github.com:\n    user: octocat\n"), 0o644)
+	ghHosts := filepath.Join(gh, "work", "hosts.yml")
+	os.WriteFile(ghHosts, []byte("github.com:\n    user: octocat\n"), 0o644)
+
+	// Status folds each token-cache file's mtime into LastUsed; pin the fixture
+	// mtimes to their LAST_USED so the sort order stays deterministic (otherwise
+	// the freshly-written files' "now" mtimes would decide ordering).
+	azTime := time.Date(2026, 6, 30, 10, 0, 0, 0, time.UTC)
+	ghTime := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	os.Chtimes(azProfile, azTime, azTime)
+	os.Chtimes(ghHosts, ghTime, ghTime)
 }
 
 func sizedDashboard(t *testing.T) dashboardModel {
@@ -92,6 +101,42 @@ func TestDashboardTickReaggregates(t *testing.T) {
 	}
 	if len(nm.(dashboardModel).rows) != 2 {
 		t.Fatalf("tick did not re-aggregate: %d rows", len(nm.(dashboardModel).rows))
+	}
+}
+
+func TestDashboardFSEventReaggregates(t *testing.T) {
+	seedDashHome(t)
+	m := sizedDashboard(t)
+	if len(m.rows) != 2 {
+		t.Fatalf("setup: expected 2 rows, got %d", len(m.rows))
+	}
+
+	// Simulate an external change: a new Azure profile appears on disk. A real
+	// fsnotify event would deliver an fsEventMsg; feed one synthetically so the
+	// message-handling path is exercised deterministically (no reliance on timing).
+	home := os.Getenv("HOME")
+	az := filepath.Join(home, ".azure-profiles")
+	os.MkdirAll(filepath.Join(az, "beta"), 0o755)
+	os.WriteFile(filepath.Join(az, "beta.conf"),
+		[]byte("AZ_TENANT=beta.com\nLAST_USED=2026-06-01T10:00:00Z\nLAST_DIR=/work/beta\n"), 0o644)
+
+	nm, _ := m.Update(fsEventMsg{})
+	if got := len(nm.(dashboardModel).rows); got != 3 {
+		t.Fatalf("fsEventMsg did not re-aggregate: got %d rows, want 3", got)
+	}
+}
+
+func TestDashboardWatcherFallsBackGracefully(t *testing.T) {
+	// A dashboard with no watcher (create failure path) must still Init to the
+	// timer and handle fsEventMsg without panicking.
+	seedDashHome(t)
+	m := newDashboard(provider.All())
+	m.watcher = nil
+	if cmd := m.Init(); cmd == nil {
+		t.Fatal("Init returned nil cmd; timer fallback missing")
+	}
+	if _, cmd := m.Update(fsEventMsg{}); cmd != nil {
+		t.Fatal("watcher-less fsEventMsg should not re-arm a watch")
 	}
 }
 
