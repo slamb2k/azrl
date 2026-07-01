@@ -34,12 +34,9 @@ func newGhLoginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prov := github.NewProvider()
 			dir := prov.ProfilesDir()
-			name := ""
-			if len(args) == 1 {
-				name = args[0]
-			} else {
-				pwd, _ := os.Getwd()
-				name, _ = prov.Resolve("", pwd)
+			name, err := resolveLoginTarget(cmd, prov, args, "ghrl")
+			if err != nil {
+				return err
 			}
 			if err := validGhName(name); err != nil {
 				return err

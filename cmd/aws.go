@@ -42,12 +42,9 @@ func newAwsLoginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prov := aws.NewProvider()
 			dir := prov.ProfilesDir()
-			name := ""
-			if len(args) == 1 {
-				name = args[0]
-			} else {
-				pwd, _ := os.Getwd()
-				name, _ = prov.Resolve("", pwd)
+			name, err := resolveLoginTarget(cmd, prov, args, "azrl aws")
+			if err != nil {
+				return err
 			}
 			if err := validAwsName(name); err != nil {
 				return err
