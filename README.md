@@ -2,7 +2,7 @@
   <img src="docs/banner.png" alt="azrl — Azure Remote Login" width="760">
 </p>
 
-# azrl — Azure Remote Login
+# azrl — No device codes. Just divine intervention.
 
 **Juggle multiple Azure accounts without the `az logout` / `az login` treadmill.**
 

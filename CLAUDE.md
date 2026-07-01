@@ -45,3 +45,35 @@ The tool is a single Go binary with Cobra subcommands, split across packages:
 ## Testing approach
 
 Pure logic in `internal/profile` is unit-tested directly. `internal/azure` integration points are tested by shimming `az` and `ssh` onto `PATH` via `t.Setenv("PATH", tmpDir)` with fake executables (see the `Bridge` and `LoginCapture` tests for the pattern). TUI model behaviour is tested via `internal/ui` model unit tests that assert `View()` output and message handling. The project was built TDD-first; see `HANDOVER.md` for full historical context.
+
+## Development Workflow
+
+The `mad-skills` pipeline drives feature work here:
+
+```
+/speccy → specs/<name>.md → /build specs/<name>.md → /ship
+```
+
+- `/speccy` interviews and writes a structured spec to `specs/`
+- `/build` reads the spec, explores, designs, implements, reviews, tests
+- `/ship` commits, opens a PR, waits for CI, squash-merges, and cleans up
+- `/sync` brings `main` up to date before new work
+
+`specs/` holds specifications; `context/` holds domain knowledge and references;
+`.tmp/` is gitignored scratch.
+
+## Branch Discipline
+
+- **Sync to main before new work** — `/sync` or `git checkout main && git pull`
+- **Never branch from a feature branch** — always branch from an up-to-date `main`
+- **One feature per branch** — don't stack unrelated changes
+- **After shipping a PR, sync immediately** before starting the next task
+- **If a PR is pending review**, switch to main before unrelated work
+
+## Guardrails
+
+- Verify tool output format before chaining into another tool
+- Don't assume APIs support batch operations — check first
+- Preserve intermediate outputs when workflows fail mid-execution
+- Temporary files go in `.tmp/` — never store important data there
+- Don't build before designing

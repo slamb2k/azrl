@@ -3,3 +3,21 @@
 msal_token_cache.json
 service_principal_entries.json
 *.log
+
+# --- brace scaffold ---
+.tmp/                 # scratch (gitignored)
+.azprofile            # per-repo profile pointer (also globally ignored)
+.envrc                # direnv AZURE_CONFIG_DIR pin (also globally ignored)
+/azrl                 # built binary
+
+# Credentials & secrets
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+token.json
+
+# OS files
+.DS_Store
+Thumbs.db
