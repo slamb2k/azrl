@@ -40,6 +40,24 @@ func TestStatusReadsIdentityExpiryAndLastUsed(t *testing.T) {
 	}
 }
 
+func TestStatusReadsIdentityWithUTF8BOM(t *testing.T) {
+	confdir := t.TempDir()
+	iso := filepath.Join(confdir, "acme")
+	os.MkdirAll(iso, 0o755)
+	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	// Azure CLI writes azureProfile.json with a leading UTF-8 BOM (EF BB BF).
+	os.WriteFile(filepath.Join(iso, "azureProfile.json"),
+		[]byte("\xef\xbb\xbf"+`{"subscriptions":[{"user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"guid-1"}]}`), 0o644)
+
+	st, err := azure.NewProvider().Status("acme", confdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Identity != "u@acme.com" {
+		t.Fatalf("Identity = %q, want u@acme.com (BOM not stripped?)", st.Identity)
+	}
+}
+
 func TestStatusDrift(t *testing.T) {
 	confdir := t.TempDir()
 	iso := filepath.Join(confdir, "acme")
