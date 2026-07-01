@@ -3,10 +3,8 @@ package ui
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -166,67 +164,33 @@ func removeAction(v *providerTabView) {
 	}
 }
 
+// identityStrip mirrors the Azure Model's header: a ◆-accented provider
+// descriptor on the left and this dir's pinned profile (or a muted "not linked"
+// note) on the right, separated by the same dotted divider.
+func (v providerTabView) identityStrip() string {
+	left := accentStyle.Render("◆") + " " + v.header
+	right := mutedStyle.Render("not linked to this dir")
+	pwd, _ := os.Getwd()
+	if name, err := v.prov.Resolve("", pwd); err == nil && name != "" {
+		right = mutedStyle.Render("this dir → ") + accentStyle.Render(name)
+	}
+	return left + mutedStyle.Render("   ·   ") + right
+}
+
 func (v providerTabView) View() string {
-	var left strings.Builder
-	fmt.Fprintln(&left, paneTitleStyle.Render(fmt.Sprintf("PROFILES (%d)", len(v.profiles))))
-	if len(v.profiles) == 0 {
-		fmt.Fprintln(&left, mutedStyle.Render("  (none yet — Sign in to add one)"))
-	}
-	for i, p := range v.profiles {
-		marker := "  "
-		name := p.Display()
-		if i == v.cursor {
-			if v.focus == focusProfiles {
-				marker = accentStyle.Render("› ")
-				name = selectedStyle.Render(name)
-			} else {
-				marker = dotStyle.Render("• ")
-			}
-		}
-		fmt.Fprintf(&left, "%s%-16s %s\n", marker, name, mutedStyle.Render(p.Detail))
-	}
+	_, leftW, rightW, _ := (Model{width: v.width, height: v.height}).dims()
 
-	var right strings.Builder
-	fmt.Fprintln(&right, paneTitleStyle.Render("ACTION"))
+	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles, leftW)
+
+	// Render the provider's own action set as the shared radio group so the right
+	// pane matches Azure's ◉/○ + [key] look exactly (dispatch is unchanged).
+	opts := make([]radioOption, len(v.actions))
 	for i, a := range v.actions {
-		marker := "  "
-		label := a.label
-		if i == v.actionCur {
-			if v.focus == focusActions {
-				marker = accentStyle.Render("› ")
-				label = selectedStyle.Render(label)
-			} else {
-				marker = dotStyle.Render("• ")
-			}
-		}
-		fmt.Fprintf(&right, "%s%s %s\n", marker, keycapStyle.Render("["+a.key+"]"), label)
+		opts[i] = radioOption{label: a.label, key: a.key}
 	}
+	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions}
+	right := paneTitle("ACTION", v.focus == focusActions) + "\n\n" + r.view(rightW)
 
-	leftW := 40
-	if v.width > 0 {
-		leftW = min(40, max(20, v.width/2))
-	}
-	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(leftW).Render(left.String()),
-		dividerStyle.Render(" │ "),
-		right.String(),
-	)
-	// Keep the two-pane body inside the frame at narrow widths.
-	if v.width > 0 {
-		lines := strings.Split(body, "\n")
-		for i, l := range lines {
-			lines[i] = truncateLine(l, max(1, v.width-4))
-		}
-		body = strings.Join(lines, "\n")
-	}
-
-	help := mutedStyle.Render("[ ]") + " tab · " + mutedStyle.Render("⇥") + " pane · " +
-		mutedStyle.Render("↑↓") + " select · " + mutedStyle.Render("↵") + " run · " + mutedStyle.Render("q") + " quit"
-
-	parts := []string{v.header, "", body, ""}
-	if v.status != "" {
-		parts = append(parts, v.status, "")
-	}
-	parts = append(parts, help)
-	return frameStyle.Render(strings.Join(parts, "\n"))
+	help := mutedStyle.Render("↑↓ select · ⇥ pane · ↵ run · [ ] tab · q quit")
+	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, v.status, help)
 }

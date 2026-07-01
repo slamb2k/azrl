@@ -15,6 +15,7 @@ import (
 func (Provider) Status(name, confdir string) (provider.Status, error) {
 	c, _ := LoadConf(name, confdir)
 	last, dir := scheme.LastTouch(name, confdir)
+	last = provider.LatestMtime(last, awsCacheFiles(c.SSOStartURL)...)
 	drifted := provider.Drifted(scheme, "AWS_PROFILE", name, name)
 	if c.Isolate {
 		drifted = driftedIsolate(name, confdir)
@@ -36,6 +37,43 @@ func awsIdentity(c Conf) string {
 		return ""
 	}
 	return c.AccountID + "/" + c.RoleName
+}
+
+// awsCacheFiles returns the ~/.aws/sso/cache/*.json paths whose cached token
+// matches startURL, so their mtime can fold into LastUsed. Best-effort: an
+// empty URL or unreadable cache yields no paths.
+func awsCacheFiles(startURL string) []string {
+	if startURL == "" {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	cacheDir := filepath.Join(home, ".aws", "sso", "cache")
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(cacheDir, e.Name())
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var t struct {
+			StartURL string `json:"startUrl"`
+		}
+		if json.Unmarshal(b, &t) != nil || t.StartURL != startURL {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	return paths
 }
 
 // awsExpiry returns the latest token expiry from ~/.aws/sso/cache for the given

@@ -15,6 +15,7 @@ import (
 func (Provider) Status(name, confdir string) (provider.Status, error) {
 	isolated := filepath.Join(confdir, name)
 	last, dir := scheme.LastTouch(name, confdir)
+	last = provider.LatestMtime(last, filepath.Join(isolated, "hosts.yml"))
 	return provider.Status{
 		ProfileName: name,
 		Identity:    githubIdentity(isolated),

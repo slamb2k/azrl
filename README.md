@@ -106,9 +106,13 @@ azrl --help                # usage; azrl --version prints the version
 `init`, `capture`, and `login` all **offer to write an `.envrc`** (and run
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
-Bare `azrl` opens a **tabbed TUI** — landing on a cross-provider **status
-dashboard** ("who am I, everywhere?"), plus **AWS**, **Azure**, **GCP**, and
-**GitHub** tabs; switch between them with `[` and `]`.
+Bare `azrl` opens a **tabbed TUI** — a centered winged banner over the tab bar,
+landing on a cross-provider **status dashboard** ("who am I, everywhere?"), then
+**Azure**, **AWS**, **GCP**, and **GitHub** tabs (Azure first); switch between
+them with `[` and `]`. Every provider tab shares one Azure-style
+profiles/actions layout. The dashboard is **live**: it polls and also watches
+each provider's token cache via fsnotify, so it re-sorts by last-used the moment
+you sign in with any CLI outside azrl — not just through azrl itself.
 
 ## GitHub accounts (`gh`)
 
@@ -341,7 +345,7 @@ internal/aws/         # aws/sts SSO lifecycle; AWS Provider — shimmed-integrat
 internal/gcp/         # gcloud named-config lifecycle; GCP Provider — shimmed-integration tested
 internal/bridge/      # SSH reverse-tunnel / paste-line browser bridge (shared)
 internal/browsercapture/ # smart __browser shim: classify + relay/tunnel; xdg-open shadow
-internal/ui/          # tabbed Bubble Tea TUI (dashboard | AWS | Azure | GCP | GitHub) — model unit tests
+internal/ui/          # tabbed Bubble Tea TUI (dashboard | Azure | AWS | GCP | GitHub) — model unit tests
 install.sh            # go build + install + config bootstrap
 ```
 

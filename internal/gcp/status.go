@@ -16,6 +16,11 @@ func (Provider) Status(name, confdir string) (provider.Status, error) {
 	c, _ := LoadConf(name, confdir)
 	last, dir := scheme.LastTouch(name, confdir)
 	configName := c.ResolvedConfigName(name)
+	gcDir := gcloudConfigDir(name, confdir, c.Isolate)
+	last = provider.LatestMtime(last,
+		filepath.Join(gcDir, "configurations", "config_"+configName),
+		filepath.Join(gcDir, "active_config"),
+		filepath.Join(gcDir, "credentials.db"))
 	drifted := driftedDefault(name, confdir, configName)
 	if c.Isolate {
 		drifted = driftedIsolate(name, confdir)

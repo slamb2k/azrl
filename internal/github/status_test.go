@@ -4,9 +4,33 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/slamb2k/azrl/internal/github"
 )
+
+func TestStatusLastUsedReflectsHostsMtime(t *testing.T) {
+	confdir := t.TempDir()
+	iso := filepath.Join(confdir, "work")
+	os.MkdirAll(iso, 0o755)
+	// LAST_USED predates an external `gh` refresh of hosts.yml.
+	os.WriteFile(filepath.Join(confdir, "work.conf"),
+		[]byte("GH_HOST=github.com\nLAST_USED=2026-05-01T10:00:00Z\n"), 0o644)
+	hosts := filepath.Join(iso, "hosts.yml")
+	os.WriteFile(hosts, []byte("github.com:\n    user: octocat\n"), 0o644)
+	newer := time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(hosts, newer, newer); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := github.NewProvider().Status("work", confdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.LastUsed.Equal(newer) {
+		t.Fatalf("LastUsed = %v, want hosts.yml mtime %v", st.LastUsed, newer)
+	}
+}
 
 func TestStatusReadsIdentityFromHostsYml(t *testing.T) {
 	confdir := t.TempDir()
