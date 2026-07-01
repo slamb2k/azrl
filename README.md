@@ -1,113 +1,203 @@
+<p align="center">
+  <img src="docs/banner.png" alt="azrl — Azure Remote Login" width="760">
+</p>
+
 # azrl — Azure Remote Login
 
-Interactive `az login` from a **headless/remote Linux VM**, with the sign-in
-browser opening on your **local machine** and the OAuth callback forwarded back —
-even when Conditional Access **blocks device-code flow**. Picks the right Azure
-profile per repo, always starts from a clean slate, and verifies you ended up as
-the identity you expected.
+**Juggle multiple Azure accounts without the `az logout` / `az login` treadmill.**
 
-## Why this exists
+`azrl` gives every Azure identity — work tenant, personal, each client, every
+guest/B2B invite — its own isolated, named profile. Switch between them by simply
+`cd`-ing into a directory, always know exactly which account you're operating as,
+and sign in through a real browser even on machines that don't have one (headless
+VMs, WSL) or on tenants whose Conditional Access blocks device-code login.
 
-`az login`'s interactive flow binds a **random** `127.0.0.1:<port>` listener on
-the VM (no flag pins it). On a headless box az silently **falls back to device
-code** — which some tenants' CA policies forbid. And the browser lives on your
-local machine, which has no route to the VM's loopback. `azrl` solves all three:
+---
 
-1. **Keeps the auth-code flow alive** — points `$BROWSER` at a capture helper so
-   MSAL believes a browser launched (no device-code fallback) and records the
-   random callback URL/port.
-2. **Bridges the browser** — opens a reverse SSH tunnel to your local machine and
-   launches the browser there (path **B**, zero-paste); falls back to printing a
-   one-line `ssh -L …` you paste locally (path **A**).
-3. **Right profile, clean slate, verified identity** — per-repo profile via an
-   uncommitted `.azprofile`, isolated `AZURE_CONFIG_DIR`, a hard logout/clear
-   before login, and a post-login assertion of tenant (by GUID, for guest/B2B)
-   and user.
+## The problem
+
+The Azure CLI keeps **one** session in `~/.azure`. The moment you work across more
+than one account that single session becomes a bottleneck:
+
+- **Switching means re-authenticating.** `az login` clobbers whoever was signed
+  in. Bouncing between a work tenant and three client tenants is a day full of
+  logout/login round-trips.
+- **Guest / B2B accounts are the worst offenders.** Cross-tenant guest invites,
+  personal Microsoft accounts, and Entra-ID-only tenants each need their own
+  login, and several forbid the device-code flow via Conditional Access.
+- **No headless browser.** On a remote SSH box or inside WSL, `az login` can't
+  open the sign-in page — the browser lives somewhere else — so it silently
+  falls back to device code, which may be blocked.
+- **"Wait, which account am I?"** With one shared session it's easy to run a
+  destructive command against the wrong subscription. There's no per-directory
+  guardrail.
+
+`azrl` fixes all of this by turning each identity into a **profile** with its own
+`AZURE_CONFIG_DIR` token cache, wiring those profiles to directories, and bridging
+the browser back to wherever you actually are.
+
+## Where it helps
+
+`azrl` is useful anywhere you touch more than one Azure account — it is **not**
+just for remote servers:
+
+| Environment | What azrl does for you |
+|---|---|
+| **Local workstation** | Keep work / personal / per-client accounts side by side, each in its own profile; switch by directory instead of re-logging-in. |
+| **WSL (WSL2 on Windows)** | The browser is on Windows, `az` runs in Linux — azrl launches the sign-in page via `wslview` and captures the callback, no device code needed. |
+| **Headless / remote VM (SSH)** | Pops the sign-in browser on your **local** machine over a reverse SSH tunnel and forwards the OAuth callback back to the VM. |
+| **Conditional-Access tenants** | Keeps the interactive auth-code flow alive so tenants that block device code still work. |
+| **Guest / B2B / multi-tenant** | Pins the tenant by GUID (needed where `az account show` returns a null default domain) and verifies you landed as the expected user. |
+
+## What you get
+
+- **Isolated, coexisting sessions.** Each profile stores its tokens under
+  `~/.azure-profiles/<name>/`. Account A and Account B are logged in **at the same
+  time** — no clobbering, no re-login when you switch.
+- **Switch by `cd`.** A one-line, gitignored `.azprofile` names the profile for a
+  repo. With [direnv](https://direnv.net), stepping into the directory points
+  every `az` command at the right account automatically. `azrl` writes and
+  `direnv allow`s the `.envrc` for you.
+- **Auditability / guardrails.** After sign-in `azrl` asserts you got the tenant
+  and user you expected. The TUI always shows *who this directory is* and warns
+  when your shell's ambient `az` has drifted to a different (or no) account, so
+  you don't fire a command as the wrong identity.
+- **Browser bridging.** No local browser? `azrl` still completes an interactive
+  login — reverse SSH tunnel (zero-paste), or a one-line command you paste
+  locally, or `wslview` under WSL.
+- **Works with subscription-less tenants.** Signs in with
+  `--allow-no-subscription`, so Entra-ID-only / tenant-level accounts are fine.
+
+## Quick start
+
+```bash
+# 1. Create a profile by signing in (tenant-less), recorded for this directory
+cd ~/work/acme
+azrl init acme                 # browser opens, you sign in, conf + .azprofile written
+                               # → offers to write .envrc and run `direnv allow`
+
+# 2. In another project, reuse or create another account
+cd ~/personal/side-project
+azrl init personal
+
+# 3. Now each directory is its own account — no switching needed
+cd ~/work/acme      && az account show   # → you@acme.com
+cd ~/personal/side-project && az account show   # → you@outlook.com
+```
+
+Prefer a dashboard? Run **`azrl`** with no arguments for the TUI: pick a profile,
+sign in, capture, link, or remove — and press `e` to pin the current directory to
+its profile when it warns about drift.
 
 ## Usage
 
 ```bash
-azrl                       # launch the TUI (manage/select/login profiles)
-azrl login [profile]       # sign in via the remote-browser bridge
+azrl                       # launch the TUI (manage / select / sign in to profiles)
+azrl login [profile]       # sign in via the browser bridge (uses this dir's profile)
 azrl init [name]           # tenant-less login, then record conf + .azprofile
-azrl capture [name]        # record the current session as conf + .azprofile
+azrl capture [name]        # record the CURRENT az session as conf + .azprofile
 azrl use <name>            # link this dir to an existing profile
 azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
 azrl list                  # list configured profiles and their tenants
 azrl --help                # usage; azrl --version prints the version
 ```
 
-azrl always signs in with `--allow-no-subscription`, so it works with tenants
-that have no Azure subscription (Entra-ID-only / tenant-level accounts).
+`init`, `capture`, and `login` all **offer to write an `.envrc`** (and run
+`direnv allow`) so plain `az` in that directory follows the profile from then on.
 
-## Using the profile after login
+## Switching accounts by directory
 
-`azrl` runs as a subprocess, so its `AZURE_CONFIG_DIR` isolation only covers the
-login itself — once it exits, plain `az` in your shell falls back to `~/.azure`
-unless you export `AZURE_CONFIG_DIR` yourself. Pin it **per repo** so every `az`
-in that tree uses the right profile. With [direnv](https://direnv.net):
+`azrl` runs as a subprocess, so its per-profile isolation only covers the login
+itself. To make **every** `az` in a tree use the right account, pin
+`AZURE_CONFIG_DIR` per directory. `azrl` sets this up for you, or do it by hand
+with [direnv](https://direnv.net):
 
 ```bash
-# <repo>/.envrc  (gitignored alongside .azprofile)
+# <repo>/.envrc   (gitignored alongside .azprofile)
 export AZURE_CONFIG_DIR="$HOME/.azure-profiles/$(cat .azprofile)"
 ```
 
-Add `.envrc` to your global gitignore (`~/.config/git/ignore`) next to
-`.azprofile`, then `direnv allow`. Without direnv, export the same line in your
-shell rc or before running `az`.
-
-## Saving and initializing profile configs
-
 ```bash
-azrl capture [name]        # writes ~/.azure-profiles/<name>.conf
+direnv allow
 ```
 
-`capture` reads the live session's tenant GUID, subscription, and user, and
-writes them to `<name>.conf` plus a `.azprofile` in the current directory.
-`init` does the same but signs you in first (tenant-less). The name
-defaults to the sanitized current directory when omitted.
+Add `.envrc` and `.azprofile` to your global gitignore (`~/.config/git/ignore`).
+Now `cd`-ing between projects silently switches Azure accounts — `az account show`,
+`az group list`, everything follows the directory. Without direnv, export the same
+line in your shell rc.
 
-`use <name>` links the current directory to an **existing** profile by writing
-its name to `.azprofile` (after checking `<name>.conf` exists). Use it to point a
-new repo at a profile you already created — unlike `capture`/`init`, it does not
-log in or create a conf. Equivalent to `echo <name> > .azprofile`, but validated.
+## Saving and initializing profiles
 
-`rm <name>` deletes the profile's `<name>.conf`, its token dir
-`~/.azure-profiles/<name>/`, and `$PWD/.azprofile` when it names `<name>`. It
-prompts for confirmation unless you pass `-y`.
+- **`azrl init [name]`** — signs you in (tenant-less), then records the live
+  session's tenant GUID, subscription, and user to `~/.azure-profiles/<name>.conf`
+  plus a `.azprofile` in the current directory.
+- **`azrl capture [name]`** — same recording step, but for a session you're
+  **already** signed into (no new login).
+- **`azrl use <name>`** — links the current directory to an **existing** profile
+  (validated `echo <name> > .azprofile`); no login, no new conf.
+- **`azrl rm <name> [-y]`** — deletes the profile's `<name>.conf`, its token dir,
+  and `$PWD/.azprofile` when it names `<name>`. Prompts unless you pass `-y`.
+
+Names default to the sanitized current directory when omitted.
 
 ## Install
 
 ```bash
-./install.sh               # go build + installs azrl into ~/.local/bin,
-                           # ensures .azprofile is globally gitignored,
-                           # bootstraps ~/.azure-profiles/azrl.conf from the template
+./install.sh               # go build + install azrl into ~/.local/bin,
+                           # ensure .azprofile is globally gitignored,
+                           # bootstrap ~/.azure-profiles/azrl.conf from the template
 ```
 
 ## Configuration
 
 | File | Purpose |
 |---|---|
-| `~/.azure-profiles/azrl.conf` | global: `LOCAL_HOST` (tailnet host running the browser), `LOCAL_BROWSER_CMD` (e.g. `wslview`), `VM_HOST` (this VM's tailnet name) |
+| `~/.azure-profiles/azrl.conf` | global: `LOCAL_HOST` (host running the browser, e.g. a tailnet name), `LOCAL_BROWSER_CMD` (e.g. `wslview`), `VM_HOST` (this machine's reachable name) |
 | `~/.azure-profiles/<profile>.conf` | per-profile: `AZ_TENANT` (domain, for `az login --tenant`), `AZ_TENANT_ID` (tenant GUID — **required for guest/B2B** where `az account show` returns a null `tenantDefaultDomain`), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER` |
 | `<repo>/.azprofile` | one line: the profile name for that repo (uncommitted; globally gitignored) |
+| `<repo>/.envrc` | direnv stanza pinning `AZURE_CONFIG_DIR` to the profile (uncommitted; globally gitignored) |
 | `~/.azure-profiles/<profile>/` | isolated per-profile token cache (`AZURE_CONFIG_DIR`) |
 
 See `azrl.conf.example` and `profile.conf.example` for templates.
 
-## Layout
+## Roadmap
+
+The pattern at azrl's core — **named, isolated, directory-scoped credential
+profiles + an interactive browser login that works from anywhere + automatic
+per-directory switching** — isn't specific to Azure. Planned directions:
+
+- **More login providers.** Bring the same "sign in from a headless box, switch by
+  `cd`" experience to other tools that need an interactive browser login —
+  **GitHub** (`gh auth login`), **AWS** (IAM Identity Center / `aws sso login`),
+  and **Google Cloud** (`gcloud auth login`) are the leading candidates.
+- **Unified profiles.** A single `.azprofile`-style pointer that can carry the
+  right identity for *several* providers at once, so one `cd` lines up Azure, Git,
+  and your cloud CLI together.
+- **Richer auditability.** A quick "who am I, everywhere?" view and history of
+  which account was active in which directory.
+
+These are directions, not commitments — the Azure experience above is what ships
+today.
+
+## Requirements
+
+Azure CLI, OpenSSH, `jq`, and (for the remote/WSL browser bridge) a machine that
+can open the sign-in page — designed around **Tailscale** MagicDNS + **WSL2**
+`wslview`/localhostForwarding, but the local host and browser command are
+pluggable. [direnv](https://direnv.net) is optional but recommended for
+switch-by-directory.
+
+## Layout & development
 
 ```
 main.go            # entrypoint
 cmd/               # Cobra subcommands (+ hidden __browser-capture self-shim)
 internal/config/   # azrl.conf + KEY=value parsing
-internal/profile/  # pure profile logic (resolve, conf I/O, use, rm) — unit-tested
+internal/profile/  # pure profile logic (resolve, conf I/O, use, rm, .envrc) — unit-tested
 internal/azure/    # az/ssh login lifecycle — unit + shimmed-integration tested
-internal/ui/       # Bubble Tea TUI (banner, angel, list, actions)
+internal/ui/       # Bubble Tea TUI (winged banner, profile list, action pane)
 install.sh         # go build + install + config bootstrap
 ```
-
-## Development
 
 ```bash
 go build ./...
@@ -116,12 +206,6 @@ gofmt -l .
 ```
 
 Pure logic lives in `internal/profile` and is unit-tested. `internal/azure` shells
-out to `az`/`ssh` and is tested by shimming them onto `PATH`. Bare `azrl` launches
-the `internal/ui` TUI. The single binary is its own `$BROWSER` shim via the hidden
-`__browser-capture` subcommand. See `HANDOVER.md` for full context.
-
-## Requirements
-
-Azure CLI, OpenSSH, `jq`, and a local machine reachable from the VM (designed
-around **Tailscale** MagicDNS + **WSL2** `wslview`/localhostForwarding, but the
-config makes the local host/browser command pluggable).
+out to `az`/`ssh` and is tested by shimming them onto `PATH`. The single binary is
+its own `$BROWSER` shim via the hidden `__browser-capture` subcommand. See
+`HANDOVER.md` for full context.
