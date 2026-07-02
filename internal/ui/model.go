@@ -695,5 +695,5 @@ func contextLine(pwd string) string {
 	if _, err := os.Stat(conf); err == nil {
 		return fmt.Sprintf("No .azprofile here. Link this dir to %s? (press u)", accentStyle.Render(base))
 	}
-	return fmt.Sprintf("No profile for this dir — create with: azrl init %s", accentStyle.Render(base))
+	return fmt.Sprintf("No profile for this dir — create with: azrl login %s", accentStyle.Render(base))
 }

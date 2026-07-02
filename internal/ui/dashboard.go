@@ -188,7 +188,7 @@ func (m dashboardModel) View() string {
 
 	var body []string
 	if len(m.rows) == 0 {
-		body = []string{"", mutedStyle.Render("No profiles yet. Create one with `azrl init <name>` or `ghrl login <name>`."), ""}
+		body = []string{"", mutedStyle.Render("No profiles yet. Create one with `azrl login <name>` or `ghrl login <name>`."), ""}
 	} else {
 		cols := []string{"Provider", "Profile", "Identity", "Dir", "Expiry", "Drift", "Last used"}
 		matrix := [][]string{cols}
