@@ -20,9 +20,9 @@ type providerAction struct {
 // providerTabView is the shared provider-tab component: a profile-list pane plus
 // an action pane, with cursor/selection, active-pane focus, WindowSize handling,
 // and responsive truncation. AWS, GCP, and GitHub embed it and differ only in
-// their provider, pre-rendered header, and action set (GitHub adds a Switch
-// action). Sign-in and new-profile actions are interactive and point the user at
-// the CLI; use/switch/remove act on the profile store directly.
+// their provider, pre-rendered header, and action set. Sign-in and new-profile
+// actions are interactive and point the user at the CLI; use/remove act on the
+// profile store directly.
 type providerTabView struct {
 	prov      provider.Provider
 	actions   []providerAction
