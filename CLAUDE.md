@@ -24,10 +24,11 @@ gofmt -l .                 # check formatting (empty output = clean)
 lefthook install           # activate the pre-commit/pre-push git hooks (once per clone)
 ```
 
-CI runs in `.github/workflows/`: `ci.yml` (build/test/gofmt on PRs) and
-`release.yml` (GoReleaser cross-platform binaries, Homebrew tap, `.deb`/`.rpm`,
-curl installer — releases automatically on every merge to `main` with a
-conventional-commit semantic bump; manual `v*` tags still release directly). `scripts/install.sh` is the packaged curl-based installer; the
+CI runs in `.github/workflows/ci.yml` ("CI & Release"): `validate`
+(build/test/gofmt on PRs and pushes) and, on every merge to `main`, `release` —
+a conventional-commit semantic bump tags HEAD and GoReleaser publishes the
+cross-platform binaries, Homebrew tap, `.deb`/`.rpm`, and curl installer with
+OIDC-signed build provenance. `scripts/install.sh` is the packaged curl-based installer; the
 top-level `./install.sh` is the local dev installer.
 
 ## Architecture
