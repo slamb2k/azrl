@@ -16,7 +16,6 @@ import (
 	"github.com/slamb2k/azrl/internal/azure"
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
-	"github.com/slamb2k/azrl/internal/provider"
 )
 
 // focus identifies which pane receives navigation keys.
@@ -122,16 +121,6 @@ func NewModel() Model {
 	pwd, _ := os.Getwd()
 	var items []list.Item
 	profs, _ := profile.List(config.ProfilesDir())
-	active := ""
-	if amb, err := azure.NewProvider().Ambient(); err == nil && amb.Identity != "" {
-		statuses := make([]provider.Status, 0, len(profs))
-		for _, p := range profs {
-			if st, err := azure.NewProvider().Status(p.Name, config.ProfilesDir()); err == nil {
-				statuses = append(statuses, st)
-			}
-		}
-		active = provider.MatchProfile(statuses, amb.Identity)
-	}
 	dirProfile, dirScope := "", ""
 	if name, err := profile.Resolve("", pwd); err == nil && name != "" {
 		dirProfile = name
@@ -142,11 +131,8 @@ func NewModel() Model {
 	}
 	for _, p := range profs {
 		scope := ""
-		switch {
-		case p.Name == dirProfile:
+		if p.Name == dirProfile {
 			scope = dirScope
-		case p.Name == active:
-			scope = scopeGlobal
 		}
 		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, scope: scope})
 	}

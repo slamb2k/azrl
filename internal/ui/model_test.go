@@ -123,13 +123,10 @@ func TestProfileDelegateRendersLabelScopeAndTenant(t *testing.T) {
 		profileDelegate{}.Render(&b, l, 0, it)
 		return b.String()
 	}
-	// no label: the slug renders with the tenant detail; no scope icon.
+	// no label: the slug renders with the tenant detail and the default 🌐.
 	plain := render(item{name: "acme", tenant: "acme.com"})
-	if !strings.Contains(plain, "acme") || !strings.Contains(plain, "acme.com") {
+	if !strings.Contains(plain, "🌐 acme") || !strings.Contains(plain, "acme.com") {
 		t.Fatalf("plain item render:\n%s", plain)
-	}
-	if strings.Contains(plain, "●") || strings.Contains(plain, "🌐") {
-		t.Fatalf("inactive item must carry no scope icon:\n%s", plain)
 	}
 	// with a label: the label renders instead of the slug.
 	labeled := render(item{name: "acme", label: "Acme Production", tenant: "contoso.com"})
@@ -139,9 +136,6 @@ func TestProfileDelegateRendersLabelScopeAndTenant(t *testing.T) {
 	// The active-identity icon leads the name.
 	if pinned := render(item{name: "acme", tenant: "acme.com", scope: ScopeCwd}); !strings.Contains(pinned, "●  acme") {
 		t.Fatalf("cwd-pinned item missing leading dot:\n%s", pinned)
-	}
-	if global := render(item{name: "acme", tenant: "acme.com", scope: scopeGlobal}); !strings.Contains(global, "🌐 acme") {
-		t.Fatalf("global-default item missing 🌐:\n%s", global)
 	}
 	// filtering matches on both slug and label.
 	fv := item{name: "acme", label: "Acme Production"}.FilterValue()
