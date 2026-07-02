@@ -94,7 +94,7 @@ func TestRenderProfilePaneScopeGlyphs(t *testing.T) {
 		{Name: "personal", Detail: "personal.awsapps.com"},
 		{Name: "idle", Detail: "idle.awsapps.com"},
 	}
-	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal}
+	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal, "idle": scopeElsewhere}
 	out := renderProfilePane(profiles, 0, true, 40, scopes)
 	if !strings.Contains(out, "●  work") || !strings.Contains(out, "●  staging") {
 		t.Fatalf("dir-pinned profiles missing leading ● icon:\n%s", out)
@@ -104,7 +104,7 @@ func TestRenderProfilePaneScopeGlyphs(t *testing.T) {
 		t.Fatalf("global-default profile missing 🌐 icon:\n%s", out)
 	}
 	if !strings.Contains(out, "●  idle") || strings.Contains(out, "🌐 idle") {
-		t.Fatalf("not-applicable profile should carry the grey ● icon:\n%s", out)
+		t.Fatalf("mapped-elsewhere profile should carry the ● icon:\n%s", out)
 	}
 }
 

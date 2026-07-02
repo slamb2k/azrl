@@ -68,17 +68,26 @@ func (profileDelegate) Render(w io.Writer, m list.Model, index int, li list.Item
 		textW = 1
 	}
 	bar := "  "
+	selected := index == m.Index()
 	nameStyle := lipgloss.NewStyle().Foreground(white)
 	detailStyle := mutedStyle
-	if index == m.Index() {
+	if selected {
 		bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
 		nameStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
 		detailStyle = lipgloss.NewStyle().Foreground(azureSky)
 	}
 	name := p.name
 	if p.label != "" && p.label != p.name {
+		// Renamed rows go italic; the dull-white accent yields to the
+		// selection gold so selected names always read yellow.
 		name = p.label
-		nameStyle = renamedStyle
+		nameStyle = nameStyle.Italic(true)
+		if !selected {
+			nameStyle = nameStyle.Foreground(whiteDim)
+		}
+	}
+	if p.emph {
+		nameStyle = nameStyle.Bold(true)
 	}
 	fmt.Fprintf(w, "%s%s%s\n%s   %s",
 		bar, scopeSlot(p.scope), nameStyle.Render(truncateLine(name, textW)),
@@ -91,6 +100,7 @@ func (profileDelegate) Render(w io.Writer, m list.Model, index int, li list.Item
 type item struct {
 	name, label, tenant string
 	scope               string
+	emph                bool
 }
 
 func (i item) FilterValue() string { return i.name + " " + i.label }
@@ -140,6 +150,16 @@ func NewModel() Model {
 			dirScope = ScopeCwd
 		}
 	}
+	mapped := map[string]bool{}
+	for _, mp := range azure.NewProvider().Scheme().ReadMappings(config.ProfilesDir()) {
+		mapped[mp.Profile] = true
+	}
+	// The most-active profile — the one that would be used right now — renders
+	// bold: the dir-pinned one when present, else the global default.
+	emph := dirProfile
+	if emph == "" {
+		emph = active
+	}
 	for _, p := range profs {
 		scope := ""
 		switch {
@@ -147,8 +167,10 @@ func NewModel() Model {
 			scope = dirScope
 		case p.Name == active:
 			scope = scopeGlobal
+		case mapped[p.Name]:
+			scope = scopeElsewhere
 		}
-		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, scope: scope})
+		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, scope: scope, emph: p.Name == emph})
 	}
 	l := list.New(items, profileDelegate{}, 0, 0)
 	l.Title = "Profiles"
@@ -590,6 +612,19 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 	if textW < 1 {
 		textW = 1
 	}
+	// The most-active profile — the one that would be used right now — renders
+	// bold: the dir-pinned row when one exists, else the global default.
+	emph := ""
+	for _, p := range profiles {
+		switch scopes[p.Name] {
+		case ScopeCwd, ScopeAncestor:
+			emph = p.Name
+		case scopeGlobal:
+			if emph == "" {
+				emph = p.Name
+			}
+		}
+	}
 	for i, p := range profiles {
 		if i > 0 {
 			// One blank line between rows keeps each two-line profile distinct,
@@ -597,20 +632,29 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 			b.WriteString("\n")
 		}
 		bar := "  "
+		selected := i == cursor
 		nameStyle := lipgloss.NewStyle().Foreground(white)
 		detailStyle := mutedStyle
 		switch {
-		case i == cursor && focused:
+		case selected && focused:
 			bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
 			nameStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
 			detailStyle = lipgloss.NewStyle().Foreground(azureSky)
-		case i == cursor:
+		case selected:
 			bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
-			nameStyle = lipgloss.NewStyle().Foreground(white)
+			nameStyle = lipgloss.NewStyle().Foreground(gold)
 			detailStyle = lipgloss.NewStyle().Foreground(gray)
 		}
 		if p.Label != "" && p.Label != p.Name {
-			nameStyle = renamedStyle
+			// Renamed rows go italic; the dull-white accent yields to the
+			// selection gold so selected names always read yellow.
+			nameStyle = nameStyle.Italic(true)
+			if !selected {
+				nameStyle = nameStyle.Foreground(whiteDim)
+			}
+		}
+		if p.Name == emph {
+			nameStyle = nameStyle.Bold(true)
 		}
 		b.WriteString(bar + scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW)) + "\n")
 		b.WriteString(bar + "   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
