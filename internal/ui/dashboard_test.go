@@ -138,8 +138,8 @@ func TestDashboardAmbientRows(t *testing.T) {
 		t.Fatalf("ambient row missing 🌐 marker:\n%s", v)
 	}
 	// octocat@github.com matches the saved "work" profile's identity.
-	if !strings.Contains(v, "profile: work") {
-		t.Fatalf("ambient row missing matched profile:\n%s", v)
+	if !strings.Contains(v, "managed") || strings.Contains(v, "unmanaged") {
+		t.Fatalf("ambient row should carry the managed label:\n%s", v)
 	}
 
 	// An identity matching no profile renders an explicit unmanaged label.

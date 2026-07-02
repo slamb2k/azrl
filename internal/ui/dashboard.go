@@ -368,9 +368,9 @@ func ambientLine(r AmbientRow, titleW, idW, srcW int) string {
 	line := "🌐 " + padTo(r.Title, titleW) + "  " + padTo(r.Identity, idW) + "  " +
 		padTo(mutedStyle.Render(r.Source), srcW) + "  "
 	if r.Profile != "" {
-		// A label, not an arrow: this is the managed profile matching the
-		// ambient identity — the → glyph is reserved for directory mappings.
-		return line + mutedStyle.Render("profile: ") + r.Profile
+		// The default isn't associated with any folder, so no profile/dir
+		// target — just whether azrl manages this identity.
+		return line + successStyle.Render("managed")
 	}
 	return line + accentStyle.Render("unmanaged")
 }
