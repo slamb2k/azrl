@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // SetupRepo wires git-HTTPS credentials for a pinned repo: it registers gh as
@@ -22,6 +24,7 @@ func SetupRepo(profilesDir, name, pwd string, c Conf) error {
 		if err := exec.Command("git", "-C", pwd, "config", "--local", key, c.User).Run(); err != nil {
 			return fmt.Errorf("ghrl: setting %s failed: %w", key, err)
 		}
+		_ = profile.RecordMapping(profilesDir, profile.Mapping{Dir: pwd, Profile: name, Source: "gitconfig"})
 	}
 	return nil
 }

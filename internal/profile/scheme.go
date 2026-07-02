@@ -68,6 +68,8 @@ func (s Scheme) Use(name, confdir, pwd string) error {
 
 // Touch bumps LAST_USED (now, RFC3339 UTC) and LAST_DIR (dir) in profile name's
 // conf, adding either key if absent and preserving every other key and its order.
+// When a Pointer file governing dir names this profile, it also records the
+// pointer's directory in the mappings index (best-effort, never fails Touch).
 func (s Scheme) Touch(name, confdir, dir string) error {
 	path := filepath.Join(confdir, name+".conf")
 	m, order, err := readOrderedKV(path)
@@ -85,6 +87,11 @@ func (s Scheme) Touch(name, confdir, dir string) error {
 	var b strings.Builder
 	for _, k := range order {
 		fmt.Fprintf(&b, "%s=%s\n", k, m[k])
+	}
+	if pdir, ok := s.Locate(dir); ok {
+		if pb, perr := os.ReadFile(filepath.Join(pdir, s.Pointer)); perr == nil && strings.TrimSpace(string(pb)) == name {
+			_ = RecordMapping(confdir, Mapping{Dir: pdir, Profile: name, Source: "pointer"})
+		}
 	}
 	return writeAtomic(path, b.String())
 }
