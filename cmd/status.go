@@ -134,7 +134,7 @@ func printStatusSections(w io.Writer, ov ui.Overview, rep statusReport) {
 	for _, a := range ov.Ambient {
 		target := "unmanaged"
 		if a.Profile != "" {
-			target = "→ " + a.Profile
+			target = "managed"
 		}
 		fmt.Fprintf(w, "  %s  %s  %s  %s\n", a.Provider, a.Identity, a.Source, target)
 	}
