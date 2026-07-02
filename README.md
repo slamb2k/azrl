@@ -276,6 +276,8 @@ go install github.com/slamb2k/azrl@latest
 
 **Binaries & packages** — download a `.tar.gz`, `.deb`, or `.rpm` for your
 platform from the [latest release](https://github.com/slamb2k/azrl/releases/latest).
+Every release artifact carries OIDC-signed build provenance; verify a download
+with `gh attestation verify <file> -R slamb2k/azrl`.
 
 **From source** (contributors):
 
