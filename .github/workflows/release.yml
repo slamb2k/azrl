@@ -5,23 +5,37 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
+# Least privilege: nothing at the workflow level; each job declares its own.
+permissions: {}
+
+# One release at a time; never cancel a live release run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # create the GitHub release + upload assets
+      id-token: write # OIDC identity for sigstore-backed provenance
+      attestations: write # persist the build attestations
     steps:
-      - uses: actions/checkout@v7
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: stable
           cache: true
 
-      - uses: goreleaser/goreleaser-action@v7
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
           version: "~> v2"
           args: release --clean
@@ -29,3 +43,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PAT with Contents:read/write on slamb2k/homebrew-tap (see README)
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      # Trusted publishing for binaries: OIDC-signed SLSA provenance covering
+      # every artifact GoReleaser checksummed. Verify any download with:
+      #   gh attestation verify <file> -R slamb2k/azrl
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-checksums: dist/checksums.txt
