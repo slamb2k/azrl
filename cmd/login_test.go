@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // seedAzLoginEnv wires a full environment for `azrl login`: a global azrl.conf,
@@ -97,23 +99,133 @@ func TestLoginZeroProfilesTenantless(t *testing.T) {
 	}
 }
 
-// TestLoginUnknownNameRoutesToInit proves an explicit unknown profile name is
-// not silently created (azure needs a tenant): it errors, routing to `azrl init`,
-// and writes no conf.
-func TestLoginUnknownNameRoutesToInit(t *testing.T) {
-	seedAzLoginEnv(t, map[string]string{"work": "AZ_TENANT=work.example.com\n"})
+// TestLoginFirstLoginInitCreatesProfile proves that on a TTY with no arg, no pin
+// and zero saved profiles, `azrl login` prompts for a name (defaulting to the
+// dir), then creates the profile via the tenant-less init path (writing
+// <name>.conf) rather than falling back to the ephemeral ~/.azure sign-in.
+func TestLoginFirstLoginInitCreatesProfile(t *testing.T) {
+	azLog := seedAzLoginEnv(t, nil) // zero profiles
+	t.Setenv("AZ_ACCT", acctJSON("contoso.com", "simon"))
+	home := os.Getenv("HOME")
+	work := t.TempDir()
+	old, _ := os.Getwd()
+	os.Chdir(work)
+	defer os.Chdir(old)
+	stubInteractive(t, true)
+	pwd, _ := os.Getwd()
+	want := profile.DefaultName("", pwd)
+
+	out, err := execRootIn(t, "\n", "login")
+	if err != nil {
+		t.Fatalf("azure first-login should succeed: %v (out=%q)", err, out)
+	}
+	if !strings.Contains(out, "No azrl profiles yet") {
+		t.Fatalf("missing first-login prompt:\n%s", out)
+	}
+	if !strings.Contains(out, "init profile="+want) {
+		t.Fatalf("first-login should route through the init path:\n%s", out)
+	}
+	if strings.Contains(out, "tenant-less sign-in into default ~/.azure") {
+		t.Fatalf("first-login must not fall back to the ephemeral ~/.azure path:\n%s", out)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".azure-profiles", want+".conf")); statErr != nil {
+		t.Fatalf("azure profile conf not created via init path: %v", statErr)
+	}
+	if log, _ := os.ReadFile(azLog); strings.Contains(string(log), "--tenant") {
+		t.Fatalf("first-login init path must sign in tenant-less:\n%s", log)
+	}
+}
+
+// execRootIn runs RootCmd with stdin fed from in, capturing combined out/err.
+func execRootIn(t *testing.T, in string, args ...string) (string, error) {
+	t.Helper()
+	buf := new(bytes.Buffer)
+	RootCmd.SetOut(buf)
+	RootCmd.SetErr(buf)
+	RootCmd.SetIn(strings.NewReader(in))
+	RootCmd.SetArgs(args)
+	err := RootCmd.Execute()
+	return buf.String(), err
+}
+
+// TestLoginUnknownNameYesCreates proves an explicit unknown profile name with
+// --yes is created inline via the tenant-less path (no second prompt, no
+// --tenant), writing <name>.conf — matching gh/gcp/aws create-on-login.
+func TestLoginUnknownNameYesCreates(t *testing.T) {
+	azLog := seedAzLoginEnv(t, map[string]string{"work": "AZ_TENANT=work.example.com\n"})
+	t.Setenv("AZ_ACCT", acctJSON("contoso.com", "simon"))
 	home := os.Getenv("HOME")
 	chdirClean(t)
 
+	out, err := execRoot(t, "login", "ghostazure", "--yes")
+	if err != nil {
+		t.Fatalf("--yes create-on-login should succeed: %v (out=%q)", err, out)
+	}
+	if !strings.Contains(out, "init profile=ghostazure") {
+		t.Fatalf("explicit-unknown --yes should create via the init path:\n%s", out)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".azure-profiles", "ghostazure.conf")); statErr != nil {
+		t.Fatalf("azure profile conf not created via --yes: %v", statErr)
+	}
+	if log, _ := os.ReadFile(azLog); strings.Contains(string(log), "--tenant") {
+		t.Fatalf("create-on-login must sign in tenant-less:\n%s", log)
+	}
+}
+
+// TestLoginUnknownNameNonInteractiveErrors proves an explicit unknown name with
+// no --yes and no TTY errors with guidance and writes no conf.
+func TestLoginUnknownNameNonInteractiveErrors(t *testing.T) {
+	seedAzLoginEnv(t, map[string]string{"work": "AZ_TENANT=work.example.com\n"})
+	home := os.Getenv("HOME")
+	chdirClean(t)
+	stubInteractive(t, false)
+	loginYes = false // shared RootCmd flag: clear any leak from a prior --yes run
+
 	out, err := execRoot(t, "login", "ghostazure")
 	if err == nil {
-		t.Fatalf("unknown azure profile should error (out=%q)", out)
+		t.Fatalf("unknown azure profile without --yes should error (out=%q)", out)
 	}
-	if !strings.Contains(err.Error(), "run 'azrl init ghostazure'") {
+	if !strings.Contains(err.Error(), `no profile "ghostazure"`) || !strings.Contains(err.Error(), "--yes") {
 		t.Fatalf("wrong error: %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(home, ".azure-profiles", "ghostazure.conf")); !os.IsNotExist(statErr) {
-		t.Fatal("azure login must not create a conf")
+		t.Fatal("declined create must not write a conf")
+	}
+}
+
+// TestLoginUnknownNameInteractiveDeclines proves an interactive "n" at the
+// create confirmation declines: it errors and writes no conf.
+func TestLoginUnknownNameInteractiveDeclines(t *testing.T) {
+	seedAzLoginEnv(t, map[string]string{"work": "AZ_TENANT=work.example.com\n"})
+	home := os.Getenv("HOME")
+	chdirClean(t)
+	stubInteractive(t, true)
+	loginYes = false // shared RootCmd flag: clear any leak from a prior --yes run
+
+	out, err := execRootIn(t, "n\n", "login", "ghostazure")
+	if err == nil {
+		t.Fatalf("declining create should error (out=%q)", out)
+	}
+	if !strings.Contains(out, "Create it") {
+		t.Fatalf("missing create confirmation prompt:\n%s", out)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".azure-profiles", "ghostazure.conf")); !os.IsNotExist(statErr) {
+		t.Fatal("declined create must not write a conf")
+	}
+}
+
+// TestInitCommandRemoved proves the `azrl init` command is gone: the hidden stub
+// returns guidance pointing at `azrl login` and runs no sign-in.
+func TestInitCommandRemoved(t *testing.T) {
+	seedAzLoginEnv(t, nil)
+	chdirClean(t)
+
+	out, err := execRoot(t, "init", "whatever")
+	if err == nil {
+		t.Fatalf("removed init command should error (out=%q)", out)
+	}
+	if !strings.Contains(err.Error(), "'init' was removed") || !strings.Contains(err.Error(), "azrl login") {
+		t.Fatalf("wrong guidance error: %v", err)
 	}
 }
 

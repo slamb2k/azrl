@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // seedGhHome points HOME at a temp dir with two GitHub profiles on disk.
@@ -90,6 +92,39 @@ func TestGhLoginCreatesWithYes(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "GH_HOST=github.com") {
 		t.Fatalf("created conf missing host:\n%s", b)
+	}
+}
+
+// TestGhLoginFirstLoginCreatesFromPrompt proves that on a TTY with zero saved
+// profiles, `gh login` (no name) prompts for a name (defaulting to the dir),
+// creates the profile and signs in — with no second [y/N] confirm.
+func TestGhLoginFirstLoginCreatesFromPrompt(t *testing.T) {
+	home := seedGhProfiles(t) // zero profiles
+	installFakeGhGit(t)
+	chdirClean(t)
+	stubInteractive(t, true)
+	pwd, _ := os.Getwd()
+	want := profile.DefaultName("", pwd)
+
+	buf := new(bytes.Buffer)
+	RootCmd.SetOut(buf)
+	RootCmd.SetErr(buf)
+	RootCmd.SetIn(strings.NewReader("\n")) // accept the dir default
+	RootCmd.SetArgs([]string{"gh", "login"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatalf("first-login should succeed: %v (out=%q)", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "No ghrl profiles yet") {
+		t.Fatalf("missing first-login prompt:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `created profile "`+want+`"`) {
+		t.Fatalf("missing created-profile announce:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), "[y/N]") {
+		t.Fatalf("must not double-confirm the just-named profile:\n%s", buf.String())
+	}
+	if _, err := os.Stat(filepath.Join(home, ".github-profiles", want+".conf")); err != nil {
+		t.Fatalf("profile conf not created: %v", err)
 	}
 }
 

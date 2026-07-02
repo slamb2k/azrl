@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/slamb2k/azrl/internal/azure"
 	"github.com/slamb2k/azrl/internal/config"
@@ -13,6 +14,20 @@ import (
 )
 
 var loginPaste bool
+var loginYes bool
+
+// validAzureName guards a name typed at the azure first-login prompt: it rejects
+// an empty name and any name containing a path separator (azure profiles map to
+// a conf file and an isolated config dir named after the profile).
+func validAzureName(name string) error {
+	if name == "" {
+		return fmt.Errorf("azrl: a profile name is required")
+	}
+	if strings.Contains(name, "/") {
+		return fmt.Errorf("azrl: invalid profile name %q", name)
+	}
+	return nil
+}
 
 var loginCmd = &cobra.Command{
 	Use:   "login [profile]",
@@ -26,7 +41,7 @@ var loginCmd = &cobra.Command{
 		out := cmd.OutOrStdout()
 		pwd, _ := os.Getwd()
 		prov := azure.NewProvider()
-		name, profs, rErr := resolveLoginTargetWithProfiles(cmd, prov, args, "azrl")
+		name, profs, newProfile, rErr := resolveLoginTargetWithProfiles(cmd, prov, args, "azrl", validAzureName)
 		if rErr != nil {
 			// Preserve azure's tenant-less fallback: with no arg, no directory
 			// pin and no saved profiles, sign in to the default ~/.azure instead
@@ -35,7 +50,7 @@ var loginCmd = &cobra.Command{
 			// error propagates rather than being mistaken for "no profiles".
 			if len(args) == 0 && profs != nil && len(profs) == 0 {
 				fmt.Fprintln(out, "azrl: no profile resolved — tenant-less sign-in into default ~/.azure")
-				fmt.Fprintln(out, "      tip: run 'azrl init <name>' to save this as a profile")
+				fmt.Fprintln(out, "      tip: run 'azrl login <name>' to save this as a profile")
 				if err := runLogin("", g, loginPaste, out); err != nil {
 					return err
 				}
@@ -45,10 +60,22 @@ var loginCmd = &cobra.Command{
 			}
 			return rErr
 		}
+		if err := validAzureName(name); err != nil {
+			return err
+		}
+		if newProfile {
+			// First-login on a TTY with no saved profiles: create and sign in via
+			// the shared tenant-less create path (runAzureInit).
+			return runAzureInit(cmd, g, name, pwd, loginPaste)
+		}
 		conf, err := profile.LoadConf(name, config.ProfilesDir())
 		if err != nil {
-			// Azure can't create-on-login (a profile needs a tenant); route to init.
-			return fmt.Errorf("azrl: no profile %q — run 'azrl init %s' to create it (it sets the tenant)", name, name)
+			// Explicit unknown name: confirm-then-create inline via the tenant-less
+			// path (azure discovers the tenant on first login), matching gh/gcp/aws.
+			if !confirmCreateProfile(cmd, "azrl", name, "tenant-less sign-in", loginYes) {
+				return fmt.Errorf("azrl: no profile %q — pass --yes to create it or run interactively", name)
+			}
+			return runAzureInit(cmd, g, name, pwd, loginPaste)
 		}
 		cfgDir := filepath.Join(config.ProfilesDir(), name)
 		os.MkdirAll(cfgDir, 0o755)
@@ -94,5 +121,6 @@ func printSignedIn(out interface{ Write([]byte) (int, error) }, acct []byte) {
 
 func init() {
 	loginCmd.Flags().BoolVar(&loginPaste, "paste", false, "Force the manual paste-line path (A)")
+	loginCmd.Flags().BoolVarP(&loginYes, "yes", "y", false, "Create a missing profile without prompting.")
 	RootCmd.AddCommand(loginCmd)
 }

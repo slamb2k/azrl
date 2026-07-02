@@ -42,7 +42,7 @@ func newGcpLoginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prov := gcp.NewProvider()
 			dir := prov.ProfilesDir()
-			name, err := resolveLoginTarget(cmd, prov, args, "azrl gcp")
+			name, newProfile, err := resolveLoginTarget(cmd, prov, args, "azrl gcp", validGcpName)
 			if err != nil {
 				return err
 			}
@@ -51,7 +51,6 @@ func newGcpLoginCmd() *cobra.Command {
 			}
 			conf, err := gcp.LoadConf(name, dir)
 			if err != nil {
-				// Unknown profile: confirm before creating (never silently).
 				cn := configName
 				if cn == "" {
 					cn = name
@@ -60,7 +59,9 @@ func newGcpLoginCmd() *cobra.Command {
 				if detail == "" {
 					detail = cn
 				}
-				if !confirmCreateProfile(cmd, "azrl gcp", name, detail, gcpYes) {
+				// newProfile: already committed via the first-login name prompt, so
+				// create without a second confirm. Otherwise confirm before creating.
+				if !newProfile && !confirmCreateProfile(cmd, "azrl gcp", name, detail, gcpYes) {
 					return fmt.Errorf("azrl gcp: no profile %q — pass --yes to create it (%s) or run interactively", name, detail)
 				}
 				conf = gcp.Conf{ConfigName: cn, Project: project, Region: region, Isolate: isolate}

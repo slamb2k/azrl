@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // seedAwsHome points HOME at a temp dir with two AWS profiles on disk.
@@ -217,6 +219,77 @@ func TestAwsLoginCreatesWithStartURLAndYes(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "AWS_SSO_START_URL=https://fresh.awsapps.com/start") {
 		t.Fatalf("created conf missing start URL:\n%s", b)
+	}
+}
+
+// TestAwsLoginFirstLoginCreatesFromPrompt proves that on a TTY with zero saved
+// profiles, `aws login --sso-start-url ...` prompts for a name (defaulting to the
+// dir), creates the profile and signs in — with no second [y/N] confirm.
+func TestAwsLoginFirstLoginCreatesFromPrompt(t *testing.T) {
+	_, confPath := seedAwsLoginEnv(t, "AWS_SSO_START_URL=https://acme.awsapps.com/start\n")
+	os.Remove(confPath) // zero profiles -> first-login prompt
+	home := os.Getenv("HOME")
+	work := t.TempDir()
+	old, _ := os.Getwd()
+	os.Chdir(work)
+	defer os.Chdir(old)
+	stubInteractive(t, true)
+	pwd, _ := os.Getwd()
+	want := profile.DefaultName("", pwd)
+
+	buf := new(bytes.Buffer)
+	RootCmd.SetOut(buf)
+	RootCmd.SetErr(buf)
+	RootCmd.SetIn(strings.NewReader("\n"))
+	RootCmd.SetArgs([]string{"aws", "login", "--sso-start-url", "https://fresh.awsapps.com/start"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatalf("aws first-login should succeed: %v (out=%q)", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "No azrl aws profiles yet") {
+		t.Fatalf("missing first-login prompt:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `created profile "`+want+`"`) {
+		t.Fatalf("missing created-profile announce:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), "[y/N]") {
+		t.Fatalf("must not double-confirm the just-named profile:\n%s", buf.String())
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".aws-profiles", want+".conf"))
+	if err != nil {
+		t.Fatalf("aws conf not created: %v", err)
+	}
+	if !strings.Contains(string(b), "AWS_SSO_START_URL=https://fresh.awsapps.com/start") {
+		t.Fatalf("created conf missing start URL:\n%s", b)
+	}
+}
+
+// TestAwsLoginFirstLoginWithoutStartURLErrors proves the --sso-start-url guard
+// still applies on the first-login path: even after naming the profile, aws
+// refuses to create an empty-SSO profile and writes nothing.
+func TestAwsLoginFirstLoginWithoutStartURLErrors(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".aws-profiles"), 0o755)
+	chdirClean(t)
+	stubInteractive(t, true)
+	pwd, _ := os.Getwd()
+	want := profile.DefaultName("", pwd)
+
+	buf := new(bytes.Buffer)
+	RootCmd.SetOut(buf)
+	RootCmd.SetErr(buf)
+	RootCmd.SetIn(strings.NewReader("\n"))
+	// Reset --sso-start-url explicitly: cobra flag vars persist across tests.
+	RootCmd.SetArgs([]string{"aws", "login", "--sso-start-url=", "--yes=false"})
+	err := RootCmd.Execute()
+	if err == nil {
+		t.Fatalf("first-login without --sso-start-url should error (out=%q)", buf.String())
+	}
+	if !strings.Contains(err.Error(), "provide --sso-start-url") {
+		t.Fatalf("wrong error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".aws-profiles", want+".conf")); !os.IsNotExist(statErr) {
+		t.Fatal("no conf should be written without a start URL")
 	}
 }
 

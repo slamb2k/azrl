@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // seedGcpHome points HOME at a temp dir with two GCP profiles on disk.
@@ -199,6 +202,43 @@ func TestGcpLoginCreatesWithYes(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".gcp-profiles", "fresh.conf")); err != nil {
 		t.Fatalf("fresh.conf not written: %v", err)
+	}
+}
+
+// TestGcpLoginFirstLoginCreatesFromPrompt proves that on a TTY with zero saved
+// profiles, `gcp login` (no name) prompts, creates the dir-named profile and
+// signs in — with no second [y/N] confirm.
+func TestGcpLoginFirstLoginCreatesFromPrompt(t *testing.T) {
+	_, confPath := seedGcpLoginEnv(t, "GCP_CONFIG_NAME=work\n")
+	os.Remove(confPath) // zero profiles -> first-login prompt
+	home := os.Getenv("HOME")
+	work := t.TempDir()
+	old, _ := os.Getwd()
+	os.Chdir(work)
+	defer os.Chdir(old)
+	stubInteractive(t, true)
+	pwd, _ := os.Getwd()
+	want := profile.DefaultName("", pwd)
+
+	buf := new(bytes.Buffer)
+	RootCmd.SetOut(buf)
+	RootCmd.SetErr(buf)
+	RootCmd.SetIn(strings.NewReader("\n"))
+	RootCmd.SetArgs([]string{"gcp", "login"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatalf("gcp first-login should succeed: %v (out=%q)", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "No azrl gcp profiles yet") {
+		t.Fatalf("missing first-login prompt:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `created profile "`+want+`"`) {
+		t.Fatalf("missing created-profile announce:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), "[y/N]") {
+		t.Fatalf("must not double-confirm the just-named profile:\n%s", buf.String())
+	}
+	if _, err := os.Stat(filepath.Join(home, ".gcp-profiles", want+".conf")); err != nil {
+		t.Fatalf("gcp conf not created: %v", err)
 	}
 }
 
