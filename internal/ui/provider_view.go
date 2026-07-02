@@ -33,6 +33,7 @@ type providerTabView struct {
 	active     string
 	dirProfile string
 	dirScope   string
+	mapped     map[string]bool
 	cursor     int
 	focus      int
 	actionCur  int
@@ -66,6 +67,10 @@ func (v *providerTabView) reload() {
 		}
 		v.active = provider.MatchProfile(statuses, amb.Identity)
 	}
+	v.mapped = map[string]bool{}
+	for _, m := range v.prov.Scheme().ReadMappings(dir) {
+		v.mapped[m.Profile] = true
+	}
 	v.dirProfile, v.dirScope = "", ""
 	pwd, _ := os.Getwd()
 	if name, err := v.prov.Resolve("", pwd); err == nil && name != "" {
@@ -87,14 +92,17 @@ func (v *providerTabView) reload() {
 }
 
 // rowScope returns the effective relevance of one profile row — the closest
-// wins: a directory pin (cwd or ancestor) outranks the global default; ""
-// means the profile doesn't apply here (muted grey icon).
+// wins: a directory pin (cwd or ancestor) outranks the global default, which
+// outranks being mapped elsewhere; "" means mapped nowhere (deep-grey icon).
 func (v providerTabView) rowScope(name string) string {
 	if name == v.dirProfile {
 		return v.dirScope
 	}
 	if name == v.active {
 		return scopeGlobal
+	}
+	if v.mapped[name] {
+		return scopeElsewhere
 	}
 	return ""
 }

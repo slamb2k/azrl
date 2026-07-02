@@ -19,6 +19,7 @@ var (
 	goldDeep  = lipgloss.Color("#d99a2b")
 	white     = lipgloss.Color("#f5f7fa")
 	whiteDim  = lipgloss.Color("#b9c0c8")
+	grayDeep  = lipgloss.Color("#565c64")
 	green     = lipgloss.Color("#3fb950")
 	red       = lipgloss.Color("#f85149")
 	gray      = lipgloss.Color("#8b949e")
@@ -72,16 +73,20 @@ func keycap(key string) string { return keycapChipStyle.Render(" " + keyGlyph(ke
 // replacing the old "*" footnote legend.
 var renamedStyle = lipgloss.NewStyle().Foreground(whiteDim).Italic(true)
 
-// scopeGlobal extends the overview's Scope values for profile rows: the
-// profile is the provider's global default (its ambient identity matches).
-const scopeGlobal = "global"
+// scopeGlobal and scopeElsewhere extend the overview's Scope values for
+// profile rows: the provider's global default (ambient identity match), and a
+// profile mapped to some directory that doesn't govern this one.
+const (
+	scopeGlobal    = "global"
+	scopeElsewhere = "elsewhere"
+)
 
 // scopeSlot renders a profile row's leading icon as a fixed-width slot so
 // names align regardless of glyph (🌐 is double-width). Relevance grades the
 // colour: ● green when a pin in the current dir makes the profile effective,
 // ● orange when the pin is inherited from a parent dir, 🌐 only for the
-// provider's global default, and a muted grey ● for profiles that don't
-// apply here.
+// provider's global default, ● dark-white for identities mapped elsewhere
+// (irrelevant here), and ● deep-grey for profiles mapped nowhere at all.
 func scopeSlot(scope string) string {
 	switch scope {
 	case ScopeCwd:
@@ -90,6 +95,8 @@ func scopeSlot(scope string) string {
 		return lipgloss.NewStyle().Foreground(goldDeep).Render("●") + "  "
 	case scopeGlobal:
 		return "🌐 "
+	case scopeElsewhere:
+		return lipgloss.NewStyle().Foreground(whiteDim).Render("●") + "  "
 	}
-	return mutedStyle.Render("●") + "  "
+	return lipgloss.NewStyle().Foreground(grayDeep).Render("●") + "  "
 }

@@ -140,6 +140,10 @@ func NewModel() Model {
 			dirScope = ScopeCwd
 		}
 	}
+	mapped := map[string]bool{}
+	for _, mp := range azure.NewProvider().Scheme().ReadMappings(config.ProfilesDir()) {
+		mapped[mp.Profile] = true
+	}
 	for _, p := range profs {
 		scope := ""
 		switch {
@@ -147,6 +151,8 @@ func NewModel() Model {
 			scope = dirScope
 		case p.Name == active:
 			scope = scopeGlobal
+		case mapped[p.Name]:
+			scope = scopeElsewhere
 		}
 		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, scope: scope})
 	}
