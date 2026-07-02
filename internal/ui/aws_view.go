@@ -13,13 +13,9 @@ type awsView struct{ providerTabView }
 func newAwsView() awsView {
 	header := paneTitleStyle.Render("AWS") + mutedStyle.Render(" — IAM Identity Center · SSO")
 	actions := []providerAction{
-		{"s", "Sign in", func(v *providerTabView) {
-			v.status = accentStyle.Render("Run `azrl aws login` in a terminal to sign in (interactive).")
-		}},
+		{"s", "Sign in", loginAction("aws", true)},
 		{"u", "Use here", useAction},
-		{"a", "New profile", func(v *providerTabView) {
-			v.status = accentStyle.Render("Run `azrl aws login <name>` to create and sign into a new profile.")
-		}},
+		{"a", "New profile", loginAction("aws", false)},
 		{"delete", "Remove", removeAction},
 	}
 	return awsView{newProviderTabView(aws.NewProvider(), header, actions)}

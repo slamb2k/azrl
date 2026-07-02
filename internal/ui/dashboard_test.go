@@ -137,7 +137,7 @@ func TestDashboardAmbientRows(t *testing.T) {
 		t.Fatalf("ambient row missing 🌐 marker:\n%s", v)
 	}
 	// octocat@github.com matches the saved "work" profile's identity.
-	if !strings.Contains(v, "→ work") {
+	if !strings.Contains(v, "profile: work") {
 		t.Fatalf("ambient row missing matched profile:\n%s", v)
 	}
 

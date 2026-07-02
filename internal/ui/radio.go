@@ -76,5 +76,7 @@ func (r radio) view(width int) string {
 		}
 		lines = append(lines, left+strings.Repeat(" ", gap)+cap)
 	}
-	return strings.Join(lines, "\n")
+	// One blank line between rows keeps each action visually distinct,
+	// matching the profile pane's spacing.
+	return strings.Join(lines, "\n\n")
 }

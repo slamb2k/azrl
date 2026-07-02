@@ -11,10 +11,11 @@ import (
 )
 
 // providerAction is one entry in a provider tab's action pane. run mutates the
-// view in place to reflect the action's outcome (status line, reloaded list).
+// view in place to reflect the action's outcome (status line, reloaded list)
+// and may return a command (e.g. a runHandoff exec) for interactive flows.
 type providerAction struct {
 	key, label string
-	run        func(v *providerTabView)
+	run        func(v *providerTabView) tea.Cmd
 }
 
 // providerTabView is the shared provider-tab component: a profile-list pane plus
@@ -28,6 +29,7 @@ type providerTabView struct {
 	actions   []providerAction
 	header    string
 	profiles  []profile.Listed
+	active    string
 	cursor    int
 	focus     int
 	actionCur int
@@ -40,8 +42,29 @@ type providerTabView struct {
 // header and action set, loading the profile list up front.
 func newProviderTabView(prov provider.Provider, header string, actions []providerAction) providerTabView {
 	v := providerTabView{prov: prov, header: header, actions: actions}
-	v.profiles, _ = v.prov.ListProfiles(v.prov.ProfilesDir())
+	v.reload()
 	return v
+}
+
+// reload refreshes the profile list and recomputes which saved profile the
+// provider's ambient identity currently matches (the ● active marker).
+// Disk-only, mirroring the dashboard's aggregation.
+func (v *providerTabView) reload() {
+	dir := v.prov.ProfilesDir()
+	v.profiles, _ = v.prov.ListProfiles(dir)
+	v.active = ""
+	if amb, err := v.prov.Ambient(); err == nil && amb.Identity != "" {
+		statuses := make([]provider.Status, 0, len(v.profiles))
+		for _, p := range v.profiles {
+			if st, err := v.prov.Status(p.Name, dir); err == nil {
+				statuses = append(statuses, st)
+			}
+		}
+		v.active = provider.MatchProfile(statuses, amb.Identity)
+	}
+	if v.cursor >= len(v.profiles) {
+		v.cursor = 0
+	}
 }
 
 func (v providerTabView) Init() tea.Cmd { return nil }
@@ -91,7 +114,7 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			if v.focus == focusProfiles {
 				v.focus = focusActions
 			} else {
-				v = v.dispatch(v.actions[v.actionCur].key)
+				return v.dispatch(v.actions[v.actionCur].key)
 			}
 		default:
 			// An accelerator key selects its action and runs it; any other key is a
@@ -99,10 +122,18 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			for i, a := range v.actions {
 				if a.key == msg.String() {
 					v.actionCur = i
-					v = v.dispatch(a.key)
-					break
+					return v.dispatch(a.key)
 				}
 			}
+		}
+	case opDoneMsg:
+		// An interactive handoff (sign in, new profile, adopt) finished; pick up
+		// whatever it changed on disk.
+		v.reload()
+		if msg.err != nil {
+			v.status = failureStyle.Render("✗ " + msg.err.Error())
+		} else if msg.msg != "" {
+			v.status = successStyle.Render("✓ " + msg.msg)
 		}
 	}
 	return v, nil
@@ -117,25 +148,41 @@ func (v providerTabView) selected() string {
 }
 
 // dispatch runs the action bound to key against the selected profile.
-func (v providerTabView) dispatch(key string) providerTabView {
+func (v providerTabView) dispatch(key string) (providerTabView, tea.Cmd) {
 	for _, a := range v.actions {
 		if a.key == key {
 			if a.run != nil {
-				a.run(&v)
+				return v, a.run(&v)
 			}
 			break
 		}
 	}
-	return v
+	return v, nil
+}
+
+// loginAction hands off to the provider's interactive `login` flow in the
+// terminal (browser bridge and prompts included), signing into the selected
+// profile — or the bare picker/create flow when withSelected is false.
+func loginAction(group string, withSelected bool) func(v *providerTabView) tea.Cmd {
+	return func(v *providerTabView) tea.Cmd {
+		args := groupArgs(group, "login")
+		if withSelected {
+			if name := v.selected(); name != "" {
+				args = append(args, name)
+			}
+		}
+		v.status = ""
+		return runHandoff(args)
+	}
 }
 
 // useAction pins the current directory to the selected profile. Shared by all
 // providers.
-func useAction(v *providerTabView) {
+func useAction(v *providerTabView) tea.Cmd {
 	name := v.selected()
 	if name == "" {
 		v.status = mutedStyle.Render("no profile selected")
-		return
+		return nil
 	}
 	dir := v.prov.ProfilesDir()
 	pwd, _ := os.Getwd()
@@ -144,15 +191,16 @@ func useAction(v *providerTabView) {
 	} else {
 		v.status = successStyle.Render(fmt.Sprintf("pinned this dir to %q", name))
 	}
+	return nil
 }
 
 // removeAction deletes the selected profile and reloads the list. Shared by all
 // providers.
-func removeAction(v *providerTabView) {
+func removeAction(v *providerTabView) tea.Cmd {
 	name := v.selected()
 	if name == "" {
 		v.status = mutedStyle.Render("no profile selected")
-		return
+		return nil
 	}
 	dir := v.prov.ProfilesDir()
 	pwd, _ := os.Getwd()
@@ -160,11 +208,9 @@ func removeAction(v *providerTabView) {
 		v.status = failureStyle.Render(err.Error())
 	} else {
 		v.status = successStyle.Render(fmt.Sprintf("removed %q", name))
-		v.profiles, _ = v.prov.ListProfiles(dir)
-		if v.cursor >= len(v.profiles) {
-			v.cursor = 0
-		}
+		v.reload()
 	}
+	return nil
 }
 
 // identityStrip mirrors the Azure Model's header: a ◆-accented provider
@@ -183,7 +229,7 @@ func (v providerTabView) identityStrip() string {
 func (v providerTabView) View() string {
 	_, leftW, rightW, _ := (Model{width: v.width, height: v.height}).dims()
 
-	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles, leftW)
+	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles, leftW, v.active)
 
 	// Render the provider's own action set as the shared radio group so the right
 	// pane matches Azure's ◉/○ + [key] look exactly (dispatch is unchanged).
