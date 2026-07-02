@@ -112,11 +112,12 @@ func TestDashboardMappingSectionAndScopeMarkers(t *testing.T) {
 		t.Fatalf("cwd mapping should carry ●:\n%s", v)
 	}
 
-	// From a child dir the governing ancestor carries ↑ instead.
+	// From a child dir the governing ancestor still carries the ● marker
+	// (orange in a colour terminal; scope is colour-graded, not glyph-graded).
 	t.Chdir(sub)
 	v = sizedDashboard(t).View()
-	if strings.Contains(v, "●") || !strings.Contains(v, "↑") {
-		t.Fatalf("ancestor mapping should carry ↑ (not ●):\n%s", v)
+	if !strings.Contains(v, "●") {
+		t.Fatalf("ancestor mapping should carry the ● marker:\n%s", v)
 	}
 
 	// Mapped profiles leave the unmapped section (AC-011).

@@ -282,16 +282,18 @@ func (m dashboardModel) View() string {
 	return m.frame(header, body, help)
 }
 
-// scopeMarker renders the mapping's cwd relationship: set here (●), inherited
-// from the nearest governing ancestor (↑), or not governing the cwd (blank).
+// scopeMarker renders the mapping's cwd relationship with the same colour
+// ramp as the profile tabs: ● green set here, ● orange inherited from the
+// nearest governing ancestor, ● dark-white mapped elsewhere (not governing
+// the cwd).
 func scopeMarker(scope string) string {
 	switch scope {
 	case ScopeCwd:
-		return accentStyle.Render("●")
+		return successStyle.Render("●")
 	case ScopeAncestor:
-		return accentStyle.Render("↑")
+		return lipgloss.NewStyle().Foreground(goldDeep).Render("●")
 	}
-	return " "
+	return lipgloss.NewStyle().Foreground(whiteDim).Render("●")
 }
 
 // sourceIcon renders where the mapping comes from: the provider's pointer
@@ -377,7 +379,9 @@ func ambientLine(r AmbientRow, titleW, idW, srcW int) string {
 // identity · expiry (the expiry keeps its warning styling).
 func unmappedLine(r UnmappedRow) string {
 	st := r.Status
-	return mutedStyle.Render(r.Provider+":"+st.ProfileName+" · "+orDash(st.Identity)+" · ") + expiryText(st.Expiry)
+	// The deep-grey ● matches the profile tabs' mapped-nowhere tier.
+	return lipgloss.NewStyle().Foreground(grayDeep).Render("●") + " " +
+		mutedStyle.Render(r.Provider+":"+st.ProfileName+" · "+orDash(st.Identity)+" · ") + expiryText(st.Expiry)
 }
 
 // frame assembles the dashboard content and fills it to the full terminal width
