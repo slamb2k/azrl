@@ -68,28 +68,21 @@ func keyGlyph(key string) string {
 // visual language as the focused-pane title.
 func keycap(key string) string { return keycapChipStyle.Render(" " + keyGlyph(key) + " ") }
 
-// scopeGlobal extends the overview's Scope values for profile rows: the
-// profile is active as the provider's global default (ambient identity).
-const scopeGlobal = "global"
-
 // renamedStyle marks a relabeled profile's display name (dull-white italic),
 // replacing the old "*" footnote legend.
 var renamedStyle = lipgloss.NewStyle().Foreground(whiteDim).Italic(true)
 
-// scopeSlot renders a profile row's leading active-identity icon as a
-// fixed-width slot so names align regardless of glyph (🌐 is double-width):
-// ● green when the pin is in the current dir, ● orange when inherited from a
-// parent dir, 🌐 when the profile is the provider's global default, blank
-// when the identity is not active anywhere. When several scopes apply the
-// caller passes the effective one (cwd > parent > global).
+// scopeSlot renders a profile row's leading icon as a fixed-width slot so
+// names align regardless of glyph (🌐 is double-width): ● green when a pin in
+// the current dir makes the profile effective, ● orange when the pin is
+// inherited from a parent dir, and the default 🌐 for every other profile —
+// available globally, not governing this directory.
 func scopeSlot(scope string) string {
 	switch scope {
 	case ScopeCwd:
 		return successStyle.Render("●") + "  "
 	case ScopeAncestor:
 		return lipgloss.NewStyle().Foreground(goldDeep).Render("●") + "  "
-	case scopeGlobal:
-		return "🌐 "
 	}
-	return "   "
+	return "🌐 "
 }

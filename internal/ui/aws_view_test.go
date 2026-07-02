@@ -94,16 +94,14 @@ func TestRenderProfilePaneScopeGlyphs(t *testing.T) {
 		{Name: "personal", Detail: "personal.awsapps.com"},
 		{Name: "idle", Detail: "idle.awsapps.com"},
 	}
-	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal}
+	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor}
 	out := renderProfilePane(profiles, 0, true, 40, scopes)
 	if !strings.Contains(out, "●  work") || !strings.Contains(out, "●  staging") {
 		t.Fatalf("dir-pinned profiles missing leading ● icon:\n%s", out)
 	}
-	if !strings.Contains(out, "🌐 personal") {
-		t.Fatalf("global-default profile missing 🌐 icon:\n%s", out)
-	}
-	if !strings.Contains(out, "   idle") || strings.Contains(out, "● idle") {
-		t.Fatalf("inactive profile must carry a blank icon slot:\n%s", out)
+	// Every unpinned profile carries the default 🌐 icon — no blank slots.
+	if !strings.Contains(out, "🌐 personal") || !strings.Contains(out, "🌐 idle") {
+		t.Fatalf("unpinned profiles missing default 🌐 icon:\n%s", out)
 	}
 }
 
