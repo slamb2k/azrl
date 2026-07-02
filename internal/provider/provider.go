@@ -20,6 +20,13 @@ type Status struct {
 	LastUsed    time.Time
 }
 
+// Ambient is a provider's native default identity — the account its CLI would
+// use right now with no azrl involvement.
+type Ambient struct {
+	Identity string // "" when none/unreadable
+	Source   string // "env:AWS_PROFILE" | "file:~/.config/gh/hosts.yml" | ...
+}
+
 // Provider is one login target. The profile-mechanic methods delegate to the
 // provider's Scheme so behaviour stays identical across providers; provider-
 // specific sign-in orchestration lives on the concrete type, not here.
@@ -50,4 +57,9 @@ type Provider interface {
 	// so the dashboard can watch them for external token changes. It stat-filters
 	// to existing dirs and is best-effort: it never errors.
 	WatchDirs() []string
+	// Ambient returns the provider's native default identity from local disk and
+	// the process environment only. It MUST NOT make network calls or spawn any
+	// CLI, and is best-effort: missing or unparseable native state yields the
+	// zero value with a nil error.
+	Ambient() (Ambient, error)
 }

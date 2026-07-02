@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // SetupRepo wires git-HTTPS credentials for a pinned repo: it registers gh as
@@ -24,26 +24,7 @@ func SetupRepo(profilesDir, name, pwd string, c Conf) error {
 		if err := exec.Command("git", "-C", pwd, "config", "--local", key, c.User).Run(); err != nil {
 			return fmt.Errorf("ghrl: setting %s failed: %w", key, err)
 		}
+		_ = profile.RecordMapping(profilesDir, profile.Mapping{Dir: pwd, Profile: name, Source: "gitconfig"})
 	}
 	return nil
-}
-
-// Switch records name as the active profile in <profilesDir>/.current after
-// verifying its conf exists. This is the global default used when a repo has no
-// .ghprofile pin.
-func Switch(profilesDir, name string) error {
-	conf := filepath.Join(profilesDir, name+".conf")
-	if _, err := os.Stat(conf); err != nil {
-		return fmt.Errorf("ghrl: no such profile %q (missing %s)", name, conf)
-	}
-	return os.WriteFile(filepath.Join(profilesDir, ".current"), []byte(name+"\n"), 0o644)
-}
-
-// Current returns the active profile recorded by Switch, or "" when none is set.
-func Current(profilesDir string) string {
-	b, err := os.ReadFile(filepath.Join(profilesDir, ".current"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
 }

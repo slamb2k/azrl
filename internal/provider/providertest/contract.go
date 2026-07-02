@@ -97,6 +97,15 @@ func RunContract(t *testing.T, p provider.Provider) {
 		t.Fatal("Status shelled out to a provider CLI (network call)")
 	}
 
+	// Ambient is a best-effort disk+env snapshot; it must never shell out to a
+	// provider CLI either, and missing state is tolerated (zero value + nil error).
+	if _, err := p.Ambient(); err != nil {
+		t.Logf("Ambient: %v (best-effort, tolerated)", err)
+	}
+	if _, err := os.Stat(sentinel); err == nil {
+		t.Fatal("Ambient shelled out to a provider CLI (network call)")
+	}
+
 	// WatchDirs is a best-effort disk enumeration for the dashboard's fs watcher:
 	// sanity-call it to confirm it never panics (it may legitimately be empty).
 	_ = p.WatchDirs()

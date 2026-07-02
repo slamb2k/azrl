@@ -53,12 +53,61 @@ func TestGhListPrintsProfiles(t *testing.T) {
 	}
 }
 
-func TestGhSwitchRecordsCurrent(t *testing.T) {
+// TestGhSwitchCommandRemoved proves the `switch` command is gone from both the
+// gh group and the promoted ghrl top level: the hidden stubs return guidance,
+// write no .current file, and appear in no help output.
+func TestGhSwitchCommandRemoved(t *testing.T) {
 	home := seedGhHome(t)
-	runRoot(t, "gh", "switch", "work")
-	b, err := os.ReadFile(filepath.Join(home, ".github-profiles", ".current"))
-	if err != nil || strings.TrimSpace(string(b)) != "work" {
-		t.Fatalf(".current=%q err=%v", string(b), err)
+
+	out, err := execRoot(t, "gh", "switch", "work")
+	if err == nil {
+		t.Fatalf("removed switch command should error (out=%q)", out)
+	}
+	if !strings.Contains(err.Error(), "'switch' was removed") || !strings.Contains(err.Error(), "gh auth switch") {
+		t.Fatalf("wrong guidance error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".github-profiles", ".current")); !os.IsNotExist(statErr) {
+		t.Fatal("removed switch must not write .current")
+	}
+
+	ghrl := GhrlRoot()
+	buf := new(bytes.Buffer)
+	ghrl.SetOut(buf)
+	ghrl.SetErr(buf)
+	ghrl.SetArgs([]string{"switch", "work"})
+	if err := ghrl.Execute(); err == nil || !strings.Contains(err.Error(), "'switch' was removed") {
+		t.Fatalf("ghrl switch stub error: %v (out=%q)", err, buf.String())
+	}
+
+	if help := runRoot(t, "gh", "--help"); strings.Contains(help, "switch") {
+		t.Fatalf("switch must be hidden from gh help:\n%s", help)
+	}
+	ghrlHelp := GhrlRoot()
+	hbuf := new(bytes.Buffer)
+	ghrlHelp.SetOut(hbuf)
+	ghrlHelp.SetErr(hbuf)
+	ghrlHelp.SetArgs([]string{"--help"})
+	if err := ghrlHelp.Execute(); err != nil {
+		t.Fatalf("ghrl --help: %v", err)
+	}
+	if strings.Contains(hbuf.String(), "switch") {
+		t.Fatalf("switch must be hidden from ghrl help:\n%s", hbuf.String())
+	}
+}
+
+// TestGhStatusIgnoresStaleCurrent proves a leftover .current file changes
+// nothing: gh status neither reads nor mentions it.
+func TestGhStatusIgnoresStaleCurrent(t *testing.T) {
+	home := seedGhHome(t)
+	chdirClean(t)
+	os.WriteFile(filepath.Join(home, ".github-profiles", ".current"), []byte("work\n"), 0o644)
+
+	out := runRoot(t, "gh", "status")
+	if strings.Contains(out, "active profile") || strings.Contains(out, "work") {
+		t.Fatalf("stale .current must be ignored:\n%s", out)
+	}
+	if !strings.Contains(out, "no .ghprofile pin") {
+		t.Fatalf("status should still report the pin state:\n%s", out)
 	}
 }
 

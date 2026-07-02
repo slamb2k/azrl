@@ -116,22 +116,16 @@ func newGhUseCmd() *cobra.Command {
 	}
 }
 
-func newGhSwitchCmd() *cobra.Command {
+// newGhSwitchStubCmd is a hidden stub that replaces the removed `switch`
+// command. It runs nothing and returns guidance pointing at gh's own account
+// switching (same pattern as the removed `init` stub).
+func newGhSwitchStubCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "switch <name>",
-		Short: "Set the active GitHub profile (default when a repo has no .ghprofile)",
-		Args:  cobra.ExactArgs(1),
+		Use:    "switch [name]",
+		Hidden: true,
+		Args:   cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			if err := validGhName(name); err != nil {
-				return err
-			}
-			prov := github.NewProvider()
-			if err := github.Switch(prov.ProfilesDir(), name); err != nil {
-				return err
-			}
-			cmd.Printf("ghrl: active profile is now %q\n", name)
-			return nil
+			return fmt.Errorf("ghrl: 'switch' was removed — the default account is whatever gh itself is signed into; use 'gh auth switch', or map a directory with 'ghrl use <name>'")
 		},
 	}
 }
@@ -196,15 +190,9 @@ func newGhCaptureCmd() *cobra.Command {
 func newGhStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Show the active and repo-pinned GitHub profiles",
+		Short: "Show the repo-pinned GitHub profile",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prov := github.NewProvider()
-			dir := prov.ProfilesDir()
-			if cur := github.Current(dir); cur != "" {
-				cmd.Printf("active profile: %s\n", cur)
-			} else {
-				cmd.Println("active profile: (none — use `gh switch`)")
-			}
 			pwd, _ := os.Getwd()
 			if pin, err := prov.Resolve("", pwd); err == nil {
 				cmd.Printf("this dir is pinned to: %s\n", pin)
@@ -220,7 +208,7 @@ func newGhStatusCmd() *cobra.Command {
 // bind to one parent, so both `azrl gh …` and the ghrl alias build their own).
 func githubSubcommands() []*cobra.Command {
 	return []*cobra.Command{
-		newGhLoginCmd(), newGhListCmd(), newGhUseCmd(), newGhSwitchCmd(),
+		newGhLoginCmd(), newGhListCmd(), newGhUseCmd(), newGhSwitchStubCmd(),
 		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(),
 	}
 }
@@ -229,7 +217,7 @@ func githubSubcommands() []*cobra.Command {
 func newGhGroupCmd() *cobra.Command {
 	g := &cobra.Command{
 		Use:   "gh",
-		Short: "Manage GitHub accounts (login, use, switch, …)",
+		Short: "Manage GitHub accounts (login, use, …)",
 	}
 	g.AddCommand(githubSubcommands()...)
 	return g

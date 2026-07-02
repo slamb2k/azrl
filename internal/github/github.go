@@ -51,6 +51,11 @@ func (Provider) ListProfiles(confdir string) ([]profile.Listed, error) {
 }
 
 func (Provider) Resolve(arg, dir string) (string, error) {
+	if arg == "" {
+		if r := ResolveDir(dir, config.GithubProfilesDir()); r.Profile != "" {
+			return r.Profile, nil
+		}
+	}
 	return scheme.Resolve(arg, dir)
 }
 

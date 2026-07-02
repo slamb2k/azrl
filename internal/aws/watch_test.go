@@ -44,3 +44,37 @@ func TestWatchDirsReturnsExistingDirs(t *testing.T) {
 		}
 	}
 }
+
+// TestWatchDirsIncludesAmbientConfigDir proves the dir of the native
+// ${AWS_CONFIG_FILE:-~/.aws/config} is watched so ambient rows live-update.
+func TestWatchDirsIncludesAmbientConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	native := filepath.Join(home, ".aws")
+	os.MkdirAll(native, 0o755)
+	t.Setenv("AWS_CONFIG_FILE", "")
+
+	found := false
+	for _, d := range aws.NewProvider().WatchDirs() {
+		if d == native {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("WatchDirs missing native config dir %q", native)
+	}
+
+	// AWS_CONFIG_FILE's dir wins over the ~/.aws default.
+	override := filepath.Join(home, "custom-aws")
+	os.MkdirAll(override, 0o755)
+	t.Setenv("AWS_CONFIG_FILE", filepath.Join(override, "config"))
+	found = false
+	for _, d := range aws.NewProvider().WatchDirs() {
+		if d == override {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("WatchDirs missing AWS_CONFIG_FILE dir %q", override)
+	}
+}

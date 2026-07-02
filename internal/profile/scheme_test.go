@@ -140,3 +140,75 @@ func TestSchemeSetLabelPreservesKeys(t *testing.T) {
 		t.Fatalf("empty label should revert to slug: %+v", profs[0])
 	}
 }
+
+func TestSchemeUseRecordsPointerMapping(t *testing.T) {
+	confdir := t.TempDir()
+	work := t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "work.conf"), []byte("GH_HOST=github.com\n"), 0o644)
+	if err := ghScheme.Use("work", confdir, work); err != nil {
+		t.Fatal(err)
+	}
+	got := ReadMappings(confdir)
+	want := Mapping{Dir: work, Profile: "work", Source: "pointer"}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("mappings = %+v, want [%+v]", got, want)
+	}
+}
+
+func TestSchemeTouchRecordsHandMadePointerMapping(t *testing.T) {
+	confdir := t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "work.conf"), []byte("GH_HOST=github.com\n"), 0o644)
+	root := t.TempDir()
+	deep := filepath.Join(root, "a", "b")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Hand-written pointer in an ancestor dir, unknown to the index.
+	os.WriteFile(filepath.Join(root, ".ghprofile"), []byte("work\n"), 0o644)
+	if err := ghScheme.Touch("work", confdir, deep); err != nil {
+		t.Fatal(err)
+	}
+	got := ReadMappings(confdir)
+	want := Mapping{Dir: root, Profile: "work", Source: "pointer"}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("mappings = %+v, want [%+v]", got, want)
+	}
+}
+
+func TestSchemeTouchNoMappingWithoutGoverningPointer(t *testing.T) {
+	confdir := t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "work.conf"), []byte("GH_HOST=github.com\n"), 0o644)
+	// No pointer at all.
+	if err := ghScheme.Touch("work", confdir, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadMappings(confdir); got != nil {
+		t.Fatalf("no pointer: mappings = %+v, want none", got)
+	}
+	// A pointer naming a different profile must not map this one.
+	other := t.TempDir()
+	os.WriteFile(filepath.Join(other, ".ghprofile"), []byte("personal\n"), 0o644)
+	if err := ghScheme.Touch("work", confdir, other); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadMappings(confdir); got != nil {
+		t.Fatalf("foreign pointer: mappings = %+v, want none", got)
+	}
+}
+
+func TestSchemeTouchMappingBestEffort(t *testing.T) {
+	confdir := t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "work.conf"), []byte("GH_HOST=github.com\n"), 0o644)
+	work := t.TempDir()
+	os.WriteFile(filepath.Join(work, ".ghprofile"), []byte("work\n"), 0o644)
+	// A directory squatting on the index path makes RecordMapping fail.
+	if err := os.Mkdir(filepath.Join(confdir, "mappings"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ghScheme.Touch("work", confdir, work); err != nil {
+		t.Fatalf("Touch must not fail on mapping errors: %v", err)
+	}
+	if _, dir := ghScheme.LastTouch("work", confdir); dir != work {
+		t.Fatalf("LAST_DIR = %q, want %q", dir, work)
+	}
+}

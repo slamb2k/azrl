@@ -14,6 +14,9 @@ func seedStatusHome(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME"} {
+		t.Setenv(k, "")
+	}
 	az := filepath.Join(home, ".azure-profiles")
 	os.MkdirAll(filepath.Join(az, "acme"), 0o755)
 	os.WriteFile(filepath.Join(az, "acme.conf"),
@@ -25,14 +28,35 @@ func seedStatusHome(t *testing.T) {
 	os.WriteFile(filepath.Join(gh, "work.conf"), []byte("GH_HOST=github.com\n"), 0o644)
 }
 
-func TestStatusCmdPlainTable(t *testing.T) {
+func TestStatusCmdPlainSections(t *testing.T) {
 	seedStatusHome(t)
 	statusJSON = false
 	out := runRoot(t, "status")
-	for _, want := range []string{"PROVIDER", "Azure", "acme", "u@acme.com", "GitHub", "work"} {
+	for _, want := range []string{"MAPPINGS", "AMBIENT", "UNMAPPED PROFILES",
+		"azure:acme", "u@acme.com", "github:work"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("status output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestStatusCmdPlainShowsMappingWithScope(t *testing.T) {
+	seedStatusHome(t)
+	home := os.Getenv("HOME")
+	work := filepath.Join(home, "work")
+	os.MkdirAll(work, 0o755)
+	os.WriteFile(filepath.Join(work, ".azprofile"), []byte("acme\n"), 0o644)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "mappings"),
+		[]byte(work+"\tacme\tpointer\n"), 0o644)
+	t.Chdir(work)
+	statusJSON = false
+	out := runRoot(t, "status")
+	if !strings.Contains(out, "● "+work+" → azure:acme") || !strings.Contains(out, ".azprofile") {
+		t.Fatalf("mapping row with cwd marker missing:\n%s", out)
+	}
+	// Mapped profiles leave the unmapped section.
+	if strings.Contains(out, "azure:acme · ") {
+		t.Fatalf("mapped profile still listed as unmapped:\n%s", out)
 	}
 }
 
@@ -73,12 +97,12 @@ func TestStatusCmdJSONWritesToStdout(t *testing.T) {
 	if out == "" {
 		t.Fatalf("status --json wrote nothing to stdout (err buffer=%q)", errBuf.String())
 	}
-	var rows []statusRow
-	if err := json.Unmarshal([]byte(out), &rows); err != nil {
-		t.Fatalf("stdout is not a JSON array: %v\n%s", err, out)
+	var rep statusReport
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("stdout is not the three-section JSON object: %v\n%s", err, out)
 	}
-	if len(rows) == 0 {
-		t.Fatalf("expected rows on stdout, got none")
+	if len(rep.Unmapped) == 0 {
+		t.Fatalf("expected unmapped rows on stdout, got none")
 	}
 }
 
@@ -94,13 +118,23 @@ func TestStatusCmdPlainTableWritesToStdout(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(out, "PROVIDER") {
-		t.Fatalf("plain table not on stdout (err buffer=%q)", errBuf.String())
+	if !strings.Contains(out, "MAPPINGS") {
+		t.Fatalf("plain sections not on stdout (err buffer=%q)", errBuf.String())
 	}
 }
 
 func TestStatusCmdJSON(t *testing.T) {
 	seedStatusHome(t)
+	home := os.Getenv("HOME")
+	work := filepath.Join(home, "work")
+	os.MkdirAll(work, 0o755)
+	os.WriteFile(filepath.Join(work, ".azprofile"), []byte("acme\n"), 0o644)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "mappings"),
+		[]byte(work+"\tacme\tpointer\n"), 0o644)
+	// Point the ambient env at acme's isolated dir so the pinned cwd is not drifted.
+	t.Setenv("AZURE_CONFIG_DIR", filepath.Join(home, ".azure-profiles", "acme"))
+	t.Chdir(work)
+
 	buf := new(bytes.Buffer)
 	RootCmd.SetOut(buf)
 	RootCmd.SetErr(buf)
@@ -109,23 +143,55 @@ func TestStatusCmdJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	statusJSON = false
-	var rows []statusRow
-	if err := json.Unmarshal(buf.Bytes(), &rows); err != nil {
+
+	// The exact three-section object shape (AC-012): no extra top-level keys.
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(buf.Bytes(), &top); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, buf.String())
 	}
-	if len(rows) != 2 {
-		t.Fatalf("want 2 rows, got %d: %+v", len(rows), rows)
-	}
-	var azure, github bool
-	for _, r := range rows {
-		if r.Provider == "Azure" && r.ProfileName == "acme" && r.Identity == "u@acme.com" {
-			azure = true
-		}
-		if r.Provider == "GitHub" && r.ProfileName == "work" {
-			github = true
+	for _, key := range []string{"mappings", "ambient", "unmapped"} {
+		if _, ok := top[key]; !ok {
+			t.Fatalf("missing %q key:\n%s", key, buf.String())
 		}
 	}
-	if !azure || !github {
-		t.Fatalf("rows missing a provider: %+v", rows)
+	if len(top) != 3 {
+		t.Fatalf("want exactly 3 top-level keys, got %d:\n%s", len(top), buf.String())
+	}
+
+	var rep statusReport
+	if err := json.Unmarshal(buf.Bytes(), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Mappings) != 1 {
+		t.Fatalf("want 1 mapping, got %+v", rep.Mappings)
+	}
+	m := rep.Mappings[0]
+	if m.Dir != work || m.Provider != "azure" || m.Profile != "acme" ||
+		m.Source != "pointer" || m.Scope != "cwd" || m.Drifted {
+		t.Fatalf("mapping = %+v", m)
+	}
+	// Ambient rows carry profile:null when unmanaged; none exist in this fixture.
+	if rep.Ambient == nil {
+		t.Fatalf("ambient must be an empty array, not null:\n%s", buf.String())
+	}
+	// acme is mapped, so only the github profile remains unmapped.
+	if len(rep.Unmapped) != 1 || rep.Unmapped[0].Provider != "github" || rep.Unmapped[0].ProfileName != "work" {
+		t.Fatalf("unmapped = %+v", rep.Unmapped)
+	}
+}
+
+func TestStatusCmdJSONEmptySectionsAreArrays(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME"} {
+		t.Setenv(k, "")
+	}
+	statusJSON = false
+	out := runRoot(t, "status", "--json")
+	statusJSON = false
+	for _, want := range []string{`"mappings": []`, `"ambient": []`, `"unmapped": []`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("empty section not an array (%q):\n%s", want, out)
+		}
 	}
 }

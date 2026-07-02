@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // fakeGhGit installs gh and git shims that log their args + GH_CONFIG_DIR.
@@ -43,6 +45,11 @@ func TestSetupRepoWiresCredentialHelperAndUsername(t *testing.T) {
 	}
 	if !strings.Contains(s, "-C "+pwd) {
 		t.Fatalf("git not run in pwd: %s", s)
+	}
+	got := profile.ReadMappings(profilesDir)
+	want := profile.Mapping{Dir: pwd, Profile: "work", Source: "gitconfig"}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("mappings = %+v, want [%+v]", got, want)
 	}
 }
 
