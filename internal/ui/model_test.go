@@ -118,14 +118,23 @@ func TestEditHotkeySelectsRadio(t *testing.T) {
 func TestItemDisplaysLabelOverSlug(t *testing.T) {
 	// no label: title is the slug, description is just the tenant.
 	plain := item{name: "acme", tenant: "acme.com"}
-	if plain.Title() != "○ acme" || plain.Description() != "acme.com" {
+	if plain.Title() != "acme" || plain.Description() != "acme.com" {
 		t.Fatalf("plain item: title=%q desc=%q", plain.Title(), plain.Description())
 	}
 	// with a label: title is the label plus an alias marker; the slug is hidden
 	// and the description is just the tenant.
 	labeled := item{name: "acme", label: "Acme Production", tenant: "contoso.com"}
-	if !strings.Contains(labeled.Title(), "Acme Production") || labeled.Title() == "Acme Production" {
-		t.Fatalf("labeled title should be the label plus a marker: %q", labeled.Title())
+	if !strings.Contains(labeled.Title(), "Acme Production") {
+		t.Fatalf("labeled title should show the label: %q", labeled.Title())
+	}
+	// The active-identity indicator trails the name.
+	pinned := item{name: "acme", tenant: "acme.com", scope: ScopeCwd}
+	if !strings.Contains(pinned.Title(), "acme ●") {
+		t.Fatalf("cwd-pinned item missing trailing dot: %q", pinned.Title())
+	}
+	global := item{name: "acme", tenant: "acme.com", scope: scopeGlobal}
+	if !strings.Contains(global.Title(), "acme 🌐") {
+		t.Fatalf("global-default item missing 🌐: %q", global.Title())
 	}
 	if labeled.Description() != "contoso.com" {
 		t.Fatalf("labeled desc should be just the tenant: %q", labeled.Description())

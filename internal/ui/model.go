@@ -65,26 +65,22 @@ func profileDelegate() list.DefaultDelegate {
 // set, the slug is shown alongside the tenant so it stays discoverable.
 type item struct {
 	name, label, tenant string
-	active              bool
+	scope               string
 }
 
-// aliasMark flags a row whose display name is a custom label. The real slug is
-// hidden (it lives in the .conf and the rename/edit dialogs), so the marker is
-// what distinguishes a relabeled profile from a plain one at a glance. A "*"
-// footnote in the help bar (see helpBar) explains it on screen.
-const aliasMark = " *"
-
-// Title leads with ● when the profile matches az's ambient identity (○
-// otherwise), plain text so the delegate's row styles apply cleanly.
+// Title renders the display name — the renamedStyle accent when a custom
+// label is set — and ends with the active-identity indicator (scopeGlyph).
+// The styled segments sit at the end of the line so the delegate's own row
+// styling survives on the plain prefix.
 func (i item) Title() string {
-	dot := "○ "
-	if i.active {
-		dot = "● "
-	}
+	t := i.name
 	if i.label != "" && i.label != i.name {
-		return dot + i.label + aliasMark
+		t = renamedStyle.Render(i.label)
 	}
-	return dot + i.name
+	if g := scopeGlyph(i.scope); g != "" {
+		t += " " + g
+	}
+	return t
 }
 
 func (i item) Description() string {
@@ -130,8 +126,23 @@ func NewModel() Model {
 		}
 		active = provider.MatchProfile(statuses, amb.Identity)
 	}
+	dirProfile, dirScope := "", ""
+	if name, err := profile.Resolve("", pwd); err == nil && name != "" {
+		dirProfile = name
+		dirScope = ScopeAncestor
+		if d, ok := profile.LocateAzprofile(pwd); ok && d == pwd {
+			dirScope = ScopeCwd
+		}
+	}
 	for _, p := range profs {
-		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, active: p.Name == active})
+		scope := ""
+		switch {
+		case p.Name == dirProfile:
+			scope = dirScope
+		case p.Name == active:
+			scope = scopeGlobal
+		}
+		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, scope: scope})
 	}
 	l := list.New(items, profileDelegate(), 0, 0)
 	l.Title = "Profiles"
@@ -557,9 +568,10 @@ func renderPaneFrame(width, height int, identity, left, right, status, footer st
 // renderProfilePane hand-renders a PROFILES(n) pane for a slice of profiles,
 // mirroring the Azure list delegate (selectionBar on the focused row, muted
 // details) so the provider tabs match the Azure Model without a bubbles list.
-// Each row leads with ● when the profile matches the provider's ambient
-// identity (○ otherwise), and renamed profiles render their label in italics.
-func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, leftW int, active string) string {
+// Rows end with their active-identity indicator (scopeGlyph: ● green cwd pin,
+// ● orange parent pin, 🌐 global default); renamed profiles render their
+// label in the renamedStyle accent instead of a footnote legend.
+func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, leftW int, scopes map[string]string) string {
 	var b strings.Builder
 	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), focused))
 	b.WriteString("\n\n")
@@ -577,24 +589,28 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 			// matching the Azure list delegate's spacing.
 			b.WriteString("\n")
 		}
-		dot := "○"
-		if p.Name == active {
-			dot = "●"
-		}
 		renamed := p.Label != "" && p.Label != p.Name
-		name := dot + " " + truncateLine(p.Display(), textW)
-		detail := "  " + truncateLine(p.Detail, textW)
+		name := truncateLine(p.Display(), textW)
+		detail := truncateLine(p.Detail, textW)
+		glyph := ""
+		if g := scopeGlyph(scopes[p.Name]); g != "" {
+			glyph = " " + g
+		}
+		nameStyle := lipgloss.NewStyle().Foreground(white).PaddingLeft(2)
+		detailStyle := mutedStyle.PaddingLeft(2)
 		switch {
 		case i == cursor && focused:
-			b.WriteString(selectionBar.Foreground(gold).Bold(true).Italic(renamed).Render(name) + "\n")
-			b.WriteString(selectionBar.Foreground(azureSky).Render(detail) + "\n")
+			nameStyle = selectionBar.Foreground(gold).Bold(true)
+			detailStyle = selectionBar.Foreground(azureSky)
 		case i == cursor:
-			b.WriteString(selectionBar.Foreground(white).Italic(renamed).Render(name) + "\n")
-			b.WriteString(selectionBar.Foreground(gray).Render(detail) + "\n")
-		default:
-			b.WriteString(lipgloss.NewStyle().Foreground(white).PaddingLeft(2).Italic(renamed).Render(name) + "\n")
-			b.WriteString(mutedStyle.PaddingLeft(2).Render(detail) + "\n")
+			nameStyle = selectionBar.Foreground(white)
+			detailStyle = selectionBar.Foreground(gray)
 		}
+		if renamed {
+			nameStyle = nameStyle.Foreground(goldLight).Bold(true).Italic(true)
+		}
+		b.WriteString(nameStyle.Render(name) + glyph + "\n")
+		b.WriteString(detailStyle.Render(detail) + "\n")
 	}
 	return b.String()
 }
@@ -705,35 +721,11 @@ func (m Model) helpBar() string {
 			keycap("i") + " new profile   " + keycap("x") + " edit   " + keycap("n") + " rename   " + keycap("delete") + " remove",
 			mutedStyle.Render("↑↓") + " select · " + mutedStyle.Render("↵") + " open/run · " + mutedStyle.Render("esc") + " back · " + keycap("f5") + " refresh · " + mutedStyle.Render("?") + " less · " + keycap("q") + " quit",
 		}
-		if m.hasAlias() {
-			lines = append(lines, aliasLegend())
-		}
 		return strings.Join(lines, "\n")
 	}
-	bar := mutedStyle.Render("↑↓ select · ↵ open/run · esc back · ") +
+	return mutedStyle.Render("↑↓ select · ↵ open/run · esc back · ") +
 		keycap("l") + " " + keycap("u") + " " + keycap("c") + " " + keycap("i") + " " + keycap("x") + " " + keycap("n") + " " + keycap("delete") + mutedStyle.Render(" actions · ") +
 		keycap("f5") + mutedStyle.Render(" refresh · ? help · ") + keycap("q") + mutedStyle.Render(" quit")
-	if m.hasAlias() {
-		bar += mutedStyle.Render(" · ") + accentStyle.Render("*") + mutedStyle.Render(" renamed")
-	}
-	return bar
-}
-
-// hasAlias reports whether any listed profile carries a custom label, so the
-// "*" legend is only shown when it is actually relevant.
-func (m Model) hasAlias() bool {
-	for _, it := range m.list.Items() {
-		if p, ok := it.(item); ok && p.label != "" && p.label != p.name {
-			return true
-		}
-	}
-	return false
-}
-
-// aliasLegend is the on-screen footnote explaining the "*" marker on renamed
-// profiles: the display name is a custom label, not the profile's real slug.
-func aliasLegend() string {
-	return accentStyle.Render("*") + mutedStyle.Render(" renamed — display name differs from the profile slug")
 }
 
 // contextLine describes the current directory's relationship to profiles.

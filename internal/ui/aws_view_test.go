@@ -87,17 +87,23 @@ func TestProviderViewDeleteKeyRemoves(t *testing.T) {
 	}
 }
 
-func TestRenderProfilePaneActiveDot(t *testing.T) {
+func TestRenderProfilePaneScopeGlyphs(t *testing.T) {
 	profiles := []profile.Listed{
 		{Name: "work", Detail: "acme.awsapps.com"},
+		{Name: "staging", Detail: "acme.awsapps.com"},
 		{Name: "personal", Detail: "personal.awsapps.com"},
+		{Name: "idle", Detail: "idle.awsapps.com"},
 	}
-	out := renderProfilePane(profiles, 0, true, 40, "work")
-	if !strings.Contains(out, "● work") {
-		t.Fatalf("active profile missing ● dot:\n%s", out)
+	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal}
+	out := renderProfilePane(profiles, 0, true, 40, scopes)
+	if !strings.Contains(out, "work ●") || !strings.Contains(out, "staging ●") {
+		t.Fatalf("dir-pinned profiles missing trailing ● dot:\n%s", out)
 	}
-	if !strings.Contains(out, "○ personal") {
-		t.Fatalf("inactive profile missing ○ dot:\n%s", out)
+	if !strings.Contains(out, "personal 🌐") {
+		t.Fatalf("global-default profile missing 🌐 glyph:\n%s", out)
+	}
+	if strings.Contains(out, "idle ●") || strings.Contains(out, "idle 🌐") {
+		t.Fatalf("inactive profile must carry no indicator:\n%s", out)
 	}
 }
 
