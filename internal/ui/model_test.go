@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -115,33 +116,37 @@ func TestEditHotkeySelectsRadio(t *testing.T) {
 	}
 }
 
-func TestItemDisplaysLabelOverSlug(t *testing.T) {
-	// no label: title is the slug, description is just the tenant.
-	plain := item{name: "acme", tenant: "acme.com"}
-	if plain.Title() != "acme" || plain.Description() != "acme.com" {
-		t.Fatalf("plain item: title=%q desc=%q", plain.Title(), plain.Description())
+func TestProfileDelegateRendersLabelScopeAndTenant(t *testing.T) {
+	render := func(it item) string {
+		l := list.New([]list.Item{it}, profileDelegate{}, 40, 10)
+		var b strings.Builder
+		profileDelegate{}.Render(&b, l, 0, it)
+		return b.String()
 	}
-	// with a label: title is the label plus an alias marker; the slug is hidden
-	// and the description is just the tenant.
-	labeled := item{name: "acme", label: "Acme Production", tenant: "contoso.com"}
-	if !strings.Contains(labeled.Title(), "Acme Production") {
-		t.Fatalf("labeled title should show the label: %q", labeled.Title())
+	// no label: the slug renders with the tenant detail; no scope icon.
+	plain := render(item{name: "acme", tenant: "acme.com"})
+	if !strings.Contains(plain, "acme") || !strings.Contains(plain, "acme.com") {
+		t.Fatalf("plain item render:\n%s", plain)
 	}
-	// The active-identity indicator trails the name.
-	pinned := item{name: "acme", tenant: "acme.com", scope: ScopeCwd}
-	if !strings.Contains(pinned.Title(), "acme ●") {
-		t.Fatalf("cwd-pinned item missing trailing dot: %q", pinned.Title())
+	if strings.Contains(plain, "●") || strings.Contains(plain, "🌐") {
+		t.Fatalf("inactive item must carry no scope icon:\n%s", plain)
 	}
-	global := item{name: "acme", tenant: "acme.com", scope: scopeGlobal}
-	if !strings.Contains(global.Title(), "acme 🌐") {
-		t.Fatalf("global-default item missing 🌐: %q", global.Title())
+	// with a label: the label renders instead of the slug.
+	labeled := render(item{name: "acme", label: "Acme Production", tenant: "contoso.com"})
+	if !strings.Contains(labeled, "Acme Production") || !strings.Contains(labeled, "contoso.com") {
+		t.Fatalf("labeled item render:\n%s", labeled)
 	}
-	if labeled.Description() != "contoso.com" {
-		t.Fatalf("labeled desc should be just the tenant: %q", labeled.Description())
+	// The active-identity icon leads the name.
+	if pinned := render(item{name: "acme", tenant: "acme.com", scope: ScopeCwd}); !strings.Contains(pinned, "●  acme") {
+		t.Fatalf("cwd-pinned item missing leading dot:\n%s", pinned)
+	}
+	if global := render(item{name: "acme", tenant: "acme.com", scope: scopeGlobal}); !strings.Contains(global, "🌐 acme") {
+		t.Fatalf("global-default item missing 🌐:\n%s", global)
 	}
 	// filtering matches on both slug and label.
-	if !strings.Contains(labeled.FilterValue(), "acme") || !strings.Contains(labeled.FilterValue(), "Production") {
-		t.Fatalf("filter value: %q", labeled.FilterValue())
+	fv := item{name: "acme", label: "Acme Production"}.FilterValue()
+	if !strings.Contains(fv, "acme") || !strings.Contains(fv, "Production") {
+		t.Fatalf("filter value: %q", fv)
 	}
 }
 
