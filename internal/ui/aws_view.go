@@ -20,7 +20,7 @@ func newAwsView() awsView {
 		{"a", "New profile", func(v *providerTabView) {
 			v.status = accentStyle.Render("Run `azrl aws login <name>` to create and sign into a new profile.")
 		}},
-		{"d", "Remove", removeAction},
+		{"delete", "Remove", removeAction},
 	}
 	return awsView{newProviderTabView(aws.NewProvider(), header, actions)}
 }

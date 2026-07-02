@@ -105,6 +105,19 @@ func (m tabsModel) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// inputCapturer marks a tab whose current state consumes raw keystrokes (e.g.
+// a rename text input); while active the container forwards tab-switch keys
+// instead of handling them.
+type inputCapturer interface{ capturesInput() bool }
+
+// activeCapturesInput reports whether the active tab is in a text-entry state.
+func (m tabsModel) activeCapturesInput() bool {
+	if c, ok := m.tabs[m.active].model.(inputCapturer); ok {
+		return c.capturesInput()
+	}
+	return false
+}
+
 func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -120,12 +133,16 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
-		case "]":
-			m.active = (m.active + 1) % len(m.tabs)
-			return m, nil
-		case "[":
-			m.active = (m.active - 1 + len(m.tabs)) % len(m.tabs)
-			return m, nil
+		case "]", "right":
+			if !m.activeCapturesInput() {
+				m.active = (m.active + 1) % len(m.tabs)
+				return m, nil
+			}
+		case "[", "left":
+			if !m.activeCapturesInput() {
+				m.active = (m.active - 1 + len(m.tabs)) % len(m.tabs)
+				return m, nil
+			}
 		}
 		nm, c := m.tabs[m.active].model.Update(msg)
 		m.tabs[m.active].model = nm

@@ -26,14 +26,16 @@ var (
 	mutedStyle   = lipgloss.NewStyle().Foreground(gray)
 
 	// selectedStyle marks the focused radio row; dotStyle is the inactive-pane
-	// selection marker; keycapStyle renders [l]-style accelerators.
+	// selection marker; keycapStyle renders keystroke glyphs/accelerators.
 	selectedStyle = lipgloss.NewStyle().Foreground(white).Bold(true)
 	dotStyle      = lipgloss.NewStyle().Foreground(azureSky)
-	keycapStyle   = lipgloss.NewStyle().Foreground(gray)
+	keycapStyle   = lipgloss.NewStyle().Foreground(azureSky)
 
-	// paneTitleStyle labels each column; dividerStyle draws the rules and the
-	// vertical seam between the two panes.
+	// paneTitleStyle labels each column; paneFocusStyle is the inverted chip on
+	// the focused pane's title so the active pane is unmistakable; dividerStyle
+	// draws the rules and the vertical seam between the two panes.
 	paneTitleStyle = lipgloss.NewStyle().Foreground(azureSky).Bold(true)
+	paneFocusStyle = lipgloss.NewStyle().Foreground(white).Background(azureBlue).Bold(true).Padding(0, 1)
 	dividerStyle   = lipgloss.NewStyle().Foreground(azureDeep)
 
 	frameStyle = lipgloss.NewStyle().
@@ -41,3 +43,23 @@ var (
 			BorderForeground(azureDeep).
 			Padding(0, 1)
 )
+
+// keyGlyph renders a hotkey as a negative-squared Unicode capital (🅻-style,
+// U+1F170+). U+FE0E pins text presentation so the glyph stays single-width and
+// takes ANSI colour even for the letters terminals treat as emoji (A/B/O/P).
+// Named keys render as short text in the same keycap style.
+func keyGlyph(key string) string {
+	switch key {
+	case "delete":
+		return "DEL"
+	case "f5":
+		return "F5"
+	}
+	if r := []rune(key); len(r) == 1 && r[0] >= 'a' && r[0] <= 'z' {
+		return string(rune(0x1F170+r[0]-'a')) + "\uFE0E"
+	}
+	return key
+}
+
+// keycap renders a keystroke hint in the shared keycap colour.
+func keycap(key string) string { return keycapStyle.Render(keyGlyph(key)) }

@@ -116,7 +116,7 @@ scope and drift markers — unmanaged directories can be adopted with `[a]`),
 from its own config on disk — azrl never changes it), and **unmapped profiles**
 (saved profiles pinned nowhere, so expiry warnings stay visible). Then come
 **Azure**, **AWS**, **GCP**, and **GitHub** tabs (Azure first); switch between
-them with `[` and `]`. Every provider tab shares one Azure-style
+them with `←`/`→` (or `[` and `]`). Every provider tab shares one Azure-style
 profiles/actions layout. The landing view is **live**: it polls and also
 watches each provider's token cache *and* native config dir (`~/.azure`,
 `~/.config/gh`, `~/.aws`, `~/.config/gcloud`) via fsnotify, so it updates the

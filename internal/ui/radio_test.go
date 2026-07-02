@@ -55,7 +55,7 @@ func TestRadioView(t *testing.T) {
 			t.Fatalf("view missing %q:\n%s", label, v)
 		}
 	}
-	if !strings.Contains(v, "[l]") {
-		t.Fatalf("view missing keycap:\n%s", v)
+	if !strings.Contains(v, keyGlyph("l")) {
+		t.Fatalf("view missing keycap glyph:\n%s", v)
 	}
 }

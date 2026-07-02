@@ -31,7 +31,7 @@ var homeActions = []radioOption{
 	{label: "New profile", key: "i", hint: "init + sign in"},
 	{label: "Edit…", key: "x", hint: "open .conf in $EDITOR"},
 	{label: "Rename…", key: "n", hint: "change profile name"},
-	{label: "Remove…", key: "d", hint: "delete profile"},
+	{label: "Remove…", key: "delete", hint: "delete profile"},
 }
 
 // accountShowFn is overridable in tests; it reports the az identity for a
@@ -47,10 +47,11 @@ var selectionBar = lipgloss.NewStyle().
 	BorderForeground(azureBlue).PaddingLeft(1)
 
 // profileDelegate renders profile rows in the azure palette: a blue selection
-// bar with a gold name, replacing the bubbles default magenta.
+// bar with a gold name, replacing the bubbles default magenta. One blank line
+// between rows keeps each two-line profile visually distinct.
 func profileDelegate() list.DefaultDelegate {
 	d := list.NewDefaultDelegate()
-	d.SetSpacing(0)
+	d.SetSpacing(1)
 	d.Styles.SelectedTitle = selectionBar.Foreground(gold).Bold(true)
 	d.Styles.SelectedDesc = selectionBar.Foreground(azureSky)
 	d.Styles.NormalTitle = lipgloss.NewStyle().Foreground(white).PaddingLeft(2)
@@ -288,6 +289,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// capturesInput reports whether the rename text input is active, so the tab
+// container forwards arrow/bracket keys here instead of switching tabs.
+func (m Model) capturesInput() bool { return m.renaming }
+
 // updateKey handles the home-screen keymap.
 func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -296,23 +301,27 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.showHelp = !m.showHelp
 		return m, nil
-	case "r":
+	case "f5":
 		return m.refresh(), nil
 	case "tab", "shift+tab":
 		m.focus = focusActions - m.focus
 		m.applyFocus()
 		return m, nil
-	case "left":
-		m.focus = focusProfiles
-		m.applyFocus()
-		return m, nil
-	case "right":
-		m.focus = focusActions
-		m.applyFocus()
-		return m, nil
+	case "esc":
+		if m.focus == focusActions {
+			m.focus = focusProfiles
+			m.applyFocus()
+			return m, nil
+		}
 	case "enter":
+		// Selecting a profile opens the action pane; enter there runs the action.
+		if m.focus == focusProfiles {
+			m.focus = focusActions
+			m.applyFocus()
+			return m, nil
+		}
 		return m.dispatch(m.actions.selected().key)
-	case "l", "u", "c", "i", "x", "n", "d":
+	case "l", "u", "c", "i", "x", "n", "delete":
 		m.actions.selectByKey(msg.String())
 		return m.dispatch(msg.String())
 	case "e":
@@ -409,7 +418,7 @@ func (m Model) dispatch(key string) (tea.Model, tea.Cmd) {
 		m.busy = true
 		m.status = ""
 		return m, tea.Batch(m.spin.Tick, runUse(sel.name))
-	case "d":
+	case "delete":
 		if sel.name == "" {
 			m.status = failureStyle.Render("✗ select a profile to remove")
 			return m, nil
@@ -535,6 +544,11 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 		textW = 1
 	}
 	for i, p := range profiles {
+		if i > 0 {
+			// One blank line between rows keeps each two-line profile distinct,
+			// matching the Azure list delegate's spacing.
+			b.WriteString("\n")
+		}
 		name := truncateLine(p.Display(), textW)
 		detail := truncateLine(p.Detail, textW)
 		switch {
@@ -609,9 +623,11 @@ func (m Model) rightPane(w int) string {
 	return paneTitle("ACTION", m.focus == focusActions) + "\n\n" + m.actions.view(w)
 }
 
+// paneTitle renders a pane header; the focused pane's title becomes an
+// inverted chip so it's obvious which pane keys act on.
 func paneTitle(s string, active bool) string {
 	if active {
-		return paneTitleStyle.Render(s)
+		return paneFocusStyle.Render(s)
 	}
 	return mutedStyle.Render(s)
 }
@@ -652,16 +668,18 @@ func (m Model) helpBar() string {
 	}
 	if m.showHelp {
 		lines := []string{
-			mutedStyle.Render("l") + " sign in   " + mutedStyle.Render("u") + " use here   " + mutedStyle.Render("c") + " capture   " + mutedStyle.Render("e") + " write .envrc",
-			mutedStyle.Render("i") + " new profile   " + mutedStyle.Render("x") + " edit   " + mutedStyle.Render("n") + " rename   " + mutedStyle.Render("d") + " remove",
-			mutedStyle.Render("↑↓") + " select · " + mutedStyle.Render("⇥") + " switch pane · " + mutedStyle.Render("↵") + " run · " + mutedStyle.Render("r") + " refresh · " + mutedStyle.Render("?") + " less · " + mutedStyle.Render("q") + " quit",
+			keycap("l") + " sign in   " + keycap("u") + " use here   " + keycap("c") + " capture   " + keycap("e") + " write .envrc",
+			keycap("i") + " new profile   " + keycap("x") + " edit   " + keycap("n") + " rename   " + keycap("delete") + " remove",
+			mutedStyle.Render("↑↓") + " select · " + mutedStyle.Render("↵") + " open/run · " + mutedStyle.Render("esc") + " back · " + keycap("f5") + " refresh · " + mutedStyle.Render("?") + " less · " + keycap("q") + " quit",
 		}
 		if m.hasAlias() {
 			lines = append(lines, aliasLegend())
 		}
 		return strings.Join(lines, "\n")
 	}
-	bar := mutedStyle.Render("↑↓ select · ⇥ pane · ↵ run · l/u/c/i/x/n/d actions · r refresh · ? help · q quit")
+	bar := mutedStyle.Render("↑↓ select · ↵ open/run · esc back · ") +
+		keycap("l") + keycap("u") + keycap("c") + keycap("i") + keycap("x") + keycap("n") + " " + keycap("delete") + mutedStyle.Render(" actions · ") +
+		keycap("f5") + mutedStyle.Render(" refresh · ? help · ") + keycap("q") + mutedStyle.Render(" quit")
 	if m.hasAlias() {
 		bar += mutedStyle.Render(" · ") + accentStyle.Render("*") + mutedStyle.Render(" renamed")
 	}

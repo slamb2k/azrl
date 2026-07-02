@@ -19,7 +19,7 @@ func newGithubView() githubView {
 		{"a", "New profile", func(v *providerTabView) {
 			v.status = accentStyle.Render("Run `ghrl login <name>` to create and sign into a new profile.")
 		}},
-		{"d", "Remove", removeAction},
+		{"delete", "Remove", removeAction},
 	}
 	return githubView{newProviderTabView(github.NewProvider(), header, actions)}
 }

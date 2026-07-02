@@ -68,10 +68,8 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			return v, tea.Quit
 		case "tab", "shift+tab":
 			v.focus = focusActions - v.focus
-		case "left":
+		case "esc":
 			v.focus = focusProfiles
-		case "right":
-			v.focus = focusActions
 		case "up", "k":
 			if v.focus == focusActions {
 				if v.actionCur > 0 {
@@ -89,7 +87,12 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				v.cursor++
 			}
 		case "enter":
-			v = v.dispatch(v.actions[v.actionCur].key)
+			// Selecting a profile opens the action pane; enter there runs the action.
+			if v.focus == focusProfiles {
+				v.focus = focusActions
+			} else {
+				v = v.dispatch(v.actions[v.actionCur].key)
+			}
 		default:
 			// An accelerator key selects its action and runs it; any other key is a
 			// no-op (arrows/tab/enter are handled above).
@@ -191,6 +194,6 @@ func (v providerTabView) View() string {
 	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions}
 	right := paneTitle("ACTION", v.focus == focusActions) + "\n\n" + r.view(rightW)
 
-	help := mutedStyle.Render("↑↓ select · ⇥ pane · ↵ run · [ ] tab · q quit")
+	help := mutedStyle.Render("↑↓ select · ↵ open/run · esc back · ←→ tab · ") + keycap("q") + mutedStyle.Render(" quit")
 	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, v.status, help)
 }
