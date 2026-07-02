@@ -64,3 +64,36 @@ func TestSetupRepoSkipsUsernameWhenNoUser(t *testing.T) {
 		t.Fatalf("should not set username without GH_USER: %s", out)
 	}
 }
+
+// fakeGhOnly shims gh but leaves git real so rev-parse resolves the repo root.
+func fakeGhOnly(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	script := "#!/usr/bin/env bash\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestSetupRepoRecordsRepoRootMappingFromSubdir(t *testing.T) {
+	fakeGhOnly(t)
+	root := initGitRepo(t)
+	sub := filepath.Join(root, "nested")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	profilesDir := t.TempDir()
+	c := Conf{Host: "github.com", User: "octocat", Protocol: "https"}
+	if err := SetupRepo(profilesDir, "work", sub, c); err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := profile.ReadMappings(profilesDir)
+	if len(got) != 1 || got[0].Dir != want || got[0].Profile != "work" || got[0].Source != "gitconfig" {
+		t.Fatalf("mappings = %+v, want Dir=%s Profile=work Source=gitconfig", got, want)
+	}
+}

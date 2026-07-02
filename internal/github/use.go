@@ -4,9 +4,21 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/slamb2k/azrl/internal/profile"
 )
+
+// repoRoot resolves the enclosing repo's toplevel so the recorded mapping
+// matches what the read path (rev-parse in the overview) resolves; falls back
+// to dir outside a repo.
+func repoRoot(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+	if root := strings.TrimSpace(string(out)); err == nil && root != "" {
+		return root
+	}
+	return dir
+}
 
 // SetupRepo wires git-HTTPS credentials for a pinned repo: it registers gh as
 // the credential helper for the host (scoped to the profile's GH_CONFIG_DIR) and
@@ -24,7 +36,7 @@ func SetupRepo(profilesDir, name, pwd string, c Conf) error {
 		if err := exec.Command("git", "-C", pwd, "config", "--local", key, c.User).Run(); err != nil {
 			return fmt.Errorf("ghrl: setting %s failed: %w", key, err)
 		}
-		_ = profile.RecordMapping(profilesDir, profile.Mapping{Dir: pwd, Profile: name, Source: "gitconfig"})
+		_ = profile.RecordMapping(profilesDir, profile.Mapping{Dir: repoRoot(pwd), Profile: name, Source: "gitconfig"})
 	}
 	return nil
 }
