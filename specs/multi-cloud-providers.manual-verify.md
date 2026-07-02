@@ -201,3 +201,62 @@ azrl gcp use prod --isolate
 **Pass:** `azrl gcp use --isolate` prints the GKE isolation warning, and the
 dashboard drift column reflects the risk. Confirm the warning stays silent when
 neither the plugin nor a GKE context is present.
+
+---
+
+# Resolution Strategies (v0.7.0) — Manual Verification
+
+- **Date:** 2026-07-02
+- **Purpose:** Items implemented and unit/contract-tested against fixtures here,
+  but whose end-to-end behaviour can only be *closed out* on a real machine with
+  the real `gh` CLI and native config dirs. Nothing below is claimed "done" —
+  each is a scripted spike for the user to run in the real environment.
+- **Related:** `specs/resolution-strategies.md`.
+
+## Items requiring a real machine (spike)
+
+### 0. Real `hosts.yml` multi-account shape matches the fixture (EXT-001)
+
+**Why manual:** the ambient reader parses both the legacy single-`user` shape
+and the modern multi-account shape (top-level `user:` / `users:` map) from
+fixtures; the spec flags (EXT-001) that only a real `gh` install proves the
+fixture assumption against what current `gh` actually writes.
+
+**Repro (on a machine with `gh` signed into two accounts on one host):**
+```bash
+gh auth login   # second account on github.com
+cat ~/.config/gh/hosts.yml
+azrl status
+```
+**Pass:** the real `hosts.yml` matches one of the two fixture shapes, and the
+AMBIENT GitHub row shows the active `user@host`. Record the real YAML shape here;
+adjust the reader only if it differs.
+
+### 1. Ambient rows live-update on `gh auth switch`
+
+**Why manual:** the fsnotify watch on the native `~/.config/gh` dir is tested
+against synthetic writes; only the real `gh` closes whether its rewrite of
+`hosts.yml` (rename vs in-place) fires the watcher.
+
+**Repro (with the TUI open on the landing view):**
+```bash
+azrl            # leave it on the landing tab
+gh auth switch  # in another terminal
+```
+**Pass:** the AMBIENT GitHub row flips to the new `user@host` (and its matched
+profile, if managed) without pressing `[r]`, within the poll interval at worst.
+
+### 2. `[a]dopt` handoff launches capture from the landing view
+
+**Why manual:** the adopt keybinding and the capture argv are unit-tested; the
+real handoff (TUI exit → interactive capture prompt → new profile + mapping row)
+needs a live signed-in CLI session to record.
+
+**Repro (in a repo whose git config names an account azrl doesn't manage):**
+```bash
+cd <repo with `credential.https://github.com.username` set, no profile>
+azrl            # landing view shows the row as unmanaged; press [a]
+```
+**Pass:** the capture flow launches for the right provider with the name prompt
+defaulting to the directory name; accepting it creates the profile, and the
+landing view re-renders the row as managed (mapping recorded in the index).

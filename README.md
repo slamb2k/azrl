@@ -101,7 +101,7 @@ azrl capture [name]        # record the CURRENT az session as conf + .azprofile
 azrl use <name>            # link this dir to an existing profile
 azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
 azrl list                  # list configured profiles and their tenants
-azrl status [--json]       # "who am I, everywhere?" — cross-provider table (disk-only)
+azrl status [--json]       # "who am I, everywhere?" — mappings / ambient / unmapped (disk-only)
 azrl --help                # usage; azrl --version prints the version
 ```
 
@@ -109,12 +109,20 @@ azrl --help                # usage; azrl --version prints the version
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
 Bare `azrl` opens a **tabbed TUI** — a centered winged banner over the tab bar,
-landing on a cross-provider **status dashboard** ("who am I, everywhere?"), then
+landing on a cross-provider overview ("who am I, everywhere?") in three
+sections: **mappings** (which directories are pinned to which profiles, with
+scope and drift markers — unmanaged directories can be adopted with `[a]`),
+**ambient** (what each CLI is natively signed in as *right now*, read straight
+from its own config on disk — azrl never changes it), and **unmapped profiles**
+(saved profiles pinned nowhere, so expiry warnings stay visible). Then come
 **Azure**, **AWS**, **GCP**, and **GitHub** tabs (Azure first); switch between
 them with `[` and `]`. Every provider tab shares one Azure-style
-profiles/actions layout. The dashboard is **live**: it polls and also watches
-each provider's token cache via fsnotify, so it re-sorts by last-used the moment
-you sign in with any CLI outside azrl — not just through azrl itself.
+profiles/actions layout. The landing view is **live**: it polls and also
+watches each provider's token cache *and* native config dir (`~/.azure`,
+`~/.config/gh`, `~/.aws`, `~/.config/gcloud`) via fsnotify, so it updates the
+moment you sign in — or `gh auth switch` — with any CLI outside azrl, not just
+through azrl itself. `azrl status` prints the same three sections;
+`--json` emits `{"mappings":[…],"ambient":[…],"unmapped":[…]}`.
 
 ## GitHub accounts (`gh`)
 
@@ -126,14 +134,17 @@ signed in with the browser on your **local** machine.
 azrl gh login [name] [--hostname H]  # sign in (github.com, *.ghe.com, or a GHES host)
 azrl gh list                         # list GitHub profiles and their hosts
 azrl gh use <name>                   # pin this repo (.ghprofile) + wire git-HTTPS creds
-azrl gh switch <name>                # set the active account (default when a repo has no pin)
 azrl gh capture <name> [--hostname H]# record the currently signed-in gh session
-azrl gh status                       # show the active and repo-pinned accounts
+azrl gh status                       # show the ambient and repo-pinned accounts
 azrl gh rm <name>                    # remove a GitHub profile and its config dir
 ```
 
 The **`ghrl`** alias promotes these to the top level (`ghrl login`, `ghrl use`, …)
 and opens the TUI on the GitHub tab.
+
+> **`gh switch` was removed in v0.7.0.** The default account is whatever `gh`
+> itself is signed into — use `gh auth switch` to change it, or map a directory
+> with `ghrl use <name>`. azrl shows the ambient account but never mutates it.
 
 How the browser reaches your laptop:
 
@@ -313,12 +324,13 @@ numbered phases behind the shared `Provider` interface (see `specs/`):
   configurations and reusing the same bridge (default loopback callback) — its
   real-tenant interception is likewise still in manual-verify.
 - **Richer auditability — "who am I, everywhere?"** *(shipped — Phase 5.5,
-  `specs/status-dashboard.md`)*. A cross-provider status dashboard is now the
-  default landing view of the TUI (and `azrl status [--json]` on the CLI): every
-  profile's identity, bound directory, expiry, and ambient-drift in one
-  glanceable table, refreshed from local cache only (no network). A
-  per-directory *history* beyond a single last-used timestamp remains a later
-  direction.
+  `specs/status-dashboard.md`; restructured in v0.7.0,
+  `specs/resolution-strategies.md`)*. A cross-provider overview is the default
+  landing view of the TUI (and `azrl status [--json]` on the CLI): directory →
+  profile mappings with drift, each CLI's ambient identity read from its own
+  config on disk, and unmapped profiles with their expiry — refreshed from local
+  cache only (no network). A per-directory *history* beyond a single last-used
+  timestamp remains a later direction.
 - **Unified profiles** *(direction, not yet scoped)*. A single `.azprofile`-style
   pointer that can carry the right identity for *several* providers at once, so
   one `cd` lines up Azure, Git, and your cloud CLI together.
