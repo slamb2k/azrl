@@ -71,14 +71,15 @@ just for remote servers:
 ## Quick start
 
 ```bash
-# 1. Create a profile by signing in (tenant-less), recorded for this directory
+# 1. Create a profile by signing in, recorded for this directory
 cd ~/work/acme
-azrl init acme                 # browser opens, you sign in, conf + .azprofile written
+azrl login acme                # browser opens, you sign in, conf + .azprofile written
+                               # (Azure discovers the tenant on first login)
                                # → offers to write .envrc and run `direnv allow`
 
 # 2. In another project, reuse or create another account
 cd ~/personal/side-project
-azrl init personal
+azrl login personal
 
 # 3. Now each directory is its own account — no switching needed
 cd ~/work/acme      && az account show   # → you@acme.com
@@ -94,7 +95,8 @@ its profile when it warns about drift.
 ```bash
 azrl                       # launch the TUI (manage / select / sign in to profiles)
 azrl login [profile]       # sign in via the browser bridge (uses this dir's profile)
-azrl init [name]           # tenant-less login, then record conf + .azprofile
+                           # login <name> also creates the profile on first use
+                           # (Azure discovers the tenant); pass --yes to skip the prompt
 azrl capture [name]        # record the CURRENT az session as conf + .azprofile
 azrl use <name>            # link this dir to an existing profile
 azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
@@ -103,7 +105,7 @@ azrl status [--json]       # "who am I, everywhere?" — cross-provider table (d
 azrl --help                # usage; azrl --version prints the version
 ```
 
-`init`, `capture`, and `login` all **offer to write an `.envrc`** (and run
+`capture` and `login` both **offer to write an `.envrc`** (and run
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
 Bare `azrl` opens a **tabbed TUI** — a centered winged banner over the tab bar,
@@ -227,9 +229,11 @@ line in your shell rc.
 
 ## Saving and initializing profiles
 
-- **`azrl init [name]`** — signs you in (tenant-less), then records the live
-  session's tenant GUID, subscription, and user to `~/.azure-profiles/<name>.conf`
-  plus a `.azprofile` in the current directory.
+- **`azrl login <name>`** — for an unknown `<name>`, signs you in (Azure
+  discovers the tenant on first login), then records the live session's tenant
+  GUID, subscription, and user to `~/.azure-profiles/<name>.conf` plus a
+  `.azprofile` in the current directory. Pass `--yes`/`-y` to create without the
+  confirmation prompt. (This replaces the removed `azrl init` command.)
 - **`azrl capture [name]`** — same recording step, but for a session you're
   **already** signed into (no new login).
 - **`azrl use <name>`** — links the current directory to an **existing** profile
