@@ -1,4 +1,6 @@
-# Global azrl config. Copy to ~/.azure-profiles/azrl.conf
-LOCAL_HOST=velrada-pc-wsl          # tailnet host that runs the browser (WSL)
-LOCAL_BROWSER_CMD=wslview          # opens the Windows default browser from WSL
-VM_HOST=vm-always                  # this VM's tailnet name (for the path-A paste line)
+# Global azrl config. Copied to ~/.azure-profiles/azrl.conf by install.sh —
+# edit that copy with your own hosts. All three values below are required.
+LOCAL_HOST=my-laptop               # SSH name of the machine that runs the browser
+LOCAL_BROWSER_CMD=xdg-open         # command that opens a URL there (wslview on WSL, open on macOS)
+VM_HOST=my-vm                      # this VM's SSH name (used in the path-A paste line)
+# DASHBOARD_POLL_SECS=3            # optional: dashboard refresh interval (seconds)
