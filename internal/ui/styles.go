@@ -18,6 +18,7 @@ var (
 	goldLight = lipgloss.Color("#ffe6a3")
 	goldDeep  = lipgloss.Color("#d99a2b")
 	white     = lipgloss.Color("#f5f7fa")
+	whiteDim  = lipgloss.Color("#b9c0c8")
 	green     = lipgloss.Color("#3fb950")
 	red       = lipgloss.Color("#f85149")
 	gray      = lipgloss.Color("#8b949e")
@@ -71,23 +72,24 @@ func keycap(key string) string { return keycapChipStyle.Render(" " + keyGlyph(ke
 // profile is active as the provider's global default (ambient identity).
 const scopeGlobal = "global"
 
-// renamedStyle marks a relabeled profile's display name (bold gold italic),
+// renamedStyle marks a relabeled profile's display name (dull-white italic),
 // replacing the old "*" footnote legend.
-var renamedStyle = lipgloss.NewStyle().Foreground(goldLight).Bold(true).Italic(true)
+var renamedStyle = lipgloss.NewStyle().Foreground(whiteDim).Italic(true)
 
-// scopeGlyph renders a profile row's trailing active-identity indicator: ●
-// green when the pin is in the current dir, ● orange when inherited from a
-// parent dir, 🌐 when the profile is the provider's global default, and ""
+// scopeSlot renders a profile row's leading active-identity icon as a
+// fixed-width slot so names align regardless of glyph (🌐 is double-width):
+// ● green when the pin is in the current dir, ● orange when inherited from a
+// parent dir, 🌐 when the profile is the provider's global default, blank
 // when the identity is not active anywhere. When several scopes apply the
 // caller passes the effective one (cwd > parent > global).
-func scopeGlyph(scope string) string {
+func scopeSlot(scope string) string {
 	switch scope {
 	case ScopeCwd:
-		return successStyle.Render("●")
+		return successStyle.Render("●") + "  "
 	case ScopeAncestor:
-		return lipgloss.NewStyle().Foreground(goldDeep).Render("●")
+		return lipgloss.NewStyle().Foreground(goldDeep).Render("●") + "  "
 	case scopeGlobal:
-		return "🌐"
+		return "🌐 "
 	}
-	return ""
+	return "   "
 }

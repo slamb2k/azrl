@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,17 +48,41 @@ var selectionBar = lipgloss.NewStyle().
 	Border(lipgloss.ThickBorder(), false, false, false, true).
 	BorderForeground(azureBlue).PaddingLeft(1)
 
-// profileDelegate renders profile rows in the azure palette: a blue selection
-// bar with a gold name, replacing the bubbles default magenta. One blank line
-// between rows keeps each two-line profile visually distinct.
-func profileDelegate() list.DefaultDelegate {
-	d := list.NewDefaultDelegate()
-	d.SetSpacing(1)
-	d.Styles.SelectedTitle = selectionBar.Foreground(gold).Bold(true)
-	d.Styles.SelectedDesc = selectionBar.Foreground(azureSky)
-	d.Styles.NormalTitle = lipgloss.NewStyle().Foreground(white).PaddingLeft(2)
-	d.Styles.NormalDesc = lipgloss.NewStyle().Foreground(gray).PaddingLeft(2)
-	return d
+// profileDelegate hand-renders profile rows so the leading scope icon keeps
+// its own colour without fighting the row style (a styled glyph inside the
+// stock delegate's Render would reset the selection styling mid-line): each
+// segment — selection bar, icon, name, detail — is styled independently and
+// composed. One blank line between rows keeps each two-line profile distinct.
+type profileDelegate struct{}
+
+func (profileDelegate) Height() int                         { return 2 }
+func (profileDelegate) Spacing() int                        { return 1 }
+func (profileDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
+func (profileDelegate) Render(w io.Writer, m list.Model, index int, li list.Item) {
+	p, ok := li.(item)
+	if !ok {
+		return
+	}
+	textW := m.Width() - 5 // selection bar/pad (2) + icon slot (3)
+	if textW < 1 {
+		textW = 1
+	}
+	bar := "  "
+	nameStyle := lipgloss.NewStyle().Foreground(white)
+	detailStyle := mutedStyle
+	if index == m.Index() {
+		bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
+		nameStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
+		detailStyle = lipgloss.NewStyle().Foreground(azureSky)
+	}
+	name := p.name
+	if p.label != "" && p.label != p.name {
+		name = p.label
+		nameStyle = renamedStyle
+	}
+	fmt.Fprintf(w, "%s%s%s\n%s   %s",
+		bar, scopeSlot(p.scope), nameStyle.Render(truncateLine(name, textW)),
+		bar, detailStyle.Render(truncateLine(p.tenant, textW)))
 }
 
 // item is one profile row. name is the immutable slug (identity, used for all
@@ -66,25 +91,6 @@ func profileDelegate() list.DefaultDelegate {
 type item struct {
 	name, label, tenant string
 	scope               string
-}
-
-// Title renders the display name — the renamedStyle accent when a custom
-// label is set — and ends with the active-identity indicator (scopeGlyph).
-// The styled segments sit at the end of the line so the delegate's own row
-// styling survives on the plain prefix.
-func (i item) Title() string {
-	t := i.name
-	if i.label != "" && i.label != i.name {
-		t = renamedStyle.Render(i.label)
-	}
-	if g := scopeGlyph(i.scope); g != "" {
-		t += " " + g
-	}
-	return t
-}
-
-func (i item) Description() string {
-	return i.tenant
 }
 
 func (i item) FilterValue() string { return i.name + " " + i.label }
@@ -144,7 +150,7 @@ func NewModel() Model {
 		}
 		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, scope: scope})
 	}
-	l := list.New(items, profileDelegate(), 0, 0)
+	l := list.New(items, profileDelegate{}, 0, 0)
 	l.Title = "Profiles"
 	l.SetShowHelp(false)
 	l.SetShowTitle(false)
@@ -566,11 +572,12 @@ func renderPaneFrame(width, height int, identity, left, right, status, footer st
 }
 
 // renderProfilePane hand-renders a PROFILES(n) pane for a slice of profiles,
-// mirroring the Azure list delegate (selectionBar on the focused row, muted
+// mirroring the Azure list delegate (selection bar on the focused row, muted
 // details) so the provider tabs match the Azure Model without a bubbles list.
-// Rows end with their active-identity indicator (scopeGlyph: ● green cwd pin,
-// ● orange parent pin, 🌐 global default); renamed profiles render their
-// label in the renamedStyle accent instead of a footnote legend.
+// Rows lead with their active-identity icon (scopeSlot: ● green cwd pin, ●
+// orange parent pin, 🌐 global default); renamed profiles render their label
+// in the renamedStyle accent instead of a footnote legend. Segments are
+// styled independently so the icon keeps its own colour on selected rows.
 func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, leftW int, scopes map[string]string) string {
 	var b strings.Builder
 	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), focused))
@@ -579,7 +586,7 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 		b.WriteString(mutedStyle.Render("  (none yet — Sign in to add one)"))
 		return b.String()
 	}
-	textW := leftW - 4
+	textW := leftW - 5 // selection bar/pad (2) + icon slot (3)
 	if textW < 1 {
 		textW = 1
 	}
@@ -589,28 +596,24 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 			// matching the Azure list delegate's spacing.
 			b.WriteString("\n")
 		}
-		renamed := p.Label != "" && p.Label != p.Name
-		name := truncateLine(p.Display(), textW)
-		detail := truncateLine(p.Detail, textW)
-		glyph := ""
-		if g := scopeGlyph(scopes[p.Name]); g != "" {
-			glyph = " " + g
-		}
-		nameStyle := lipgloss.NewStyle().Foreground(white).PaddingLeft(2)
-		detailStyle := mutedStyle.PaddingLeft(2)
+		bar := "  "
+		nameStyle := lipgloss.NewStyle().Foreground(white)
+		detailStyle := mutedStyle
 		switch {
 		case i == cursor && focused:
-			nameStyle = selectionBar.Foreground(gold).Bold(true)
-			detailStyle = selectionBar.Foreground(azureSky)
+			bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
+			nameStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
+			detailStyle = lipgloss.NewStyle().Foreground(azureSky)
 		case i == cursor:
-			nameStyle = selectionBar.Foreground(white)
-			detailStyle = selectionBar.Foreground(gray)
+			bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
+			nameStyle = lipgloss.NewStyle().Foreground(white)
+			detailStyle = lipgloss.NewStyle().Foreground(gray)
 		}
-		if renamed {
-			nameStyle = nameStyle.Foreground(goldLight).Bold(true).Italic(true)
+		if p.Label != "" && p.Label != p.Name {
+			nameStyle = renamedStyle
 		}
-		b.WriteString(nameStyle.Render(name) + glyph + "\n")
-		b.WriteString(detailStyle.Render(detail) + "\n")
+		b.WriteString(bar + scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW)) + "\n")
+		b.WriteString(bar + "   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
 	}
 	return b.String()
 }
