@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 func TestAwsViewRendersProfilesAndActions(t *testing.T) {
@@ -54,10 +56,11 @@ func TestProviderViewEnterOpensActionsEscReturns(t *testing.T) {
 	if nm.(awsView).focus != focusActions {
 		t.Fatal("enter on the profile pane did not open the action pane")
 	}
-	// Enter in the action pane runs the selected action (Sign in → status hint).
-	nm2, _ := nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if !strings.Contains(nm2.(awsView).status, "azrl aws login") {
-		t.Fatalf("enter in the action pane did not run the action: %q", nm2.(awsView).status)
+	// Enter in the action pane runs the selected action (Sign in → an exec
+	// handoff command for the interactive login flow).
+	nm2, cmd := nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter in the action pane did not return the sign-in handoff command")
 	}
 	nm3, _ := nm2.(awsView).Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if nm3.(awsView).focus != focusProfiles {
@@ -81,5 +84,29 @@ func TestProviderViewDeleteKeyRemoves(t *testing.T) {
 	}
 	if len(av.profiles) != 0 {
 		t.Fatalf("profile list not reloaded after remove: %+v", av.profiles)
+	}
+}
+
+func TestRenderProfilePaneActiveDot(t *testing.T) {
+	profiles := []profile.Listed{
+		{Name: "work", Detail: "acme.awsapps.com"},
+		{Name: "personal", Detail: "personal.awsapps.com"},
+	}
+	out := renderProfilePane(profiles, 0, true, 40, "work")
+	if !strings.Contains(out, "● work") {
+		t.Fatalf("active profile missing ● dot:\n%s", out)
+	}
+	if !strings.Contains(out, "○ personal") {
+		t.Fatalf("inactive profile missing ○ dot:\n%s", out)
+	}
+}
+
+func TestGroupArgs(t *testing.T) {
+	if got := strings.Join(groupArgs("aws", "login", "work"), " "); got != "aws login work" {
+		t.Fatalf("groupArgs(aws) = %q", got)
+	}
+	// The test binary is not ghrl, so the gh group keeps its prefix.
+	if got := strings.Join(groupArgs("gh", "login"), " "); got != "gh login" {
+		t.Fatalf("groupArgs(gh) = %q", got)
 	}
 }

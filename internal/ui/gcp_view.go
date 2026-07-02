@@ -13,13 +13,9 @@ type gcpView struct{ providerTabView }
 func newGcpView() gcpView {
 	header := paneTitleStyle.Render("Google Cloud") + mutedStyle.Render(" — gcloud configurations · OAuth")
 	actions := []providerAction{
-		{"s", "Sign in", func(v *providerTabView) {
-			v.status = accentStyle.Render("Run `azrl gcp login` in a terminal to sign in (interactive).")
-		}},
+		{"s", "Sign in", loginAction("gcp", true)},
 		{"u", "Use here", useAction},
-		{"a", "New profile", func(v *providerTabView) {
-			v.status = accentStyle.Render("Run `azrl gcp login <name>` to create and sign into a new profile.")
-		}},
+		{"a", "New profile", loginAction("gcp", false)},
 		{"delete", "Remove", removeAction},
 	}
 	return gcpView{newProviderTabView(gcp.NewProvider(), header, actions)}

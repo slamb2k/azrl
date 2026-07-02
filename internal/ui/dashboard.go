@@ -171,7 +171,7 @@ func adoptArgs(providerName, dir string) []string {
 	case "azure":
 		return []string{"capture", name}
 	case "github":
-		return []string{"gh", "capture", name}
+		return groupArgs("gh", "capture", name)
 	default:
 		return []string{providerName, "capture", name}
 	}
@@ -366,7 +366,9 @@ func ambientLine(r AmbientRow, titleW, idW, srcW int) string {
 	line := "🌐 " + padTo(r.Title, titleW) + "  " + padTo(r.Identity, idW) + "  " +
 		padTo(mutedStyle.Render(r.Source), srcW) + "  "
 	if r.Profile != "" {
-		return line + "→ " + r.Profile
+		// A label, not an arrow: this is the managed profile matching the
+		// ambient identity — the → glyph is reserved for directory mappings.
+		return line + mutedStyle.Render("profile: ") + r.Profile
 	}
 	return line + accentStyle.Render("unmanaged")
 }

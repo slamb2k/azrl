@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/slamb2k/azrl/internal/config"
@@ -117,11 +118,24 @@ func handoffArgs(key, profileName string) []string {
 		}
 		return []string{"login", profileName}
 	case "i":
-		return []string{"init"}
+		// init was removed in v0.7.0; login creates a profile on first use.
+		return []string{"login"}
 	case "c":
 		return []string{"capture"}
 	}
 	return nil
+}
+
+// groupArgs builds a provider-group invocation, accounting for the promoted
+// ghrl binary where the gh group's verbs sit at the top level.
+func groupArgs(group string, rest ...string) []string {
+	if group == "gh" {
+		if self, err := os.Executable(); err == nil &&
+			strings.TrimSuffix(filepath.Base(self), ".exe") == "ghrl" {
+			return rest
+		}
+	}
+	return append([]string{group}, rest...)
 }
 
 // runHandoff suspends the TUI (releasing the terminal) and runs azrl <args> so

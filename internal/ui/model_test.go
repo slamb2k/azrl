@@ -118,7 +118,7 @@ func TestEditHotkeySelectsRadio(t *testing.T) {
 func TestItemDisplaysLabelOverSlug(t *testing.T) {
 	// no label: title is the slug, description is just the tenant.
 	plain := item{name: "acme", tenant: "acme.com"}
-	if plain.Title() != "acme" || plain.Description() != "acme.com" {
+	if plain.Title() != "○ acme" || plain.Description() != "acme.com" {
 		t.Fatalf("plain item: title=%q desc=%q", plain.Title(), plain.Description())
 	}
 	// with a label: title is the label plus an alias marker; the slug is hidden
@@ -219,7 +219,7 @@ func TestHandoffArgs(t *testing.T) {
 	}{
 		{"l", "acme", []string{"login", "acme"}},
 		{"l", "", []string{"login"}},
-		{"i", "acme", []string{"init"}},
+		{"i", "acme", []string{"login"}},
 		{"c", "acme", []string{"capture"}},
 		{"u", "acme", nil},
 	}

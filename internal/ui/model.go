@@ -15,6 +15,7 @@ import (
 	"github.com/slamb2k/azrl/internal/azure"
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
+	"github.com/slamb2k/azrl/internal/provider"
 )
 
 // focus identifies which pane receives navigation keys.
@@ -62,7 +63,10 @@ func profileDelegate() list.DefaultDelegate {
 // item is one profile row. name is the immutable slug (identity, used for all
 // operations and the CLI); label is the optional display name. When a label is
 // set, the slug is shown alongside the tenant so it stays discoverable.
-type item struct{ name, label, tenant string }
+type item struct {
+	name, label, tenant string
+	active              bool
+}
 
 // aliasMark flags a row whose display name is a custom label. The real slug is
 // hidden (it lives in the .conf and the rename/edit dialogs), so the marker is
@@ -70,11 +74,17 @@ type item struct{ name, label, tenant string }
 // footnote in the help bar (see helpBar) explains it on screen.
 const aliasMark = " *"
 
+// Title leads with ● when the profile matches az's ambient identity (○
+// otherwise), plain text so the delegate's row styles apply cleanly.
 func (i item) Title() string {
-	if i.label != "" && i.label != i.name {
-		return i.label + aliasMark
+	dot := "○ "
+	if i.active {
+		dot = "● "
 	}
-	return i.name
+	if i.label != "" && i.label != i.name {
+		return dot + i.label + aliasMark
+	}
+	return dot + i.name
 }
 
 func (i item) Description() string {
@@ -110,8 +120,18 @@ func NewModel() Model {
 	pwd, _ := os.Getwd()
 	var items []list.Item
 	profs, _ := profile.List(config.ProfilesDir())
+	active := ""
+	if amb, err := azure.NewProvider().Ambient(); err == nil && amb.Identity != "" {
+		statuses := make([]provider.Status, 0, len(profs))
+		for _, p := range profs {
+			if st, err := azure.NewProvider().Status(p.Name, config.ProfilesDir()); err == nil {
+				statuses = append(statuses, st)
+			}
+		}
+		active = provider.MatchProfile(statuses, amb.Identity)
+	}
 	for _, p := range profs {
-		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail})
+		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, active: p.Name == active})
 	}
 	l := list.New(items, profileDelegate(), 0, 0)
 	l.Title = "Profiles"
@@ -453,7 +473,13 @@ func (m Model) dispatch(key string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		ti := textinput.New()
-		ti.SetValue(sel.Title())
+		// Seed with the raw display name — Title() carries the ●/○ status dot
+		// and the alias marker, which must not leak into the new label.
+		disp := sel.label
+		if disp == "" {
+			disp = sel.name
+		}
+		ti.SetValue(disp)
 		ti.CursorEnd()
 		ti.Width = 28
 		cmd := ti.Focus()
@@ -531,7 +557,9 @@ func renderPaneFrame(width, height int, identity, left, right, status, footer st
 // renderProfilePane hand-renders a PROFILES(n) pane for a slice of profiles,
 // mirroring the Azure list delegate (selectionBar on the focused row, muted
 // details) so the provider tabs match the Azure Model without a bubbles list.
-func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, leftW int) string {
+// Each row leads with ● when the profile matches the provider's ambient
+// identity (○ otherwise), and renamed profiles render their label in italics.
+func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, leftW int, active string) string {
 	var b strings.Builder
 	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), focused))
 	b.WriteString("\n\n")
@@ -539,7 +567,7 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 		b.WriteString(mutedStyle.Render("  (none yet — Sign in to add one)"))
 		return b.String()
 	}
-	textW := leftW - 2
+	textW := leftW - 4
 	if textW < 1 {
 		textW = 1
 	}
@@ -549,17 +577,22 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 			// matching the Azure list delegate's spacing.
 			b.WriteString("\n")
 		}
-		name := truncateLine(p.Display(), textW)
-		detail := truncateLine(p.Detail, textW)
+		dot := "○"
+		if p.Name == active {
+			dot = "●"
+		}
+		renamed := p.Label != "" && p.Label != p.Name
+		name := dot + " " + truncateLine(p.Display(), textW)
+		detail := "  " + truncateLine(p.Detail, textW)
 		switch {
 		case i == cursor && focused:
-			b.WriteString(selectionBar.Foreground(gold).Bold(true).Render(name) + "\n")
+			b.WriteString(selectionBar.Foreground(gold).Bold(true).Italic(renamed).Render(name) + "\n")
 			b.WriteString(selectionBar.Foreground(azureSky).Render(detail) + "\n")
 		case i == cursor:
-			b.WriteString(selectionBar.Foreground(white).Render(name) + "\n")
+			b.WriteString(selectionBar.Foreground(white).Italic(renamed).Render(name) + "\n")
 			b.WriteString(selectionBar.Foreground(gray).Render(detail) + "\n")
 		default:
-			b.WriteString(lipgloss.NewStyle().Foreground(white).PaddingLeft(2).Render(name) + "\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(white).PaddingLeft(2).Italic(renamed).Render(name) + "\n")
 			b.WriteString(mutedStyle.PaddingLeft(2).Render(detail) + "\n")
 		}
 	}
