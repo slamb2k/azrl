@@ -678,7 +678,7 @@ func (m Model) helpBar() string {
 		return strings.Join(lines, "\n")
 	}
 	bar := mutedStyle.Render("↑↓ select · ↵ open/run · esc back · ") +
-		keycap("l") + keycap("u") + keycap("c") + keycap("i") + keycap("x") + keycap("n") + " " + keycap("delete") + mutedStyle.Render(" actions · ") +
+		keycap("l") + " " + keycap("u") + " " + keycap("c") + " " + keycap("i") + " " + keycap("x") + " " + keycap("n") + " " + keycap("delete") + mutedStyle.Render(" actions · ") +
 		keycap("f5") + mutedStyle.Render(" refresh · ? help · ") + keycap("q") + mutedStyle.Render(" quit")
 	if m.hasAlias() {
 		bar += mutedStyle.Render(" · ") + accentStyle.Render("*") + mutedStyle.Render(" renamed")
