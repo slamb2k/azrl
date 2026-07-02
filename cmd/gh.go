@@ -35,7 +35,7 @@ func newGhLoginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prov := github.NewProvider()
 			dir := prov.ProfilesDir()
-			name, err := resolveLoginTarget(cmd, prov, args, "ghrl")
+			name, newProfile, err := resolveLoginTarget(cmd, prov, args, "ghrl", validGhName)
 			if err != nil {
 				return err
 			}
@@ -44,8 +44,9 @@ func newGhLoginCmd() *cobra.Command {
 			}
 			conf, err := github.LoadConf(name, dir)
 			if err != nil {
-				// Unknown profile: confirm before creating (never silently).
-				if !confirmCreateProfile(cmd, "ghrl", name, hostname, ghYes) {
+				// newProfile: already committed via the first-login name prompt, so
+				// create without a second confirm. Otherwise confirm before creating.
+				if !newProfile && !confirmCreateProfile(cmd, "ghrl", name, hostname, ghYes) {
 					return fmt.Errorf("ghrl: no profile %q — pass --yes to create it (host %s) or run interactively", name, hostname)
 				}
 				conf = github.Conf{Host: hostname, Protocol: "https"}

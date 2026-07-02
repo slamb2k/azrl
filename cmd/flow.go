@@ -59,7 +59,7 @@ func captureSession(name, pwd string, out io.Writer) error {
 	}
 	acctBytes, err := azure.AccountShow()
 	if err != nil {
-		return fmt.Errorf("azrl: not logged in for %q — run azrl init first", name)
+		return fmt.Errorf("azrl: not logged in for %q — run azrl login first", name)
 	}
 	var acct profile.AccountJSON
 	if err := json.Unmarshal(acctBytes, &acct); err != nil {

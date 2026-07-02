@@ -42,7 +42,7 @@ func newAwsLoginCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prov := aws.NewProvider()
 			dir := prov.ProfilesDir()
-			name, err := resolveLoginTarget(cmd, prov, args, "azrl aws")
+			name, newProfile, err := resolveLoginTarget(cmd, prov, args, "azrl aws", validAwsName)
 			if err != nil {
 				return err
 			}
@@ -51,12 +51,14 @@ func newAwsLoginCmd() *cobra.Command {
 			}
 			conf, err := aws.LoadConf(name, dir)
 			if err != nil {
-				// Unknown profile: never create one without an SSO start URL, and
-				// never silently — confirm first (or --yes) when a URL is supplied.
+				// Unknown profile: never create one without an SSO start URL — this
+				// guard applies even on the first-login path (never an empty SSO).
 				if startURL == "" {
 					return fmt.Errorf("azrl aws: no profile %q — provide --sso-start-url (and optionally --sso-region/--account-id/--role-name) to create it", name)
 				}
-				if !confirmCreateProfile(cmd, "azrl aws", name, startURL, awsYes) {
+				// newProfile: already committed via the first-login name prompt, so
+				// create without a second confirm. Otherwise confirm (or --yes) first.
+				if !newProfile && !confirmCreateProfile(cmd, "azrl aws", name, startURL, awsYes) {
 					return fmt.Errorf("azrl aws: no profile %q — pass --yes to create it (%s) or run interactively", name, startURL)
 				}
 				conf = aws.Conf{SSOStartURL: startURL, SSORegion: region, AccountID: accountID, RoleName: roleName, Isolate: isolate}

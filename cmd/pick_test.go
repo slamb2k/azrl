@@ -11,6 +11,7 @@ import (
 
 	"github.com/slamb2k/azrl/internal/aws"
 	"github.com/slamb2k/azrl/internal/github"
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // pickCmd returns a bare cobra command wired to a fed stdin and a captured
@@ -101,7 +102,7 @@ func TestConfirmCreateProfileInteractiveDeclines(t *testing.T) {
 func TestResolveLoginTargetExplicitArg(t *testing.T) {
 	seedGhProfiles(t, "work", "emu")
 	c, _ := pickCmd("")
-	got, err := resolveLoginTarget(c, github.NewProvider(), []string{"chosen"}, "ghrl")
+	got, _, err := resolveLoginTarget(c, github.NewProvider(), []string{"chosen"}, "ghrl", validGhName)
 	if err != nil || got != "chosen" {
 		t.Fatalf("got %q err %v", got, err)
 	}
@@ -115,7 +116,7 @@ func TestResolveLoginTargetPin(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(old)
 	c, _ := pickCmd("")
-	got, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl")
+	got, _, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl", validGhName)
 	if err != nil || got != "emu" {
 		t.Fatalf("got %q err %v", got, err)
 	}
@@ -125,7 +126,7 @@ func TestResolveLoginTargetNoProfiles(t *testing.T) {
 	seedGhProfiles(t)
 	chdirClean(t)
 	c, _ := pickCmd("")
-	_, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl")
+	_, _, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl", validGhName)
 	if err == nil || !strings.Contains(err.Error(), "no profiles yet") {
 		t.Fatalf("want friendly no-profiles error, got %v", err)
 	}
@@ -135,7 +136,7 @@ func TestResolveLoginTargetSingleAutoSelect(t *testing.T) {
 	seedGhProfiles(t, "only")
 	chdirClean(t)
 	c, out := pickCmd("")
-	got, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl")
+	got, _, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl", validGhName)
 	if err != nil || got != "only" {
 		t.Fatalf("got %q err %v", got, err)
 	}
@@ -149,7 +150,7 @@ func TestResolveLoginTargetMultiNonInteractive(t *testing.T) {
 	chdirClean(t)
 	stubInteractive(t, false)
 	c, _ := pickCmd("")
-	_, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl")
+	_, _, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl", validGhName)
 	if err == nil || !strings.Contains(err.Error(), "multiple profiles") {
 		t.Fatalf("want multiple-profiles error, got %v", err)
 	}
@@ -164,7 +165,7 @@ func TestResolveLoginTargetMultiInteractive(t *testing.T) {
 	stubInteractive(t, true)
 	// Profiles sort by name: [emu, work]; selecting 2 -> "work".
 	c, out := pickCmd("2\n")
-	got, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl")
+	got, _, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl", validGhName)
 	if err != nil || got != "work" {
 		t.Fatalf("got %q err %v (out=%q)", got, err, out.String())
 	}
@@ -179,9 +180,78 @@ func TestResolveLoginTargetReprompt(t *testing.T) {
 	stubInteractive(t, true)
 	// Invalid "abc" then valid "2" -> "work".
 	c, _ := pickCmd("abc\n2\n")
-	got, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl")
+	got, _, err := resolveLoginTarget(c, github.NewProvider(), nil, "ghrl", validGhName)
 	if err != nil || got != "work" {
 		t.Fatalf("got %q err %v", got, err)
+	}
+}
+
+// TestResolveLoginTargetFirstLoginDefault proves that with zero saved profiles on
+// a TTY the helper runs the first-login prompt, defaults an empty entry to the
+// current directory basename, and signals newProfile=true.
+func TestResolveLoginTargetFirstLoginDefault(t *testing.T) {
+	seedGhProfiles(t) // zero profiles
+	chdirClean(t)
+	stubInteractive(t, true)
+	pwd, _ := os.Getwd()
+	want := profile.DefaultName("", pwd)
+	c, out := pickCmd("\n") // empty entry -> default
+	name, _, newProfile, err := resolveLoginTargetWithProfiles(c, github.NewProvider(), nil, "ghrl", validGhName)
+	if err != nil {
+		t.Fatalf("first-login should not error: %v", err)
+	}
+	if !newProfile {
+		t.Fatal("first-login should signal newProfile=true")
+	}
+	if name != want {
+		t.Fatalf("empty entry should use dir default %q, got %q", want, name)
+	}
+	if !strings.Contains(out.String(), "No ghrl profiles yet") || !strings.Contains(out.String(), "["+want+"]") {
+		t.Fatalf("prompt should show dir default: %q", out.String())
+	}
+}
+
+// TestResolveLoginTargetFirstLoginTyped proves a typed name overrides the default.
+func TestResolveLoginTargetFirstLoginTyped(t *testing.T) {
+	seedGhProfiles(t)
+	chdirClean(t)
+	stubInteractive(t, true)
+	c, _ := pickCmd("typedname\n")
+	name, _, newProfile, err := resolveLoginTargetWithProfiles(c, github.NewProvider(), nil, "ghrl", validGhName)
+	if err != nil || !newProfile || name != "typedname" {
+		t.Fatalf("typed name should win: name=%q newProfile=%v err=%v", name, newProfile, err)
+	}
+}
+
+// TestResolveLoginTargetFirstLoginReprompt proves an invalid name re-prompts and a
+// subsequent valid one is accepted.
+func TestResolveLoginTargetFirstLoginReprompt(t *testing.T) {
+	seedGhProfiles(t)
+	chdirClean(t)
+	stubInteractive(t, true)
+	c, out := pickCmd("bad/name\ngood\n")
+	name, _, newProfile, err := resolveLoginTargetWithProfiles(c, github.NewProvider(), nil, "ghrl", validGhName)
+	if err != nil || !newProfile || name != "good" {
+		t.Fatalf("invalid-then-valid: name=%q newProfile=%v err=%v", name, newProfile, err)
+	}
+	if !strings.Contains(out.String(), "invalid profile name") {
+		t.Fatalf("should report the invalid name: %q", out.String())
+	}
+}
+
+// TestResolveLoginTargetFirstLoginNonInteractive proves the zero-profile
+// non-interactive path is unchanged (friendly error, newProfile=false).
+func TestResolveLoginTargetFirstLoginNonInteractive(t *testing.T) {
+	seedGhProfiles(t)
+	chdirClean(t)
+	stubInteractive(t, false)
+	c, _ := pickCmd("")
+	_, _, newProfile, err := resolveLoginTargetWithProfiles(c, github.NewProvider(), nil, "ghrl", validGhName)
+	if err == nil || !strings.Contains(err.Error(), "no profiles yet") {
+		t.Fatalf("want no-profiles error, got %v", err)
+	}
+	if newProfile {
+		t.Fatal("non-interactive must not signal newProfile")
 	}
 }
 
@@ -195,7 +265,7 @@ func TestResolveLoginTargetProviderAgnostic(t *testing.T) {
 	os.WriteFile(filepath.Join(ap, "prod.conf"), []byte("AWS_SSO_START_URL=https://org.awsapps.com/start\n"), 0o644)
 	chdirClean(t)
 	c, out := pickCmd("")
-	got, err := resolveLoginTarget(c, aws.NewProvider(), nil, "azrl aws")
+	got, _, err := resolveLoginTarget(c, aws.NewProvider(), nil, "azrl aws", validAwsName)
 	if err != nil || got != "prod" {
 		t.Fatalf("got %q err %v", got, err)
 	}
