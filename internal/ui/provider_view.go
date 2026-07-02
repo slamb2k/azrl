@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -25,17 +26,19 @@ type providerAction struct {
 // actions are interactive and point the user at the CLI; use/remove act on the
 // profile store directly.
 type providerTabView struct {
-	prov      provider.Provider
-	actions   []providerAction
-	header    string
-	profiles  []profile.Listed
-	active    string
-	cursor    int
-	focus     int
-	actionCur int
-	width     int
-	height    int
-	status    string
+	prov       provider.Provider
+	actions    []providerAction
+	header     string
+	profiles   []profile.Listed
+	active     string
+	dirProfile string
+	dirScope   string
+	cursor     int
+	focus      int
+	actionCur  int
+	width      int
+	height     int
+	status     string
 }
 
 // newProviderTabView builds the shared view for prov with the given pre-rendered
@@ -46,8 +49,9 @@ func newProviderTabView(prov provider.Provider, header string, actions []provide
 	return v
 }
 
-// reload refreshes the profile list and recomputes which saved profile the
-// provider's ambient identity currently matches (the ● active marker).
+// reload refreshes the profile list and recomputes which saved profiles are
+// active: the one the current directory resolves to (with its pin's scope)
+// and the one the provider's ambient identity matches (the global default).
 // Disk-only, mirroring the dashboard's aggregation.
 func (v *providerTabView) reload() {
 	dir := v.prov.ProfilesDir()
@@ -62,9 +66,36 @@ func (v *providerTabView) reload() {
 		}
 		v.active = provider.MatchProfile(statuses, amb.Identity)
 	}
+	v.dirProfile, v.dirScope = "", ""
+	pwd, _ := os.Getwd()
+	if name, err := v.prov.Resolve("", pwd); err == nil && name != "" {
+		v.dirProfile = name
+		v.dirScope = ScopeAncestor
+		if pdir, ok := v.prov.Scheme().Locate(pwd); ok {
+			if pdir == pwd {
+				v.dirScope = ScopeCwd
+			}
+		} else if _, err := os.Stat(filepath.Join(pwd, ".git")); err == nil {
+			// Resolved without a pointer (repo-local git config); the config
+			// governs the whole repo, so the repo root counts as "this dir".
+			v.dirScope = ScopeCwd
+		}
+	}
 	if v.cursor >= len(v.profiles) {
 		v.cursor = 0
 	}
+}
+
+// rowScope returns the effective active scope for one profile row — the
+// closest wins: a directory pin (cwd or ancestor) outranks the global default.
+func (v providerTabView) rowScope(name string) string {
+	if name == v.dirProfile {
+		return v.dirScope
+	}
+	if name == v.active {
+		return scopeGlobal
+	}
+	return ""
 }
 
 func (v providerTabView) Init() tea.Cmd { return nil }
@@ -229,7 +260,13 @@ func (v providerTabView) identityStrip() string {
 func (v providerTabView) View() string {
 	_, leftW, rightW, _ := (Model{width: v.width, height: v.height}).dims()
 
-	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles, leftW, v.active)
+	scopes := make(map[string]string, len(v.profiles))
+	for _, p := range v.profiles {
+		if s := v.rowScope(p.Name); s != "" {
+			scopes[p.Name] = s
+		}
+	}
+	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles, leftW, scopes)
 
 	// Render the provider's own action set as the shared radio group so the right
 	// pane matches Azure's ◉/○ + [key] look exactly (dispatch is unchanged).

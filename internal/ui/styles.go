@@ -66,3 +66,28 @@ func keyGlyph(key string) string {
 // keycap renders a keystroke hint as a reverse-video chip (` L `), the same
 // visual language as the focused-pane title.
 func keycap(key string) string { return keycapChipStyle.Render(" " + keyGlyph(key) + " ") }
+
+// scopeGlobal extends the overview's Scope values for profile rows: the
+// profile is active as the provider's global default (ambient identity).
+const scopeGlobal = "global"
+
+// renamedStyle marks a relabeled profile's display name (bold gold italic),
+// replacing the old "*" footnote legend.
+var renamedStyle = lipgloss.NewStyle().Foreground(goldLight).Bold(true).Italic(true)
+
+// scopeGlyph renders a profile row's trailing active-identity indicator: ●
+// green when the pin is in the current dir, ● orange when inherited from a
+// parent dir, 🌐 when the profile is the provider's global default, and ""
+// when the identity is not active anywhere. When several scopes apply the
+// caller passes the effective one (cwd > parent > global).
+func scopeGlyph(scope string) string {
+	switch scope {
+	case ScopeCwd:
+		return successStyle.Render("●")
+	case ScopeAncestor:
+		return lipgloss.NewStyle().Foreground(goldDeep).Render("●")
+	case scopeGlobal:
+		return "🌐"
+	}
+	return ""
+}
