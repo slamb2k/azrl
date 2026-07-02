@@ -2,7 +2,6 @@ package aws
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/slamb2k/azrl/internal/provider"
@@ -15,16 +14,11 @@ import (
 // stands alone. Disk-only and best-effort: it never spawns aws, and missing or
 // unparseable state yields the zero value.
 func (Provider) Ambient() (provider.Ambient, error) {
-	path := os.Getenv("AWS_CONFIG_FILE")
-	source := "file:$AWS_CONFIG_FILE"
-	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return provider.Ambient{}, nil
-		}
-		path = filepath.Join(home, ".aws", "config")
-		source = "file:~/.aws/config"
+	path, base, ok := provider.EnvOrHome("AWS_CONFIG_FILE", ".aws", "config")
+	if !ok {
+		return provider.Ambient{}, nil
 	}
+	source := "file:" + base
 	if p := os.Getenv("AWS_PROFILE"); p != "" {
 		return provider.Ambient{
 			Identity: ambientIdentity(configSection(path, "profile "+p), p),

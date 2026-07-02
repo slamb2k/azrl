@@ -1,7 +1,6 @@
 package gcp
 
 import (
-	"os"
 	"path/filepath"
 
 	"github.com/slamb2k/azrl/internal/config"
@@ -15,13 +14,7 @@ import (
 // are returned.
 func (Provider) WatchDirs() []string {
 	dirs := provider.ChildDirs(config.GcpProfilesDir())
-	gc := os.Getenv("CLOUDSDK_CONFIG")
-	if gc == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			gc = filepath.Join(home, ".config", "gcloud")
-		}
-	}
-	if gc != "" {
+	if gc, _, ok := provider.EnvOrHome("CLOUDSDK_CONFIG", ".config", "gcloud"); ok {
 		dirs = append(dirs, gc, filepath.Join(gc, "configurations"))
 	}
 	return provider.ExistingDirs(dirs)

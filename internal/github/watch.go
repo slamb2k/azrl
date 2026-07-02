@@ -1,9 +1,6 @@
 package github
 
 import (
-	"os"
-	"path/filepath"
-
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/provider"
 )
@@ -14,10 +11,8 @@ import (
 // returned.
 func (Provider) WatchDirs() []string {
 	dirs := provider.ChildDirs(config.GithubProfilesDir())
-	if d := os.Getenv("GH_CONFIG_DIR"); d != "" {
+	if d, _, ok := provider.EnvOrHome("GH_CONFIG_DIR", ".config", "gh"); ok {
 		dirs = append(dirs, d)
-	} else if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".config", "gh"))
 	}
 	return provider.ExistingDirs(dirs)
 }

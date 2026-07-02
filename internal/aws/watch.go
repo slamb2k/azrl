@@ -14,13 +14,10 @@ import (
 // Best-effort; only existing dirs are returned.
 func (Provider) WatchDirs() []string {
 	dirs := provider.ChildDirs(config.AwsProfilesDir())
-	if f := os.Getenv("AWS_CONFIG_FILE"); f != "" {
+	if f, _, ok := provider.EnvOrHome("AWS_CONFIG_FILE", ".aws", "config"); ok {
 		dirs = append(dirs, filepath.Dir(f))
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		if os.Getenv("AWS_CONFIG_FILE") == "" {
-			dirs = append(dirs, filepath.Join(home, ".aws"))
-		}
 		dirs = append(dirs, filepath.Join(home, ".aws", "sso", "cache"))
 	}
 	return provider.ExistingDirs(dirs)

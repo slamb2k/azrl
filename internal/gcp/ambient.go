@@ -14,16 +14,11 @@ import (
 // from that configuration's [core] account. Disk-only and best-effort: it
 // never spawns gcloud, and missing or unparseable state yields the zero value.
 func (Provider) Ambient() (provider.Ambient, error) {
-	dir := os.Getenv("CLOUDSDK_CONFIG")
-	activeSource := "file:$CLOUDSDK_CONFIG/active_config"
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return provider.Ambient{}, nil
-		}
-		dir = filepath.Join(home, ".config", "gcloud")
-		activeSource = "file:~/.config/gcloud/active_config"
+	dir, base, ok := provider.EnvOrHome("CLOUDSDK_CONFIG", ".config", "gcloud")
+	if !ok {
+		return provider.Ambient{}, nil
 	}
+	activeSource := "file:" + base + "/active_config"
 	name := os.Getenv("CLOUDSDK_ACTIVE_CONFIG_NAME")
 	source := "env:CLOUDSDK_ACTIVE_CONFIG_NAME"
 	if name == "" {
