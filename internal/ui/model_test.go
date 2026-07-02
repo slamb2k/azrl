@@ -123,10 +123,14 @@ func TestProfileDelegateRendersLabelScopeAndTenant(t *testing.T) {
 		profileDelegate{}.Render(&b, l, 0, it)
 		return b.String()
 	}
-	// no label: the slug renders with the tenant detail and the default 🌐.
+	// no label: the slug renders with the tenant detail and the grey ● icon.
 	plain := render(item{name: "acme", tenant: "acme.com"})
-	if !strings.Contains(plain, "🌐 acme") || !strings.Contains(plain, "acme.com") {
+	if !strings.Contains(plain, "●  acme") || !strings.Contains(plain, "acme.com") {
 		t.Fatalf("plain item render:\n%s", plain)
+	}
+	// only the global default carries 🌐.
+	if global := render(item{name: "acme", tenant: "acme.com", scope: scopeGlobal}); !strings.Contains(global, "🌐 acme") {
+		t.Fatalf("global-default item missing 🌐:\n%s", global)
 	}
 	// with a label: the label renders instead of the slug.
 	labeled := render(item{name: "acme", label: "Acme Production", tenant: "contoso.com"})

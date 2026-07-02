@@ -72,17 +72,24 @@ func keycap(key string) string { return keycapChipStyle.Render(" " + keyGlyph(ke
 // replacing the old "*" footnote legend.
 var renamedStyle = lipgloss.NewStyle().Foreground(whiteDim).Italic(true)
 
+// scopeGlobal extends the overview's Scope values for profile rows: the
+// profile is the provider's global default (its ambient identity matches).
+const scopeGlobal = "global"
+
 // scopeSlot renders a profile row's leading icon as a fixed-width slot so
-// names align regardless of glyph (🌐 is double-width): ● green when a pin in
-// the current dir makes the profile effective, ● orange when the pin is
-// inherited from a parent dir, and the default 🌐 for every other profile —
-// available globally, not governing this directory.
+// names align regardless of glyph (🌐 is double-width). Relevance grades the
+// colour: ● green when a pin in the current dir makes the profile effective,
+// ● orange when the pin is inherited from a parent dir, 🌐 only for the
+// provider's global default, and a muted grey ● for profiles that don't
+// apply here.
 func scopeSlot(scope string) string {
 	switch scope {
 	case ScopeCwd:
 		return successStyle.Render("●") + "  "
 	case ScopeAncestor:
 		return lipgloss.NewStyle().Foreground(goldDeep).Render("●") + "  "
+	case scopeGlobal:
+		return "🌐 "
 	}
-	return "🌐 "
+	return mutedStyle.Render("●") + "  "
 }
