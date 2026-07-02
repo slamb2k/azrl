@@ -15,16 +15,11 @@ import (
 // and best-effort: it never spawns gh, and missing or unparseable state
 // yields the zero value.
 func (Provider) Ambient() (provider.Ambient, error) {
-	dir := os.Getenv("GH_CONFIG_DIR")
-	source := "file:$GH_CONFIG_DIR/hosts.yml"
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return provider.Ambient{}, nil
-		}
-		dir = filepath.Join(home, ".config", "gh")
-		source = "file:~/.config/gh/hosts.yml"
+	dir, base, ok := provider.EnvOrHome("GH_CONFIG_DIR", ".config", "gh")
+	if !ok {
+		return provider.Ambient{}, nil
 	}
+	source := "file:" + base + "/hosts.yml"
 	id := ambientIdentity(filepath.Join(dir, "hosts.yml"))
 	if id == "" {
 		return provider.Ambient{}, nil

@@ -1,6 +1,7 @@
 package provider_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -44,5 +45,23 @@ func TestMatchProfileMostRecentlyUsedWinsOnDuplicates(t *testing.T) {
 	}
 	if got := provider.MatchProfile(statuses, "simon@contoso.com"); got != "fresh" {
 		t.Fatalf("MatchProfile = %q, want fresh (most-recently-used)", got)
+	}
+}
+
+func TestEnvOrHomeEnvWins(t *testing.T) {
+	t.Setenv("AZRL_TEST_DIR", "/opt/native")
+	path, base, ok := provider.EnvOrHome("AZRL_TEST_DIR", ".config", "native")
+	if !ok || path != "/opt/native" || base != "$AZRL_TEST_DIR" {
+		t.Fatalf("EnvOrHome = %q, %q, %v; want /opt/native, $AZRL_TEST_DIR, true", path, base, ok)
+	}
+}
+
+func TestEnvOrHomeFallsBackToHome(t *testing.T) {
+	t.Setenv("AZRL_TEST_DIR", "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path, base, ok := provider.EnvOrHome("AZRL_TEST_DIR", ".config", "native")
+	if !ok || path != filepath.Join(home, ".config", "native") || base != "~/.config/native" {
+		t.Fatalf("EnvOrHome = %q, %q, %v; want %s, ~/.config/native, true", path, base, ok, filepath.Join(home, ".config", "native"))
 	}
 }
