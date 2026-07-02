@@ -233,3 +233,43 @@ func TestMappingRecordNoOpWhenUnchanged(t *testing.T) {
 		t.Fatalf("unchanged record must not write: %v", err)
 	}
 }
+
+func TestRemoveMappingDropsMatchingEntry(t *testing.T) {
+	profilesDir := t.TempDir()
+	a, b := t.TempDir(), t.TempDir()
+	if err := RecordMapping(profilesDir, Mapping{Dir: a, Profile: "work", Source: "gitconfig"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordMapping(profilesDir, Mapping{Dir: a, Profile: "work", Source: "pointer"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordMapping(profilesDir, Mapping{Dir: b, Profile: "personal", Source: "pointer"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveMapping(profilesDir, a, "gitconfig"); err != nil {
+		t.Fatal(err)
+	}
+	got := ReadMappings(profilesDir)
+	want := []Mapping{
+		{Dir: a, Profile: "work", Source: "pointer"},
+		{Dir: b, Profile: "personal", Source: "pointer"},
+	}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("mappings = %+v, want %+v", got, want)
+	}
+}
+
+func TestRemoveMappingNoOpWhenAbsent(t *testing.T) {
+	profilesDir := t.TempDir()
+	dir := t.TempDir()
+	if err := RecordMapping(profilesDir, Mapping{Dir: dir, Profile: "work", Source: "pointer"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(profilesDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(profilesDir, 0o755)
+	if err := RemoveMapping(profilesDir, dir, "gitconfig"); err != nil {
+		t.Fatalf("absent entry must not write: %v", err)
+	}
+}

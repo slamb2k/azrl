@@ -28,7 +28,8 @@ func ReadMappings(profilesDir string) []Mapping {
 // a missing (or empty) pointer drops the entry, and a pointer now naming a
 // different profile replaces the entry in place (self-heal, not duplicated).
 // gitconfig-sourced entries keep the dir-exists-only check; re-resolving them
-// is the github.ResolveDir consumers' job. Any change is persisted atomically.
+// is the github.ResolveDir consumers' job (which heal the index in turn). Any
+// change is persisted atomically.
 func (s Scheme) ReadMappings(profilesDir string) []Mapping {
 	return readMappings(profilesDir, func(m Mapping) (Mapping, bool) {
 		if m.Source != "pointer" {
@@ -125,6 +126,38 @@ func RecordMapping(profilesDir string, m Mapping) error {
 		lines = append(lines, entry)
 	}
 	return writeAtomic(path, strings.Join(lines, "\n")+"\n")
+}
+
+// RemoveMapping drops the entry with the given Dir and Source from
+// <profilesDir>/mappings. It is a no-op (no write) when no such entry exists;
+// otherwise the rewrite is atomic and preserves every other line and order.
+func RemoveMapping(profilesDir, dir, source string) error {
+	path := filepath.Join(profilesDir, "mappings")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	s := strings.TrimRight(string(b), "\n")
+	if s == "" {
+		return nil
+	}
+	var kept []string
+	removed := false
+	for _, line := range strings.Split(s, "\n") {
+		if e, ok := parseMapping(line); ok && e.Dir == dir && e.Source == source {
+			removed = true
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if !removed {
+		return nil
+	}
+	body := ""
+	if len(kept) > 0 {
+		body = strings.Join(kept, "\n") + "\n"
+	}
+	return writeAtomic(path, body)
 }
 
 // parseMapping parses one index line; ok is false when the line is malformed

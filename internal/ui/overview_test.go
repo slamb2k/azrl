@@ -269,3 +269,64 @@ func TestBuildOverviewMappedProfilesLeaveUnmapped(t *testing.T) {
 		t.Fatalf("unmapped github profile missing: %+v", ov.Unmapped)
 	}
 }
+
+func TestBuildOverviewHealsStaleGitConfigEntry(t *testing.T) {
+	// A gitconfig-sourced index entry whose repo now names a different managed
+	// user is replaced in place from the same resolution that renders the row.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	gh := filepath.Join(home, ".github-profiles")
+	os.MkdirAll(gh, 0o755)
+	os.WriteFile(filepath.Join(gh, "old.conf"), []byte("GH_HOST=github.com\nGH_USER=user-old\n"), 0o644)
+	os.WriteFile(filepath.Join(gh, "fresh.conf"), []byte("GH_HOST=github.com\nGH_USER=user-fresh\n"), 0o644)
+
+	repo := filepath.Join(home, "repo")
+	initGitRepo(t, repo)
+	setCredentialUser(t, repo, "github.com", "user-fresh")
+	os.WriteFile(filepath.Join(gh, "mappings"), []byte(repo+"\told\tgitconfig\n"), 0o644)
+
+	ov := BuildOverview(provider.All(), home)
+	found := false
+	for _, r := range ov.Mappings {
+		if r.Provider == "github" && r.Dir == repo {
+			if r.Profile != "fresh" || r.Source != "gitconfig" {
+				t.Fatalf("row = %+v, want fresh/gitconfig", r)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no github row for %s: %+v", repo, ov.Mappings)
+	}
+	b, _ := os.ReadFile(filepath.Join(gh, "mappings"))
+	if !strings.Contains(string(b), repo+"\tfresh\tgitconfig") || strings.Contains(string(b), "\told\t") {
+		t.Fatalf("index not healed:\n%s", b)
+	}
+}
+
+func TestBuildOverviewDropsDeadGitConfigEntry(t *testing.T) {
+	// A gitconfig-sourced index entry whose repo no longer carries a credential
+	// username (and has no pointer) is dropped from the index on read.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	gh := filepath.Join(home, ".github-profiles")
+	os.MkdirAll(gh, 0o755)
+	os.WriteFile(filepath.Join(gh, "work.conf"), []byte("GH_HOST=github.com\nGH_USER=user-a\n"), 0o644)
+
+	repo := filepath.Join(home, "repo")
+	initGitRepo(t, repo)
+	os.WriteFile(filepath.Join(gh, "mappings"), []byte(repo+"\twork\tgitconfig\n"), 0o644)
+
+	ov := BuildOverview(provider.All(), home)
+	for _, r := range ov.Mappings {
+		if r.Provider == "github" && r.Dir == repo {
+			t.Fatalf("dead gitconfig entry still rendered: %+v", r)
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(gh, "mappings"))
+	if strings.Contains(string(b), repo) {
+		t.Fatalf("dead entry not dropped:\n%s", b)
+	}
+}
