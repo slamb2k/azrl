@@ -23,7 +23,8 @@ func (s stubProvider) SetLabel(name, confdir, label string) error         { retu
 func (s stubProvider) Status(name, confdir string) (provider.Status, error) {
 	return provider.Status{ProfileName: name, LastUsed: time.Now()}, nil
 }
-func (s stubProvider) WatchDirs() []string { return nil }
+func (s stubProvider) WatchDirs() []string                { return nil }
+func (s stubProvider) Ambient() (provider.Ambient, error) { return provider.Ambient{}, nil }
 
 func TestRegistrySortsByNameAndDedupes(t *testing.T) {
 	provider.Register(stubProvider{name: "zeta"})
