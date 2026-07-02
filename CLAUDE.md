@@ -26,7 +26,8 @@ lefthook install           # activate the pre-commit/pre-push git hooks (once pe
 
 CI runs in `.github/workflows/`: `ci.yml` (build/test/gofmt on PRs) and
 `release.yml` (GoReleaser cross-platform binaries, Homebrew tap, `.deb`/`.rpm`,
-curl installer). `scripts/install.sh` is the packaged curl-based installer; the
+curl installer — releases automatically on every merge to `main` with a
+conventional-commit semantic bump; manual `v*` tags still release directly). `scripts/install.sh` is the packaged curl-based installer; the
 top-level `./install.sh` is the local dev installer.
 
 ## Architecture
