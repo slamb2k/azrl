@@ -38,3 +38,37 @@ func TestWatchDirsReturnsExistingDirs(t *testing.T) {
 		}
 	}
 }
+
+// TestWatchDirsIncludesAmbientConfigDir proves the native azureProfile.json
+// dir (${AZURE_CONFIG_DIR:-~/.azure}) is watched so ambient rows live-update.
+func TestWatchDirsIncludesAmbientConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	native := filepath.Join(home, ".azure")
+	os.MkdirAll(native, 0o755)
+	t.Setenv("AZURE_CONFIG_DIR", "")
+
+	found := false
+	for _, d := range azure.NewProvider().WatchDirs() {
+		if d == native {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("WatchDirs missing native config dir %q", native)
+	}
+
+	// AZURE_CONFIG_DIR wins over the ~/.azure default.
+	override := filepath.Join(home, "custom-azure")
+	os.MkdirAll(override, 0o755)
+	t.Setenv("AZURE_CONFIG_DIR", override)
+	found = false
+	for _, d := range azure.NewProvider().WatchDirs() {
+		if d == override {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("WatchDirs missing AZURE_CONFIG_DIR %q", override)
+	}
+}

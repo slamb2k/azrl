@@ -48,3 +48,26 @@ func TestWatchDirsReturnsExistingDirs(t *testing.T) {
 		}
 	}
 }
+
+// TestWatchDirsHonoursCloudsdkConfig proves CLOUDSDK_CONFIG overrides the
+// ~/.config/gcloud default so ambient rows live-update from the right dir.
+func TestWatchDirsHonoursCloudsdkConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	override := filepath.Join(home, "custom-gcloud")
+	os.MkdirAll(filepath.Join(override, "configurations"), 0o755)
+	t.Setenv("CLOUDSDK_CONFIG", override)
+
+	var haveDir, haveConfigs bool
+	for _, d := range gcp.NewProvider().WatchDirs() {
+		if d == override {
+			haveDir = true
+		}
+		if d == filepath.Join(override, "configurations") {
+			haveConfigs = true
+		}
+	}
+	if !haveDir || !haveConfigs {
+		t.Fatalf("WatchDirs missing CLOUDSDK_CONFIG dirs under %q", override)
+	}
+}

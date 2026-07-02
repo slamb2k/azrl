@@ -40,3 +40,37 @@ func TestWatchDirsReturnsExistingDirs(t *testing.T) {
 		}
 	}
 }
+
+// TestWatchDirsIncludesAmbientConfigDir proves the native hosts.yml dir
+// (${GH_CONFIG_DIR:-~/.config/gh}) is watched so ambient rows live-update.
+func TestWatchDirsIncludesAmbientConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	native := filepath.Join(home, ".config", "gh")
+	os.MkdirAll(native, 0o755)
+	t.Setenv("GH_CONFIG_DIR", "")
+
+	found := false
+	for _, d := range github.NewProvider().WatchDirs() {
+		if d == native {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("WatchDirs missing native config dir %q", native)
+	}
+
+	// GH_CONFIG_DIR wins over the ~/.config/gh default.
+	override := filepath.Join(home, "custom-gh")
+	os.MkdirAll(override, 0o755)
+	t.Setenv("GH_CONFIG_DIR", override)
+	found = false
+	for _, d := range github.NewProvider().WatchDirs() {
+		if d == override {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("WatchDirs missing GH_CONFIG_DIR %q", override)
+	}
+}

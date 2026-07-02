@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -12,14 +11,17 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/slamb2k/azrl/internal/config"
+	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 )
 
-// dashboardRow is one profile line: its owning provider plus the disk-only Status.
-type dashboardRow struct {
-	providerName  string
-	providerTitle string
-	status        provider.Status
+// dashItem is one selectable row of the landing view, in render order across
+// the three sections. adoptDir is set on unmanaged mapping rows so [a] can
+// launch the provider's capture flow for that directory.
+type dashItem struct {
+	provider string
+	profile  string
+	adoptDir string
 }
 
 // dashboardTickMsg drives the periodic disk re-read (the fallback poll).
@@ -36,12 +38,14 @@ type switchTabMsg struct {
 	profile  string
 }
 
-// dashboardModel is the top-level "who am I, everywhere" view: it aggregates
-// every provider's profiles into one table, sorted by last-used, and refreshes
-// from disk on a timer. It never makes a network call.
+// dashboardModel is the landing view: MAPPINGS (directory→profile associations
+// with scope and drift markers), AMBIENT (each provider's native default), and
+// UNMAPPED PROFILES (saved profiles no mapping names). It refreshes from disk
+// on a timer and on fsnotify events, and never makes a network call.
 type dashboardModel struct {
 	providers []provider.Provider
-	rows      []dashboardRow
+	ov        Overview
+	items     []dashItem
 	cursor    int
 	width     int
 	height    int
@@ -50,7 +54,7 @@ type dashboardModel struct {
 }
 
 // newDashboard builds the dashboard over provs, reading the poll interval from
-// azrl.conf and aggregating the initial rows from disk. It also creates a
+// azrl.conf and aggregating the initial sections from disk. It also creates a
 // best-effort filesystem watcher over each provider's WatchDirs so external
 // token changes refresh the view immediately; on watcher-create failure it
 // falls back to timer-only polling (watcher stays nil).
@@ -59,9 +63,43 @@ func newDashboard(provs []provider.Provider) dashboardModel {
 		providers: provs,
 		interval:  time.Duration(config.DashboardPollSecs(config.ProfilesDir())) * time.Second,
 	}
-	m.rows = aggregate(provs)
+	m.reload()
 	m.watcher = newDashboardWatcher(provs)
 	return m
+}
+
+// reload re-aggregates the three sections from disk and rebuilds the flat
+// selectable-item list, clamping the cursor to the new bounds.
+func (m *dashboardModel) reload() {
+	cwd, _ := os.Getwd()
+	m.ov = BuildOverview(m.providers, cwd)
+	m.items = overviewItems(m.ov)
+	if m.cursor >= len(m.items) {
+		m.cursor = len(m.items) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+}
+
+// overviewItems flattens the overview into selectable items in the exact order
+// View renders them: mappings, then ambient, then unmapped.
+func overviewItems(ov Overview) []dashItem {
+	var items []dashItem
+	for _, r := range ov.Mappings {
+		it := dashItem{provider: r.Provider, profile: r.Profile}
+		if r.Unmanaged != "" {
+			it.adoptDir = r.Dir
+		}
+		items = append(items, it)
+	}
+	for _, r := range ov.Ambient {
+		items = append(items, dashItem{provider: r.Provider, profile: r.Profile})
+	}
+	for _, r := range ov.Unmapped {
+		items = append(items, dashItem{provider: r.Provider, profile: r.Status.ProfileName})
+	}
+	return items
 }
 
 // newDashboardWatcher creates an fsnotify watcher and adds every provider
@@ -104,22 +142,6 @@ func watchCmd(w *fsnotify.Watcher) tea.Cmd {
 	}
 }
 
-// aggregate flattens every provider's profiles into rows sorted by LastUsed
-// descending (zero time last). A per-profile Status error is fault-isolated to
-// its own row.
-func aggregate(provs []provider.Provider) []dashboardRow {
-	var rows []dashboardRow
-	for _, ps := range provider.Collect(provs) {
-		for _, st := range ps.Statuses {
-			rows = append(rows, dashboardRow{providerName: ps.Name, providerTitle: ps.Title, status: st})
-		}
-	}
-	sort.SliceStable(rows, func(i, j int) bool {
-		return rows[i].status.LastUsed.After(rows[j].status.LastUsed)
-	})
-	return rows
-}
-
 func (m dashboardModel) Init() tea.Cmd {
 	tick := tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
 	if wc := watchCmd(m.watcher); wc != nil {
@@ -140,25 +162,44 @@ func (m dashboardModel) Close() error {
 	return nil
 }
 
+// adoptArgs maps an unmanaged mapping row to the azrl subcommand that captures
+// the current session into a new profile named after the directory (Azure's
+// capture is top-level; the other providers sit under their command group).
+func adoptArgs(providerName, dir string) []string {
+	name := profile.DefaultName("", dir)
+	switch providerName {
+	case "azure":
+		return []string{"capture", name}
+	case "github":
+		return []string{"gh", "capture", name}
+	default:
+		return []string{providerName, "capture", name}
+	}
+}
+
 func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case dashboardTickMsg:
-		m.rows = aggregate(m.providers)
+		m.reload()
 		return m, tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
 	case fsEventMsg:
 		// An external token/config change on a watched dir: re-aggregate now (disk
 		// only, cheap) and re-arm the watch. The timer keeps running as a fallback.
-		m.rows = aggregate(m.providers)
+		m.reload()
 		return m, watchCmd(m.watcher)
+	case opDoneMsg:
+		// A handed-off flow (e.g. adopt → capture) finished: pick up its writes.
+		m.reload()
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "r", "w":
-			m.rows = aggregate(m.providers)
+			m.reload()
 			return m, nil
 		case "up", "k":
 			if m.cursor > 0 {
@@ -166,15 +207,22 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "down", "j":
-			if m.cursor < len(m.rows)-1 {
+			if m.cursor < len(m.items)-1 {
 				m.cursor++
 			}
 			return m, nil
+		case "a":
+			if m.cursor >= 0 && m.cursor < len(m.items) {
+				if it := m.items[m.cursor]; it.adoptDir != "" {
+					return m, runHandoff(adoptArgs(it.provider, it.adoptDir))
+				}
+			}
+			return m, nil
 		case "enter":
-			if m.cursor >= 0 && m.cursor < len(m.rows) {
-				row := m.rows[m.cursor]
+			if m.cursor >= 0 && m.cursor < len(m.items) {
+				it := m.items[m.cursor]
 				return m, func() tea.Msg {
-					return switchTabMsg{provider: row.providerName, profile: row.status.ProfileName}
+					return switchTabMsg{provider: it.provider, profile: it.profile}
 				}
 			}
 		}
@@ -183,50 +231,149 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m dashboardModel) View() string {
-	header := paneTitleStyle.Render("Dashboard") + mutedStyle.Render(" — who am I, everywhere")
-	help := mutedStyle.Render("↑↓ select · ↵ open tab · r refresh · w recheck drift · [ ] tab · q quit")
+	header := paneTitleStyle.Render("Dashboard") + mutedStyle.Render(" — mappings · ambient defaults · profiles")
+	help := mutedStyle.Render("↑↓ select · ↵ open tab · a adopt · r refresh · w recheck drift · [ ] tab · q quit")
 
 	var body []string
-	if len(m.rows) == 0 {
-		body = []string{"", mutedStyle.Render("No profiles yet. Create one with `azrl login <name>` or `ghrl login <name>`."), ""}
-	} else {
-		cols := []string{"Provider", "Profile", "Identity", "Dir", "Expiry", "Drift", "Last used"}
-		matrix := [][]string{cols}
-		for _, r := range m.rows {
-			matrix = append(matrix, []string{
-				r.providerTitle,
-				r.status.ProfileName,
-				orDash(r.status.Identity),
-				orDash(shortDir(r.status.Directory)),
-				expiryText(r.status.Expiry),
-				driftText(r.status.Drifted),
-				lastUsedText(r.status.LastUsed),
-			})
+	idx := 0
+	marker := func() string {
+		s := "  "
+		if idx == m.cursor {
+			s = accentStyle.Render("› ")
 		}
+		idx++
+		return s
+	}
 
-		// Fit the table to the terminal: drop lower-priority columns as width
-		// shrinks, then truncate the Identity cell if the survivors still overflow.
-		active, widths := m.fitColumns(matrix)
-
-		for ri, row := range matrix {
-			var cells []string
-			for _, ci := range active {
-				cells = append(cells, padTo(row[ci], widths[ci]))
-			}
-			line := strings.Join(cells, "  ")
-			if ri == 0 {
-				body = append(body, "  "+paneTitleStyle.Render(line))
-				continue
-			}
-			marker := "  "
-			if ri-1 == m.cursor {
-				marker = accentStyle.Render("› ")
-			}
-			body = append(body, marker+line)
+	body = append(body, paneTitleStyle.Render("MAPPINGS"))
+	if len(m.ov.Mappings) == 0 {
+		body = append(body, "  "+mutedStyle.Render("No mappings yet — pin a directory with `azrl use <name>`."))
+	} else {
+		dirW, tgtW := mappingWidths(m.ov.Mappings)
+		for _, r := range m.ov.Mappings {
+			body = append(body, marker()+mappingLine(r, dirW, tgtW))
 		}
 	}
 
+	body = append(body, "", paneTitleStyle.Render("AMBIENT")+mutedStyle.Render(" — defaults in effect"))
+	if len(m.ov.Ambient) == 0 {
+		body = append(body, "  "+mutedStyle.Render("No native defaults detected."))
+	} else {
+		titleW, idW, srcW := ambientWidths(m.ov.Ambient)
+		for _, r := range m.ov.Ambient {
+			body = append(body, marker()+ambientLine(r, titleW, idW, srcW))
+		}
+	}
+
+	body = append(body, "", paneTitleStyle.Render("UNMAPPED PROFILES"))
+	switch {
+	case len(m.ov.Unmapped) > 0:
+		for _, r := range m.ov.Unmapped {
+			body = append(body, marker()+unmappedLine(r))
+		}
+	case m.ov.hasProfiles():
+		body = append(body, "  "+mutedStyle.Render("All profiles are mapped."))
+	default:
+		body = append(body, "  "+mutedStyle.Render("No profiles yet. Create one with `azrl login <name>` or `ghrl login <name>`."))
+	}
+
 	return m.frame(header, body, help)
+}
+
+// scopeMarker renders the mapping's cwd relationship: set here (●), inherited
+// from the nearest governing ancestor (↑), or not governing the cwd (blank).
+func scopeMarker(scope string) string {
+	switch scope {
+	case ScopeCwd:
+		return accentStyle.Render("●")
+	case ScopeAncestor:
+		return accentStyle.Render("↑")
+	}
+	return " "
+}
+
+// sourceIcon renders where the mapping comes from: the provider's pointer
+// filename, or "(git)" for a repo-local git-config association.
+func sourceIcon(r MappingRow) string {
+	if r.Source == "gitconfig" {
+		return "(git)"
+	}
+	return r.Pointer
+}
+
+// mappingTarget renders the mapping's right-hand side: provider:profile for a
+// managed row, or the accented unmanaged identity.
+func mappingTarget(r MappingRow) string {
+	if r.Unmanaged != "" {
+		return r.Provider + ": " + accentStyle.Render(r.Unmanaged)
+	}
+	return r.Provider + ":" + r.Profile
+}
+
+// mappingWidths measures the dir and target columns so mapping rows align.
+func mappingWidths(rows []MappingRow) (dirW, tgtW int) {
+	for _, r := range rows {
+		if w := lipgloss.Width(shortDir(r.Dir)); w > dirW {
+			dirW = w
+		}
+		if w := lipgloss.Width(mappingTarget(r)); w > tgtW {
+			tgtW = w
+		}
+	}
+	return dirW, tgtW
+}
+
+// mappingLine renders one MAPPINGS row: scope marker, dir → target, source
+// icon, then the drift/conflict/adopt annotations.
+func mappingLine(r MappingRow, dirW, tgtW int) string {
+	line := scopeMarker(r.Scope) + " " + padTo(shortDir(r.Dir), dirW) + " → " +
+		padTo(mappingTarget(r), tgtW) + "  " + mutedStyle.Render(sourceIcon(r))
+	if r.Conflict != nil {
+		line += "  " + failureStyle.Render("⚠ conflict") +
+			mutedStyle.Render(" "+r.Pointer+" → "+r.Conflict.PointerProfile+" (git config wins)")
+	}
+	if r.Drifted {
+		line += "  " + failureStyle.Render("⚠ drift")
+	}
+	if r.Unmanaged != "" {
+		line += "  " + accentStyle.Render("unmanaged") + mutedStyle.Render(" · [a]dopt")
+	}
+	return line
+}
+
+// ambientWidths measures the ambient columns so the 🌐 rows align.
+func ambientWidths(rows []AmbientRow) (titleW, idW, srcW int) {
+	for _, r := range rows {
+		if w := lipgloss.Width(r.Title); w > titleW {
+			titleW = w
+		}
+		if w := lipgloss.Width(r.Identity); w > idW {
+			idW = w
+		}
+		if w := lipgloss.Width(r.Source); w > srcW {
+			srcW = w
+		}
+	}
+	return titleW, idW, srcW
+}
+
+// ambientLine renders one AMBIENT row: 🌐 provider, identity, winning source,
+// and the matching profile (or an explicit unmanaged label). Never a drift
+// marker — ambient is the global fallback, not a mapping.
+func ambientLine(r AmbientRow, titleW, idW, srcW int) string {
+	line := "🌐 " + padTo(r.Title, titleW) + "  " + padTo(r.Identity, idW) + "  " +
+		padTo(mutedStyle.Render(r.Source), srcW) + "  "
+	if r.Profile != "" {
+		return line + "→ " + r.Profile
+	}
+	return line + accentStyle.Render("unmanaged")
+}
+
+// unmappedLine renders one muted UNMAPPED PROFILES row: provider:name ·
+// identity · expiry (the expiry keeps its warning styling).
+func unmappedLine(r UnmappedRow) string {
+	st := r.Status
+	return mutedStyle.Render(r.Provider+":"+st.ProfileName+" · "+orDash(st.Identity)+" · ") + expiryText(st.Expiry)
 }
 
 // frame assembles the dashboard content and fills it to the full terminal width
@@ -251,124 +398,6 @@ func (m dashboardModel) frame(header string, body []string, footer string) strin
 	return frameStyle.Render(strings.Join(lines, "\n"))
 }
 
-// Dashboard column indices into the full matrix row.
-const (
-	colProvider = 0
-	colProfile  = 1
-	colIdentity = 2
-	colDir      = 3
-	colExpiry   = 4
-	colDrift    = 5
-	colLastUsed = 6
-)
-
-// dashDropOrder lists the droppable columns in the order they are shed as the
-// terminal narrows; Provider, Profile, Identity and Drift are never dropped.
-var dashDropOrder = []int{colLastUsed, colExpiry, colDir}
-
-// fitColumns picks which columns survive at the current width and their pixel
-// widths, dropping low-priority columns then truncating the Identity cells (in
-// place) when the survivors still overflow. It returns the active column indices
-// in display order and a per-column width map.
-func (m dashboardModel) fitColumns(matrix [][]string) ([]int, map[int]int) {
-	all := []int{colProvider, colProfile, colIdentity, colDir, colExpiry, colDrift, colLastUsed}
-
-	// innerW is the room inside the frame border/padding for the marker + cells.
-	innerW := m.width - 4
-	if m.width <= 0 {
-		innerW = 1 << 30
-	}
-
-	active := append([]int(nil), all...)
-	widths := colWidths(matrix, active)
-	for lineWidth(active, widths) > innerW && len(dashDropOrder) > 0 {
-		next := -1
-		for _, d := range dashDropOrder {
-			if contains(active, d) {
-				next = d
-				break
-			}
-		}
-		if next < 0 {
-			break
-		}
-		active = remove(active, next)
-		widths = colWidths(matrix, active)
-	}
-
-	// Still too wide: squeeze the Identity column with an ellipsis.
-	if over := lineWidth(active, widths) - innerW; over > 0 && contains(active, colIdentity) {
-		target := widths[colIdentity] - over
-		if target < 3 {
-			target = 3
-		}
-		for ri := range matrix {
-			matrix[ri][colIdentity] = truncCell(matrix[ri][colIdentity], target)
-		}
-		widths = colWidths(matrix, active)
-	}
-	return active, widths
-}
-
-// colWidths measures the max visible width of each active column across matrix.
-func colWidths(matrix [][]string, active []int) map[int]int {
-	w := make(map[int]int, len(active))
-	for _, row := range matrix {
-		for _, ci := range active {
-			if lw := lipgloss.Width(row[ci]); lw > w[ci] {
-				w[ci] = lw
-			}
-		}
-	}
-	return w
-}
-
-// lineWidth is the rendered width of a data row: a 2-col marker, the cells, and
-// a 2-col gap between them.
-func lineWidth(active []int, widths map[int]int) int {
-	total := 2
-	for i, ci := range active {
-		total += widths[ci]
-		if i > 0 {
-			total += 2
-		}
-	}
-	return total
-}
-
-// truncCell trims s to width w, appending an ellipsis when it had to cut.
-func truncCell(s string, w int) string {
-	if w < 1 {
-		w = 1
-	}
-	if lipgloss.Width(s) <= w {
-		return s
-	}
-	if w <= 1 {
-		return truncateLine(s, w)
-	}
-	return truncateLine(s, w-1) + "…"
-}
-
-func contains(xs []int, x int) bool {
-	for _, v := range xs {
-		if v == x {
-			return true
-		}
-	}
-	return false
-}
-
-func remove(xs []int, x int) []int {
-	out := xs[:0:0]
-	for _, v := range xs {
-		if v != x {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
 // orDash renders a blank cell as an em dash.
 func orDash(s string) string {
 	if s == "" {
@@ -386,14 +415,6 @@ func shortDir(dir string) string {
 		return "~" + strings.TrimPrefix(dir, home)
 	}
 	return dir
-}
-
-// driftText renders a loud marker when a row's ambient session has drifted.
-func driftText(drifted bool) string {
-	if drifted {
-		return failureStyle.Render("⚠ drift")
-	}
-	return mutedStyle.Render("ok")
 }
 
 // expiryText renders a relative expiry ("in 42m" / "expired") with no network.
@@ -416,23 +437,5 @@ func shortDur(d time.Duration) string {
 		return fmt.Sprintf("%dm", int(d.Minutes()))
 	default:
 		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-}
-
-// lastUsedText renders a relative last-used time, or an em dash for the zero time.
-func lastUsedText(t time.Time) string {
-	if t.IsZero() {
-		return "—"
-	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }
