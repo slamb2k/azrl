@@ -173,7 +173,10 @@ func selfHealCwd(p provider.Provider, confdir, cwd string) {
 // through ResolveDir so git config outranks the pointer (conflict warning) and
 // unmanaged git identities surface as adoptable rows; other providers render
 // the index entries directly (pointer-only mechanisms). The Scheme-aware read
-// self-heals pointer-sourced entries whose pointer changed underneath azrl.
+// self-heals pointer-sourced entries whose pointer changed underneath azrl;
+// gitconfig-sourced entries heal here from the same resolution that renders
+// them — a repointed credential username is re-recorded and a dir whose git
+// config no longer carries one is dropped (best-effort, no-op when unchanged).
 func mappingRows(p provider.Provider, confdir, cwd string, statuses map[string]provider.Status) []MappingRow {
 	entries := p.Scheme().ReadMappings(confdir)
 	pointer := p.Scheme().Pointer
@@ -181,11 +184,18 @@ func mappingRows(p provider.Provider, confdir, cwd string, statuses map[string]p
 	if p.Name() == "github" {
 		seen := map[string]bool{}
 		for _, e := range entries {
+			res := github.ResolveDir(e.Dir, confdir)
+			if e.Source == github.SourceGitConfig {
+				if res.Source == github.SourceGitConfig && res.Profile != "" {
+					_ = profile.RecordMapping(confdir, profile.Mapping{Dir: e.Dir, Profile: res.Profile, Source: github.SourceGitConfig})
+				} else if res.Unmanaged == "" {
+					_ = profile.RemoveMapping(confdir, e.Dir, github.SourceGitConfig)
+				}
+			}
 			if seen[e.Dir] {
 				continue
 			}
 			seen[e.Dir] = true
-			res := github.ResolveDir(e.Dir, confdir)
 			if res.Profile != "" {
 				rows = append(rows, MappingRow{
 					Provider: p.Name(), Title: p.Title(), Dir: e.Dir, Profile: res.Profile,
