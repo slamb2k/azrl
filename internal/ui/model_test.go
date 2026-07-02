@@ -70,7 +70,7 @@ func TestHelpBarListsOnlyWiredKeys(t *testing.T) {
 	m := seedModel(t)
 	help := m.helpBar()
 	// keys that are actually wired
-	for _, k := range []string{"pane", "run", "quit"} {
+	for _, k := range []string{"open/run", "esc back", "quit"} {
 		if !strings.Contains(help, k) {
 			t.Fatalf("help missing wired key %q: %q", k, help)
 		}
@@ -159,8 +159,8 @@ func TestRenameEntersInputState(t *testing.T) {
 
 func TestRemoveEntersConfirm(t *testing.T) {
 	m := seedModel(t)
-	// 'd' on the selected profile arms the confirm sub-state, does not delete.
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	// delete on the selected profile arms the confirm sub-state, does not delete.
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyDelete})
 	mm := nm.(Model)
 	if !mm.confirming {
 		t.Fatal("remove hotkey did not enter confirm state")
@@ -228,5 +228,25 @@ func TestHandoffArgs(t *testing.T) {
 		if strings.Join(got, " ") != strings.Join(c.want, " ") {
 			t.Fatalf("handoffArgs(%q,%q) = %v, want %v", c.key, c.prof, got, c.want)
 		}
+	}
+}
+
+func TestEnterOnProfilesOpensActionPane(t *testing.T) {
+	m := seedModel(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if nm.(Model).focus != focusActions {
+		t.Fatal("enter on the profile pane did not open the action pane")
+	}
+	nm2, _ := nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm2.(Model).focus != focusProfiles {
+		t.Fatal("esc did not return focus to the profile pane")
+	}
+}
+
+func TestF5Refreshes(t *testing.T) {
+	m := seedModel(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	if len(nm.(Model).list.Items()) == 0 {
+		t.Fatal("F5 refresh dropped the profile list")
 	}
 }

@@ -20,7 +20,7 @@ func newGcpView() gcpView {
 		{"a", "New profile", func(v *providerTabView) {
 			v.status = accentStyle.Render("Run `azrl gcp login <name>` to create and sign into a new profile.")
 		}},
-		{"d", "Remove", removeAction},
+		{"delete", "Remove", removeAction},
 	}
 	return gcpView{newProviderTabView(gcp.NewProvider(), header, actions)}
 }

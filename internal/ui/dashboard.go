@@ -198,7 +198,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "r", "w":
+		case "f5", "w":
 			m.reload()
 			return m, nil
 		case "up", "k":
@@ -232,7 +232,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m dashboardModel) View() string {
 	header := paneTitleStyle.Render("Dashboard") + mutedStyle.Render(" — mappings · ambient defaults · profiles")
-	help := mutedStyle.Render("↑↓ select · ↵ open tab · a adopt · r refresh · w recheck drift · [ ] tab · q quit")
+	help := mutedStyle.Render("↑↓ select · ↵ open tab · ") + keycap("a") + mutedStyle.Render(" adopt · ") +
+		keycap("f5") + mutedStyle.Render(" refresh · ") + keycap("w") + mutedStyle.Render(" recheck drift · ←→ tab · ") +
+		keycap("q") + mutedStyle.Render(" quit")
 
 	var body []string
 	idx := 0

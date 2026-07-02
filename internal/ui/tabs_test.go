@@ -252,3 +252,31 @@ func TestTabsCompactBannerAtNarrowWidth(t *testing.T) {
 		}
 	}
 }
+
+func TestTabsArrowKeysSwitchTabs(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if nm.(tabsModel).active != 1 {
+		t.Fatalf("right arrow: active = %d, want 1 (Azure)", nm.(tabsModel).active)
+	}
+	nm2, _ := nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyLeft})
+	if nm2.(tabsModel).active != 0 {
+		t.Fatalf("left arrow: active = %d, want 0 (Dashboard)", nm2.(tabsModel).active)
+	}
+}
+
+func TestTabsArrowKeysForwardedWhileRenaming(t *testing.T) {
+	m := seedTabs(t)
+	// Move to the Azure tab and arm the rename text input ('n' on the profile).
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	tm := nm.(tabsModel)
+	if !tm.tabs[1].model.(Model).renaming {
+		t.Fatal("'n' did not arm the rename input")
+	}
+	// While renaming, arrows must reach the text input, not switch tabs.
+	nm2, _ := tm.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	if nm2.(tabsModel).active != 1 {
+		t.Fatal("left arrow switched tabs during rename")
+	}
+}

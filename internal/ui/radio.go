@@ -67,7 +67,7 @@ func (r radio) view(width int) string {
 		left := mStyle.Render(marker) + " " + labelStyle.Render(o.label)
 		cap := ""
 		if o.key != "" {
-			cap = keycapStyle.Render("[" + o.key + "]")
+			cap = keycap(o.key)
 		}
 		// pad between label and keycap so caps align on the right edge.
 		gap := width - lipgloss.Width(left) - lipgloss.Width(cap)
