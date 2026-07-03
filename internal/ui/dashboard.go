@@ -413,7 +413,8 @@ func (m dashboardModel) frame(header string, body []string, footer string) strin
 	for len(lines) < m.height-2-1 {
 		lines = append(lines, "")
 	}
-	lines = append(lines, footer)
+	// The help bar centers as a group, matching the provider tabs' frame.
+	lines = append(lines, lipgloss.PlaceHorizontal(contentW, lipgloss.Center, footer))
 	for i, l := range lines {
 		lines[i] = padTo(truncateLine(l, contentW), contentW)
 	}
