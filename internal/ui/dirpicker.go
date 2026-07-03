@@ -235,7 +235,7 @@ func (p dirPicker) view() string {
 		}
 		line := truncateLine(displayDir(m), contentW-4)
 		if i == p.cursor {
-			b.WriteString(selectionBar.Foreground(gold).Bold(true).Render(line) + "\n")
+			b.WriteString("  " + selBlockActive.Render(line) + "\n")
 		} else {
 			b.WriteString(lipgloss.NewStyle().Foreground(white).PaddingLeft(2).Render(line) + "\n")
 		}

@@ -43,30 +43,32 @@ func NewTabs() tabsModel { return NewTabsOn(0) }
 func NewTabsOn(active int) tabsModel {
 	provs := provider.All()
 	views := map[string]tea.Model{"azure": NewModel(), "github": newGithubView(), "aws": newAwsView(), "gcp": newGcpView()}
-	tabs := append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(azureFirst(provs), views)...)
+	tabs := append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(preferredOrder(provs), views)...)
 	if active < 0 || active >= len(tabs) {
 		active = 0
 	}
 	return tabsModel{tabs: tabs, active: active}
 }
 
-// azureFirst returns provs with the "azure" provider moved to the front, leaving
-// the rest in their original order. It drives the tab strip so Azure sits first
-// after the Dashboard.
-func azureFirst(provs []provider.Provider) []provider.Provider {
+// preferredOrder arranges the tab strip as Azure, GitHub, AWS, Google Cloud,
+// with any provider outside that list appended in registry order.
+func preferredOrder(provs []provider.Provider) []provider.Provider {
+	rank := map[string]int{"azure": 0, "github": 1, "aws": 2, "gcp": 3}
 	out := make([]provider.Provider, 0, len(provs))
-	var azure provider.Provider
-	for _, p := range provs {
-		if p.Name() == "azure" {
-			azure = p
-			continue
+	var rest []provider.Provider
+	for want := 0; want < len(rank); want++ {
+		for _, p := range provs {
+			if r, ok := rank[p.Name()]; ok && r == want {
+				out = append(out, p)
+			}
 		}
-		out = append(out, p)
 	}
-	if azure != nil {
-		out = append([]provider.Provider{azure}, out...)
+	for _, p := range provs {
+		if _, ok := rank[p.Name()]; !ok {
+			rest = append(rest, p)
+		}
 	}
-	return out
+	return append(out, rest...)
 }
 
 // providerTabs pairs each provider with its registered view by name. A provider
@@ -145,7 +147,7 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "down", "enter", "esc":
 				m.barFocus = false
-				return m, nil
+				return m.broadcast(barFocusMsg{focused: false})
 			case "q", "ctrl+c":
 				return m, tea.Quit
 			}
@@ -189,7 +191,7 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, c
 	case focusTabsMsg:
 		m.barFocus = true
-		return m, nil
+		return m.broadcast(barFocusMsg{focused: true})
 	case switchTabMsg:
 		for i, t := range m.tabs {
 			if t.name == msg.provider {
@@ -241,11 +243,11 @@ func (m tabsModel) View() string {
 		label := " " + t.title + " "
 		switch {
 		case i == m.active && m.barFocus:
-			// The bar holds focus: the active tab carries the same inverted
-			// chip used for focused pane headers.
-			cells = append(cells, paneFocusStyle.Render(label))
+			// The bar holds focus: bright selection block.
+			cells = append(cells, selBlockActive.Render(label))
 		case i == m.active:
-			cells = append(cells, activeTabStyle.Render(label))
+			// Focus lives below: the tab retains its selection, dimmed.
+			cells = append(cells, selBlockParent.Render(label))
 		default:
 			cells = append(cells, inactiveTabStyle.Render(label))
 		}
@@ -287,3 +289,7 @@ type cwdChangedMsg struct{ dir string }
 // focusTabsMsg is emitted by a view when ↑ is pressed at the top of its list,
 // handing keyboard focus to the tab bar.
 type focusTabsMsg struct{}
+
+// barFocusMsg tells the views whether the tab bar holds focus, so their own
+// selections dim to the parent shade while it does.
+type barFocusMsg struct{ focused bool }

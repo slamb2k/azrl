@@ -53,12 +53,14 @@ var selectionBar = lipgloss.NewStyle().
 // stock delegate's Render would reset the selection styling mid-line): each
 // segment — selection bar, icon, name, detail — is styled independently and
 // composed. One blank line between rows keeps each two-line profile distinct.
-type profileDelegate struct{}
+type profileDelegate struct {
+	bright bool // the profiles pane holds focus (bright selection block)
+}
 
 func (profileDelegate) Height() int                         { return 2 }
 func (profileDelegate) Spacing() int                        { return 1 }
 func (profileDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
-func (profileDelegate) Render(w io.Writer, m list.Model, index int, li list.Item) {
+func (d profileDelegate) Render(w io.Writer, m list.Model, index int, li list.Item) {
 	p, ok := li.(item)
 	if !ok {
 		return
@@ -67,19 +69,21 @@ func (profileDelegate) Render(w io.Writer, m list.Model, index int, li list.Item
 	if textW < 1 {
 		textW = 1
 	}
-	bar := "  "
 	selected := index == m.Index()
 	nameStyle := lipgloss.NewStyle().Foreground(white)
 	detailStyle := mutedStyle
 	if selected {
-		bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
-		nameStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
+		// The shared selection block: bright while this pane is focused,
+		// the darker parent shade otherwise.
+		nameStyle = selBlockParent
+		if d.bright {
+			nameStyle = selBlockActive
+		}
 		detailStyle = lipgloss.NewStyle().Foreground(azureSky)
 	}
 	name := p.name
 	if p.label != "" && p.label != p.name {
-		// Renamed rows go italic; the dull-white accent yields to the
-		// selection gold so selected names always read yellow.
+		// Renamed rows keep their italic through selection.
 		name = p.label
 		nameStyle = nameStyle.Italic(true)
 		if !selected {
@@ -89,9 +93,9 @@ func (profileDelegate) Render(w io.Writer, m list.Model, index int, li list.Item
 	if p.emph {
 		nameStyle = nameStyle.Bold(true)
 	}
-	fmt.Fprintf(w, "%s%s%s\n%s   %s",
-		bar, scopeSlot(p.scope), nameStyle.Render(truncateLine(name, textW)),
-		bar, detailStyle.Render(truncateLine(p.tenant, textW)))
+	fmt.Fprintf(w, "%s%s\n   %s",
+		scopeSlot(p.scope), nameStyle.Render(truncateLine(name, textW)),
+		detailStyle.Render(truncateLine(p.tenant, textW)))
 }
 
 // item is one profile row. name is the immutable slug (identity, used for all
@@ -129,6 +133,7 @@ type Model struct {
 	ambientEmpty  bool
 	pendingDelete string
 	renameOld     string
+	suspended     bool
 }
 
 // NewModel builds the home model from the profiles on disk.
@@ -179,7 +184,7 @@ func NewModel() Model {
 		}
 		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, scope: scope, emph: p.Name == emph})
 	}
-	l := list.New(items, profileDelegate{}, 0, 0)
+	l := list.New(items, profileDelegate{bright: true}, 0, 0)
 	l.Title = "Profiles"
 	l.SetShowHelp(false)
 	l.SetShowTitle(false)
@@ -287,8 +292,13 @@ func (m *Model) layout() {
 	m.applyFocus()
 }
 
-// applyFocus toggles the radio's focused styling to match the active pane.
-func (m *Model) applyFocus() { m.actions.focused = m.focus == focusActions }
+// applyFocus propagates the focus hierarchy into the child styles: the radio
+// brightens only when the detail pane is focused, the list delegate only when
+// the profiles pane is — and neither while the tab bar holds focus.
+func (m *Model) applyFocus() {
+	m.actions.focused = m.focus == focusActions && !m.suspended
+	m.list.SetDelegate(profileDelegate{bright: m.focus == focusProfiles && !m.suspended})
+}
 
 // refresh rebuilds the profile list from disk, preserving view state.
 func (m Model) refresh() Model {
@@ -325,6 +335,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
+		return m, nil
+	case barFocusMsg:
+		m.suspended = msg.focused
+		m.applyFocus()
 		return m, nil
 	case cwdChangedMsg:
 		nm := m.refresh()
@@ -658,23 +672,21 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 			// matching the Azure list delegate's spacing.
 			b.WriteString("\n")
 		}
-		bar := "  "
 		selected := i == cursor
 		nameStyle := lipgloss.NewStyle().Foreground(white)
 		detailStyle := mutedStyle
 		switch {
 		case selected && focused:
-			bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
-			nameStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
+			// The shared selection block: bright in the focused container.
+			nameStyle = selBlockActive
 			detailStyle = lipgloss.NewStyle().Foreground(azureSky)
 		case selected:
-			bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
-			nameStyle = lipgloss.NewStyle().Foreground(gold)
+			// Focus lives elsewhere in the hierarchy: retained, dimmed.
+			nameStyle = selBlockParent
 			detailStyle = lipgloss.NewStyle().Foreground(gray)
 		}
 		if p.Label != "" && p.Label != p.Name {
-			// Renamed rows go italic; the dull-white accent yields to the
-			// selection gold so selected names always read yellow.
+			// Renamed rows keep their italic through selection.
 			nameStyle = nameStyle.Italic(true)
 			if !selected {
 				nameStyle = nameStyle.Foreground(whiteDim)
@@ -683,8 +695,8 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 		if p.Name == emph {
 			nameStyle = nameStyle.Bold(true)
 		}
-		b.WriteString(bar + scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW)) + "\n")
-		b.WriteString(bar + "   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
+		b.WriteString(scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW)) + "\n")
+		b.WriteString("   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
 	}
 	return b.String()
 }
@@ -752,11 +764,11 @@ func (m Model) rightPane(w int) string {
 		info + "\n\n" + rule(w) + "\n" + m.actions.view(w)
 }
 
-// paneTitle renders a pane header; the focused pane's title becomes an
-// inverted chip so it's obvious which pane keys act on.
+// paneTitle renders a pane header: bold for the focused pane (the selection
+// block below carries the strong cue), muted otherwise.
 func paneTitle(s string, active bool) string {
 	if active {
-		return paneFocusStyle.Render(s)
+		return paneTitleStyle.Render(s)
 	}
 	return mutedStyle.Render(s)
 }
