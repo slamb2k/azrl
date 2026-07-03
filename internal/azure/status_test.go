@@ -130,3 +130,25 @@ func TestStatusBlankOnMissingCache(t *testing.T) {
 		t.Fatalf("expected blank status, got %+v", st)
 	}
 }
+
+func TestQualifiedIdentityResolvesGuestTenantViaConf(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ap := filepath.Join(home, ".azure-profiles")
+	os.MkdirAll(ap, 0o755)
+	// A guest/B2B conf: domain known to azrl, invisible to az.
+	os.WriteFile(filepath.Join(ap, "fiig.conf"),
+		[]byte("AZ_TENANT=fiig.com.au\nAZ_TENANT_ID=96e360c3-1111-2222-3333-444455556666\n"), 0o644)
+
+	if got := azure.QualifiedIdentity("simon@velrada.com", "", "96e360c3-1111-2222-3333-444455556666"); got != "simon@velrada.com · fiig.com.au" {
+		t.Fatalf("guest tenant should resolve via conf: %q", got)
+	}
+	// Unknown GUIDs still shorten.
+	if got := azure.QualifiedIdentity("u@x.com", "", "deadbeef-aaaa-bbbb-cccc-ddddeeeeffff"); got != "u@x.com · deadbeef" {
+		t.Fatalf("unknown tenant should shorten: %q", got)
+	}
+	// An explicit domain always wins.
+	if got := azure.QualifiedIdentity("u@x.com", "real.com", "96e360c3-1111-2222-3333-444455556666"); got != "u@x.com · real.com" {
+		t.Fatalf("file domain should win: %q", got)
+	}
+}
