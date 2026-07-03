@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/provider"
 )
 
@@ -28,6 +29,7 @@ type tabsModel struct {
 	width    int
 	height   int
 	picker   *dirPicker
+	options  *optionsPicker
 	barFocus bool
 }
 
@@ -41,13 +43,29 @@ func NewTabs() tabsModel { return NewTabsOn(0) }
 // dashboard keeps the full provider.All() list — its table sort is by last-used,
 // independent of the tab strip order.
 func NewTabsOn(active int) tabsModel {
-	provs := provider.All()
-	views := map[string]tea.Model{"azure": NewModel(), "github": newGithubView(), "aws": newAwsView(), "gcp": newGcpView()}
-	tabs := append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(preferredOrder(provs), views)...)
+	tabs := buildTabs("")
 	if active < 0 || active >= len(tabs) {
 		active = 0
 	}
 	return tabsModel{tabs: tabs, active: active}
+}
+
+// buildTabs assembles the dashboard plus a tab per enabled provider (the
+// PROVIDERS key in azrl.conf; azure+github by default). extra names a
+// provider to include regardless — e.g. the one a promoted binary opens on.
+func buildTabs(extra string) []tab {
+	enabled := map[string]bool{extra: true}
+	for _, n := range config.EnabledProviders(config.ProfilesDir()) {
+		enabled[n] = true
+	}
+	var provs []provider.Provider
+	for _, p := range provider.All() {
+		if enabled[p.Name()] {
+			provs = append(provs, p)
+		}
+	}
+	views := map[string]tea.Model{"azure": NewModel(), "github": newGithubView(), "aws": newAwsView(), "gcp": newGcpView()}
+	return append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(preferredOrder(provs), views)...)
 }
 
 // preferredOrder arranges the tab strip as Azure, GitHub, AWS, Google Cloud,
@@ -90,7 +108,7 @@ func providerTabs(provs []provider.Provider, views map[string]tea.Model) []tab {
 // NewTabsForProvider builds the tabbed container preselected on the tab whose
 // provider Name() matches name (falling back to the dashboard).
 func NewTabsForProvider(name string) tabsModel {
-	m := NewTabsOn(0)
+	m := tabsModel{tabs: buildTabs(name)}
 	for i, t := range m.tabs {
 		if t.name == name {
 			m.active = i
@@ -129,12 +147,7 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		// Reserve the banner rows, the gap under it, and the tab-bar line so each
 		// tab's own frame fits.
-		innerH := msg.Height - lipgloss.Height(bannerFor(msg.Width)) - 2
-		if innerH < 0 {
-			innerH = 0
-		}
-		inner := tea.WindowSizeMsg{Width: msg.Width, Height: innerH}
-		return m.broadcast(inner)
+		return m.broadcast(tea.WindowSizeMsg{Width: msg.Width, Height: m.innerHeight()})
 	case tea.KeyMsg:
 		// While the tab bar holds focus, ←/→ walk the tabs and ↓/enter/esc
 		// hand focus back to the active view.
@@ -151,6 +164,18 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.broadcast(barFocusMsg{focused: false})
 			case "q", "ctrl+c":
 				return m, tea.Quit
+			}
+			return m, nil
+		}
+		// The options overlay owns every key while open.
+		if m.options != nil {
+			no, saved, closed := m.options.update(msg)
+			m.options = &no
+			if closed {
+				m.options = nil
+				if len(saved) > 0 {
+					return m.applyProviderSelection(saved)
+				}
 			}
 			return m, nil
 		}
@@ -181,9 +206,14 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "d":
 			if !m.activeCapturesInput() {
-				innerH := m.height - lipgloss.Height(bannerFor(m.width)) - 2
-				pk := newDirPicker(m.width, innerH)
+				pk := newDirPicker(m.width, m.innerHeight())
 				m.picker = &pk
+				return m, nil
+			}
+		case "o":
+			if !m.activeCapturesInput() {
+				op := newOptionsPicker(m.width, m.innerHeight())
+				m.options = &op
 				return m, nil
 			}
 		}
@@ -264,6 +294,9 @@ func (m tabsModel) View() string {
 	if m.picker != nil {
 		body = m.picker.view()
 	}
+	if m.options != nil {
+		body = m.options.view()
+	}
 	out := banner + "\n\n" + bar + "\n" + body
 	// Backstop invariant: no line may exceed the terminal width, whatever a child
 	// renders. Truncate every line (ANSI-aware) to guarantee it.
@@ -294,3 +327,41 @@ type focusTabsMsg struct{}
 // barFocusMsg tells the views whether the tab bar holds focus, so their own
 // selections dim to the parent shade while it does.
 type barFocusMsg struct{ focused bool }
+
+// innerHeight is the space below the banner, its gap, and the tab bar.
+func (m tabsModel) innerHeight() int {
+	h := m.height - lipgloss.Height(bannerFor(m.width)) - 2
+	if h < 0 {
+		h = 0
+	}
+	return h
+}
+
+// applyProviderSelection persists the chosen provider set and rebuilds the
+// tab strip around it: old tab resources (the dashboard's fsnotify watcher)
+// are closed, fresh views are constructed, sized, and initialised, and the
+// active tab clamps to the dashboard when its provider was disabled.
+func (m tabsModel) applyProviderSelection(names []string) (tea.Model, tea.Cmd) {
+	_ = config.SetEnabledProviders(config.ProfilesDir(), names)
+	current := m.tabs[m.active].name
+	_ = m.Close()
+	m.tabs = buildTabs("")
+	m.active = 0
+	for i, t := range m.tabs {
+		if t.name == current {
+			m.active = i
+			break
+		}
+	}
+	var cmds []tea.Cmd
+	for _, t := range m.tabs {
+		if c := t.model.Init(); c != nil {
+			cmds = append(cmds, c)
+		}
+	}
+	nm, c := m.broadcast(tea.WindowSizeMsg{Width: m.width, Height: m.innerHeight()})
+	if c != nil {
+		cmds = append(cmds, c)
+	}
+	return nm, tea.Batch(cmds...)
+}

@@ -28,15 +28,30 @@ func providerIcon(name string) string {
 // headerStrip is the standard provider-tab header: icon + provider title on
 // the left, the current directory and the effective identity on the right —
 // the same anatomy on every tab so the eye always knows where to look.
-// identity may be "" (rendered as a muted em-dash).
+// identity is a pre-rendered segment; "" renders as a muted em-dash.
 func headerStrip(icon, title, cwd, identity string) string {
-	id := mutedStyle.Render("—")
-	if identity != "" {
-		id = accentStyle.Render(identity)
+	if identity == "" {
+		identity = mutedStyle.Render("—")
 	}
 	return icon + " " + paneTitleStyle.Render(title) +
 		mutedStyle.Render("   ·   ") + "📁 " + displayDir(cwd) +
-		mutedStyle.Render("   ·   ") + "👤 " + id
+		mutedStyle.Render("   ·   ") + "👤 " + identity
+}
+
+// effectiveIdentity renders the header's 👤 segment: the dir-pinned profile's
+// signed-in identity, the pinned profile's name with a not-signed-in note
+// when its session is empty (capture is metadata-only — identity appears
+// after login), else the provider's ambient identity, else "".
+func effectiveIdentity(dirProfile, dirIdentity, ambient string) string {
+	switch {
+	case dirIdentity != "":
+		return accentStyle.Render(dirIdentity)
+	case dirProfile != "":
+		return accentStyle.Render(dirProfile) + mutedStyle.Render(" · not signed in")
+	case ambient != "":
+		return accentStyle.Render(ambient)
+	}
+	return ""
 }
 
 // profileInfoBlock renders the top of the DETAILS pane for one profile: a

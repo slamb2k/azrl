@@ -316,3 +316,46 @@ func TestUpAtTopFocusesTabBar(t *testing.T) {
 		t.Fatal("down did not return focus to the view")
 	}
 }
+
+func TestTabsDefaultToAzureAndGitHub(t *testing.T) {
+	m := seedTabs(t)
+	var names []string
+	for _, tb := range m.tabs {
+		names = append(names, tb.title)
+	}
+	if len(m.tabs) != 3 || m.tabs[1].name != "azure" || m.tabs[2].name != "github" {
+		t.Fatalf("default tabs = %v", names)
+	}
+}
+
+func TestOptionsOverlayEnablesProviderTabs(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	tm := nm.(tabsModel)
+	if tm.options == nil {
+		t.Fatal("'o' did not open the options overlay")
+	}
+	// Check AWS (cursor: azure→github→aws) and save.
+	for _, k := range []tea.KeyMsg{
+		{Type: tea.KeyDown}, {Type: tea.KeyDown},
+		{Type: tea.KeySpace},
+		{Type: tea.KeyEnter},
+	} {
+		nm, _ = tm.Update(k)
+		tm = nm.(tabsModel)
+	}
+	if tm.options != nil {
+		t.Fatal("options overlay did not close on save")
+	}
+	if len(tm.tabs) != 4 || tm.tabs[3].name != "aws" {
+		var names []string
+		for _, tb := range tm.tabs {
+			names = append(names, tb.name)
+		}
+		t.Fatalf("tabs after enabling AWS = %v", names)
+	}
+	// Persisted: a fresh container under the same HOME sees the same set.
+	if got := len(NewTabs().tabs); got != 4 {
+		t.Fatalf("fresh container tabs = %d, want 4", got)
+	}
+}

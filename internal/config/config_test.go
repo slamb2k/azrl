@@ -75,3 +75,35 @@ func TestDashboardPollSecs(t *testing.T) {
 		t.Fatalf("zero value: got %d, want 3", got)
 	}
 }
+
+func TestEnabledProvidersDefaultAndRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	if got := EnabledProviders(dir); len(got) != 2 || got[0] != "azure" || got[1] != "github" {
+		t.Fatalf("default = %v", got)
+	}
+	if err := SetEnabledProviders(dir, []string{"azure", "aws"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := EnabledProviders(dir); len(got) != 2 || got[0] != "azure" || got[1] != "aws" {
+		t.Fatalf("round trip = %v", got)
+	}
+}
+
+func TestSetEnabledProvidersPreservesOtherLines(t *testing.T) {
+	dir := t.TempDir()
+	conf := filepath.Join(dir, "azrl.conf")
+	os.WriteFile(conf, []byte("# hosts\nLOCAL_HOST=laptop\nPROVIDERS=azure\nVM_HOST=vm\n"), 0o644)
+	if err := SetEnabledProviders(dir, []string{"github", "gcp"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(conf)
+	s := string(b)
+	for _, want := range []string{"# hosts", "LOCAL_HOST=laptop", "PROVIDERS=github,gcp", "VM_HOST=vm"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("missing %q in:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "PROVIDERS=azure") {
+		t.Fatalf("old assignment not replaced:\n%s", s)
+	}
+}
