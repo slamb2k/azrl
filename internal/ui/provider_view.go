@@ -146,6 +146,9 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				}
 			} else if v.cursor > 0 {
 				v.cursor--
+			} else {
+				// Already at the top of the list: hand focus to the tab bar.
+				return v, func() tea.Msg { return focusTabsMsg{} }
 			}
 		case "down", "j":
 			if v.focus == focusActions {
@@ -302,5 +305,5 @@ func (v providerTabView) View() string {
 
 	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
 		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")
-	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, v.status, help)
+	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
 }

@@ -207,8 +207,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				return m, nil
 			}
-			return m, nil
+			// Already at the top: hand focus to the tab bar.
+			return m, func() tea.Msg { return focusTabsMsg{} }
 		case "down", "j":
 			if m.cursor < len(m.items)-1 {
 				m.cursor++
@@ -234,7 +236,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m dashboardModel) View() string {
-	header := paneTitleStyle.Render("Dashboard") + mutedStyle.Render(" — mappings · ambient defaults · profiles")
+	cwd, _ := os.Getwd()
+	header := paneTitleStyle.Render("Dashboard") +
+		mutedStyle.Render("   ·   dir ") + displayDir(cwd) +
+		mutedStyle.Render("   ·   ") + dashboardHint(m.ov)
 	help := mutedStyle.Render("↑↓ select · ↵ open tab · ") + keycap("a") + mutedStyle.Render(" adopt · ") +
 		keycap("f5") + mutedStyle.Render(" refresh · ") + keycap("w") + mutedStyle.Render(" recheck drift · ⇥ tab · ") +
 		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")
@@ -449,4 +454,34 @@ func shortDur(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%ds", int(d.Seconds()))
 	}
+}
+
+// dashboardHint suggests the next most useful action, by priority: fix a
+// conflict, investigate drift, adopt an unmanaged identity, re-login an
+// expired profile, pin a first directory — or confirm all is well.
+func dashboardHint(ov Overview) string {
+	for _, r := range ov.Mappings {
+		if r.Conflict != nil {
+			return failureStyle.Render("⚠ conflict in "+shortDir(r.Dir)) + mutedStyle.Render(" — git config wins; fix the pointer")
+		}
+	}
+	for _, r := range ov.Mappings {
+		if r.Drifted {
+			return failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + mutedStyle.Render(" — ↵ opens its tab to re-pin")
+		}
+	}
+	for _, r := range ov.Mappings {
+		if r.Unmanaged != "" {
+			return accentStyle.Render(r.Unmanaged) + mutedStyle.Render(" is unmanaged — ") + keycap("a") + mutedStyle.Render(" adopts it")
+		}
+	}
+	for _, u := range ov.Unmapped {
+		if u.Status.Expiry != nil && time.Until(*u.Status.Expiry) <= 0 {
+			return accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" expired — ↵ opens its tab to sign in")
+		}
+	}
+	if len(ov.Mappings) == 0 {
+		return mutedStyle.Render("no directories pinned yet — open a provider tab and “Use here”")
+	}
+	return mutedStyle.Render("all good · ↵ drills into a profile · ") + keycap("d") + mutedStyle.Render(" changes dir")
 }

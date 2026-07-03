@@ -289,3 +289,34 @@ func TestTabsTabKeyForwardedWhileRenaming(t *testing.T) {
 		t.Fatal("'d' opened the dir picker during rename")
 	}
 }
+
+func TestUpAtTopFocusesTabBar(t *testing.T) {
+	m := seedTabs(t)
+	// Dashboard cursor starts at 0; ↑ emits focusTabsMsg.
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	tm := nm.(tabsModel)
+	if cmd == nil {
+		t.Fatal("up at top did not emit a command")
+	}
+	nm, _ = tm.Update(cmd())
+	tm = nm.(tabsModel)
+	if !tm.barFocus {
+		t.Fatal("focusTabsMsg did not focus the tab bar")
+	}
+	// ←/→ walk tabs while the bar is focused.
+	nm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyRight})
+	tm = nm.(tabsModel)
+	if tm.active != 1 || !tm.barFocus {
+		t.Fatalf("right on the bar: active=%d barFocus=%v", tm.active, tm.barFocus)
+	}
+	nm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	tm = nm.(tabsModel)
+	if tm.active != 0 {
+		t.Fatalf("left on the bar: active=%d", tm.active)
+	}
+	// ↓ hands focus back to the view.
+	nm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if nm.(tabsModel).barFocus {
+		t.Fatal("down did not return focus to the view")
+	}
+}

@@ -292,3 +292,28 @@ func TestDashboardDriftAndExpiryRendering(t *testing.T) {
 		t.Fatalf("expired expiry missing:\n%s", m.View())
 	}
 }
+
+func TestDashboardHeaderShowsCwdAndHint(t *testing.T) {
+	seedDashHome(t)
+	v := sizedDashboard(t).View()
+	if !strings.Contains(v, "dir ") {
+		t.Fatalf("dashboard header missing the current directory:\n%s", v)
+	}
+}
+
+func TestDashboardHintPriorities(t *testing.T) {
+	// Empty overview → onboarding nudge.
+	if h := dashboardHint(Overview{}); !strings.Contains(h, "no directories pinned") {
+		t.Fatalf("empty hint = %q", h)
+	}
+	// An unmanaged mapping outranks the all-good message.
+	ov := Overview{Mappings: []MappingRow{{Dir: "/x", Unmanaged: "who@github.com"}}}
+	if h := dashboardHint(ov); !strings.Contains(h, "unmanaged") {
+		t.Fatalf("unmanaged hint = %q", h)
+	}
+	// Drift outranks unmanaged.
+	ov.Mappings = append([]MappingRow{{Dir: "/y", Profile: "p", Drifted: true}}, ov.Mappings...)
+	if h := dashboardHint(ov); !strings.Contains(h, "drift") {
+		t.Fatalf("drift hint = %q", h)
+	}
+}
