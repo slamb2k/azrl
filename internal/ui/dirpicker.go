@@ -243,7 +243,7 @@ func (p dirPicker) view() string {
 	if len(p.matches) == 0 {
 		b.WriteString(mutedStyle.Render("  (no matches — enter accepts a literal existing path)") + "\n")
 	}
-	b.WriteString("\n" + keyHelp("↑↓", "select", "↵", "change dir", "esc", "cancel"))
+	b.WriteString("\n" + lipgloss.PlaceHorizontal(contentW, lipgloss.Center, keyHelp("↑↓", "select", "↵", "change dir", "esc", "cancel")))
 	lines := strings.Split(b.String(), "\n")
 	for i, l := range lines {
 		lines[i] = padTo(truncateLine(l, contentW), contentW)

@@ -86,7 +86,7 @@ func (o optionsPicker) view() string {
 		}
 		b.WriteString(truncateLine(box+" "+providerIcon(p.Name())+" "+title, innerW) + "\n\n")
 	}
-	b.WriteString(keyHelp("space", "toggle", "↵", "save", "esc", "cancel"))
+	b.WriteString(lipgloss.PlaceHorizontal(innerW, lipgloss.Center, keyHelp("space", "toggle", "↵", "save", "esc", "cancel")))
 	lines := strings.Split(b.String(), "\n")
 	for i, l := range lines {
 		lines[i] = padTo(truncateLine(l, innerW), innerW)
