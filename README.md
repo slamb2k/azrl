@@ -259,6 +259,9 @@ How the browser reaches your laptop:
 - **`gh` sign-in** uses GitHub's device flow — no localhost callback and no
   Conditional-Access kill switch. `azrl` sets `$BROWSER` to its shim, which
   **relays** the activation page to your local browser; `gh` polls for the token.
+  The one-time code is **auto-copied to your local clipboard** via OSC 52 (the
+  escape is interpreted by your terminal emulator, so it works over SSH —
+  under tmux, enable `set -g set-clipboard on`).
   Sign-in is forced into the per-profile `hosts.yml` with `--insecure-storage`
   (the OS keyring is global and would otherwise collide across accounts).
 - **git-HTTPS via Git Credential Manager** *does* use a random `127.0.0.1:PORT`
