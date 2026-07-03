@@ -99,6 +99,21 @@ func (v *providerTabView) reload() {
 	}
 }
 
+// visibleActions filters the action set for the current selection: actions
+// that cannot apply are hidden (Use here when the selected profile already
+// pins this directory).
+func (v providerTabView) visibleActions() []providerAction {
+	sel := v.selected()
+	out := make([]providerAction, 0, len(v.actions))
+	for _, a := range v.actions {
+		if a.key == "u" && sel != "" && sel == v.dirProfile && v.dirScope == ScopeCwd {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 // rowScope returns the effective relevance of one profile row — the closest
 // wins: a directory pin (cwd or ancestor) outranks the global default, which
 // outranks being mapped elsewhere; "" means mapped nowhere (deep-grey icon).
@@ -152,29 +167,32 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				}
 			} else if v.cursor > 0 {
 				v.cursor--
+				v.clampAction()
 			} else {
 				// Already at the top of the list: hand focus to the tab bar.
 				return v, func() tea.Msg { return focusTabsMsg{} }
 			}
 		case "down", "j":
 			if v.focus == focusActions {
-				if v.actionCur < len(v.actions)-1 {
+				if v.actionCur < len(v.visibleActions())-1 {
 					v.actionCur++
 				}
 			} else if v.cursor < len(v.profiles)-1 {
 				v.cursor++
+				v.clampAction()
 			}
 		case "enter":
 			// Selecting a profile opens the action pane; enter there runs the action.
 			if v.focus == focusProfiles {
 				v.focus = focusActions
-			} else {
-				return v.dispatch(v.actions[v.actionCur].key)
+			} else if acts := v.visibleActions(); v.actionCur < len(acts) {
+				return v.dispatch(acts[v.actionCur].key)
 			}
 		default:
 			// An accelerator key selects its action and runs it; any other key is a
-			// no-op (arrows/tab/enter are handled above).
-			for i, a := range v.actions {
+			// no-op (arrows/tab/enter are handled above). Hidden actions' keys are
+			// inert for the current selection.
+			for i, a := range v.visibleActions() {
 				if a.key == msg.String() {
 					v.actionCur = i
 					return v.dispatch(a.key)
@@ -304,10 +322,11 @@ func (v providerTabView) View() string {
 	}
 	left := renderProfilePane(v.profiles, v.cursor, profMode, v.touched, leftW, scopes)
 
-	// PROFILE DETAIL: the selected profile's info block, then its actions as
-	// the shared radio group (keycaps left; selection bar only when focused).
-	opts := make([]radioOption, len(v.actions))
-	for i, a := range v.actions {
+	// DETAILS: the selected profile's info block, then its visible actions as
+	// the shared radio group (keycaps left; selection block only when focused).
+	acts := v.visibleActions()
+	opts := make([]radioOption, len(acts))
+	for i, a := range acts {
 		opts[i] = radioOption{label: a.label, key: a.key, hint: a.hint}
 	}
 	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions && !v.suspended}
@@ -322,9 +341,16 @@ func (v providerTabView) View() string {
 	}
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(rightW) + "\n" +
-		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(v.actions)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
+		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(acts)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
 
 	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
 		keycap("d") + mutedStyle.Render(" dir · ") + keycap("o") + mutedStyle.Render(" options · ") + keycap("q") + mutedStyle.Render(" quit")
 	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
+}
+
+// clampAction keeps the action cursor inside the selection's visible set.
+func (v *providerTabView) clampAction() {
+	if n := len(v.visibleActions()); v.actionCur >= n && n > 0 {
+		v.actionCur = n - 1
+	}
 }

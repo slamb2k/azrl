@@ -42,6 +42,7 @@ func newGhLoginCmd() *cobra.Command {
 			if err := validGhName(name); err != nil {
 				return err
 			}
+			created := false
 			conf, err := github.LoadConf(name, dir)
 			if err != nil {
 				// newProfile: already committed via the first-login name prompt, so
@@ -53,6 +54,7 @@ func newGhLoginCmd() *cobra.Command {
 				if werr := conf.Write(ghConfPath(dir, name)); werr != nil {
 					return werr
 				}
+				created = true
 				cmd.Printf("ghrl: created profile %q (%s)\n", name, hostname)
 			}
 			cmd.Printf("ghrl: signing in to %s as profile %q\n", conf.Host, name)
@@ -60,6 +62,18 @@ func newGhLoginCmd() *cobra.Command {
 				return err
 			}
 			pwd, _ := os.Getwd()
+			if created {
+				// Pin-on-create (all providers): creating = Sign in + Use here in
+				// one. Sign-in of an existing profile deliberately never pins.
+				if err := prov.Use(name, dir, pwd); err != nil {
+					return err
+				}
+				if err := github.SetupRepo(dir, name, pwd, conf); err != nil {
+					cmd.Printf("ghrl: pinned %s/.ghprofile -> %q (credential wiring skipped: %v)\n", pwd, name, err)
+				} else {
+					cmd.Printf("ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
+				}
+			}
 			return github.Scheme().Touch(name, dir, pwd)
 		},
 	}

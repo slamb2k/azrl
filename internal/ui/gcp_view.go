@@ -13,9 +13,9 @@ type gcpView struct{ providerTabView }
 func newGcpView() gcpView {
 	header := paneTitleStyle.Render("Google Cloud") + mutedStyle.Render(" — gcloud configurations · OAuth")
 	actions := []providerAction{
-		{key: "s", label: "Sign in", hint: "browser-bridge login", run: loginAction("gcp", true)},
-		{key: "u", label: "Use here", hint: "pin this dir", run: useAction},
-		{key: "a", label: "New profile", hint: "create + sign in", run: loginAction("gcp", false)},
+		{key: "s", label: "Sign in", hint: "session only — no pin", run: loginAction("gcp", true)},
+		{key: "u", label: "Use here", hint: "pin only — no login", run: useAction},
+		{key: "a", label: "New profile", hint: "sign in + pin here", run: loginAction("gcp", false)},
 		{key: "delete", label: "Remove", hint: "delete profile", run: removeAction},
 	}
 	return gcpView{newProviderTabView(gcp.NewProvider(), header, actions)}

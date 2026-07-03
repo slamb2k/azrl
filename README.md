@@ -358,6 +358,9 @@ deeper pins still win — see
   GUID, subscription, and user to `~/.azure-profiles/<name>.conf` plus a
   `.azprofile` in the current directory. Pass `--yes`/`-y` to create without the
   confirmation prompt. (This replaces the removed `azrl init` command.)
+  **Pin-on-create is uniform across providers**: `gh`/`aws`/`gcp` `login
+  <new-name>` also pins the current directory (creation = sign in + use in
+  one), while logging into an *existing* profile never touches your pins.
 - **`azrl capture [name]`** — same recording step, but for a session you're
   **already** signed into (no new login).
 - **`azrl use <name>`** — links the current directory to an **existing** profile
