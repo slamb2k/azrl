@@ -62,7 +62,7 @@ func TestModelViewRenders(t *testing.T) {
 			t.Fatalf("view missing action %q:\n%s", label, v)
 		}
 	}
-	if !strings.Contains(v, "PROFILES (1)") || !strings.Contains(v, "PROFILE DETAIL") {
+	if !strings.Contains(v, "PROFILES (1)") || !strings.Contains(v, "DETAILS") {
 		t.Fatalf("view missing pane titles:\n%s", v)
 	}
 }

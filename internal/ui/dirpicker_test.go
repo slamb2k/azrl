@@ -72,9 +72,12 @@ func TestTabsDirPickerChangesCwdEverywhere(t *testing.T) {
 	if cwd, _ := os.Getwd(); cwd != target {
 		t.Fatalf("cwd = %q, want %q", cwd, target)
 	}
-	// The broadcast reached the provider tabs: their status names the new dir.
-	if v := tm.tabs[2].model.(githubView).status; !strings.Contains(v, "dir →") {
-		t.Fatalf("github tab did not acknowledge the cwd change: %q", v)
+	// The provider headers show the new directory (no bottom-bar echo).
+	nm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyTab}) // move off the dashboard
+	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyTab})
+	tm = nm.(tabsModel)
+	if v := tm.tabs[2].model.(githubView).View(); !strings.Contains(v, displayDir(target)) {
+		t.Fatalf("github header does not show the new dir %q", displayDir(target))
 	}
 }
 
@@ -91,7 +94,7 @@ func TestProviderViewShowsDetailPaneAndLegend(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
 	out := nm.(awsView).View()
 
-	for _, want := range []string{"PROFILE DETAIL", "identity", "last used", "unmapped", "pin this dir", "🟠"} {
+	for _, want := range []string{"DETAILS", "Identity", "Last used", "unmapped", "pin this dir", "🟠"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("provider view missing %q:\n%s", want, out)
 		}
