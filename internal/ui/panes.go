@@ -26,17 +26,38 @@ func providerIcon(name string) string {
 	return "◆"
 }
 
-// headerStrip is the standard provider-tab header: icon + provider title on
-// the left, the current directory and the effective identity on the right —
-// the same anatomy on every tab so the eye always knows where to look.
+// headerStrip is the standard provider-tab header, justified across the
+// content width: icon + provider title anchored left, 📁 directory centered,
+// 👤 effective identity anchored right — the same anatomy on every tab.
 // identity is a pre-rendered segment; "" renders as a muted em-dash.
-func headerStrip(icon, title, cwd, identity string) string {
+func headerStrip(width int, icon, title, cwd, identity string) string {
 	if identity == "" {
 		identity = mutedStyle.Render("—")
 	}
-	return icon + " " + paneTitleStyle.Render(title) +
-		mutedStyle.Render("   ·   ") + "📁 " + displayDir(cwd) +
-		mutedStyle.Render("   ·   ") + "👤 " + identity
+	return justify(width,
+		icon+" "+paneTitleStyle.Render(title),
+		"📁 "+displayDir(cwd),
+		"👤 "+identity)
+}
+
+// justify spreads three segments across width — left anchored, mid centered,
+// right anchored — collapsing to a compact join when the width is tight. The
+// balanced whitespace separates the zones, so no divider glyphs are needed.
+func justify(width int, left, mid, right string) string {
+	lw, mw, rw := lipgloss.Width(left), lipgloss.Width(mid), lipgloss.Width(right)
+	if lw+mw+rw+4 > width {
+		return truncateLine(left+"  "+mid+"  "+right, width)
+	}
+	midStart := (width - mw) / 2
+	if midStart < lw+2 {
+		midStart = lw + 2
+	}
+	rightStart := width - rw
+	if rightStart < midStart+mw+2 {
+		rightStart = midStart + mw + 2
+	}
+	return left + strings.Repeat(" ", midStart-lw) + mid +
+		strings.Repeat(" ", rightStart-midStart-mw) + right
 }
 
 // effectiveIdentity renders the header's 👤 segment: the dir-pinned profile's

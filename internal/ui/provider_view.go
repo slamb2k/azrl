@@ -300,7 +300,8 @@ func removeAction(v *providerTabView) tea.Cmd {
 // identity, else the provider's ambient default).
 func (v providerTabView) identityStrip() string {
 	pwd, _ := os.Getwd()
-	return headerStrip(providerIcon(v.prov.Name()), v.prov.Title(), pwd,
+	contentW, _, _ := paneDims(v.width)
+	return headerStrip(contentW, providerIcon(v.prov.Name()), v.prov.Title(), pwd,
 		effectiveIdentity(v.dirProfile, v.statuses[v.dirProfile].Identity, v.ambIdent))
 }
 
