@@ -30,8 +30,10 @@ func (Provider) Status(name, confdir string) (provider.Status, error) {
 	}, nil
 }
 
-// azureIdentity reads the default subscription's signed-in user (falling back to
-// its tenant) from azureProfile.json; blank on any error.
+// azureIdentity reads the default subscription's signed-in user from
+// azureProfile.json, qualified by its tenant — a bare UPN is not an Azure
+// identity: the same user legitimately exists across tenants (B2B guests),
+// so the tenant is part of who you are. Blank on any error.
 func azureIdentity(confdir string) string {
 	b, err := os.ReadFile(filepath.Join(confdir, "azureProfile.json"))
 	if err != nil {
@@ -43,8 +45,9 @@ func azureIdentity(confdir string) string {
 			User struct {
 				Name string `json:"name"`
 			} `json:"user"`
-			IsDefault bool   `json:"isDefault"`
-			TenantID  string `json:"tenantId"`
+			IsDefault           bool   `json:"isDefault"`
+			TenantID            string `json:"tenantId"`
+			TenantDefaultDomain string `json:"tenantDefaultDomain"`
 		} `json:"subscriptions"`
 	}
 	if json.Unmarshal(b, &p) != nil {
@@ -52,13 +55,34 @@ func azureIdentity(confdir string) string {
 	}
 	for _, s := range p.Subscriptions {
 		if s.IsDefault {
-			if s.User.Name != "" {
-				return s.User.Name
-			}
-			return s.TenantID
+			return QualifiedIdentity(s.User.Name, s.TenantDefaultDomain, s.TenantID)
 		}
 	}
 	return ""
+}
+
+// QualifiedIdentity composes "user · tenant" — the tenant being the default
+// domain when known, else a shortened tenant GUID (B2B guests often have no
+// resolvable domain). Both the profile Status and ambient readers, and the
+// TUI's az-account-show comparisons, use this one composition so identity
+// matching stays tenant-aware and consistent.
+func QualifiedIdentity(user, domain, tenantID string) string {
+	tenant := domain
+	if tenant == "" {
+		tenant = tenantID
+		if len(tenant) > 8 {
+			tenant = tenant[:8]
+		}
+	}
+	switch {
+	case user == "" && tenant == "":
+		return ""
+	case user == "":
+		return tenant
+	case tenant == "":
+		return user
+	}
+	return user + " · " + tenant
 }
 
 // azureExpiry reads the latest access-token expiry from the MSAL cache; nil on

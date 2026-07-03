@@ -79,7 +79,7 @@ func effectiveIdentity(dirProfile, dirIdentity, ambient string) string {
 // profileInfoBlock renders the top of the DETAILS pane for one profile: a
 // key/value sheet with a fixed key column — the conf detail plus the
 // disk-only status (identity, expiry, last-used).
-func profileInfoBlock(pr profile.Listed, st provider.Status, w int) string {
+func profileInfoBlock(pr profile.Listed, st provider.Status, driftNote string, w int) string {
 	row := func(k, v string) string {
 		if v == "" {
 			v = mutedStyle.Render("—")
@@ -92,6 +92,9 @@ func profileInfoBlock(pr profile.Listed, st provider.Status, w int) string {
 		row("Detail", pr.Detail),
 		row("Expiry", expiryWord(st.Expiry)),
 		row("Last used", lastUsedWord(st.LastUsed)),
+	}
+	if driftNote != "" {
+		rows = append(rows, truncateLine(mutedStyle.Render(padTo("Drift", 10))+" "+failureStyle.Render("⚠ ")+driftNote, w))
 	}
 	return strings.Join(rows, "\n")
 }
@@ -178,4 +181,12 @@ func overlayCenter(bg, box string, width int) string {
 		bgl[y+i] = left + padTo(l, boxW) + right
 	}
 	return strings.Join(bgl, "\n")
+}
+
+// orNoSession renders an identity or an explicit no-session note.
+func orNoSession(identity string) string {
+	if identity == "" {
+		return "no active session"
+	}
+	return identity
 }

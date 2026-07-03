@@ -171,8 +171,15 @@ func TestRemoveEntersConfirm(t *testing.T) {
 func TestDriftHintMentionsEnvrc(t *testing.T) {
 	m := seedModel(t)
 	m.drift = true
-	if got := m.identityStrip(); !strings.Contains(got, ".envrc") || !strings.Contains(got, "press e") {
-		t.Fatalf("drift strip should offer .envrc via e: %q", got)
+	m.signedIn = "u@fiig.com.au · fiig.com.au"
+	m.ambientWho = "u@fiig.com.au · velrada.com"
+	got := m.identityStrip()
+	if !strings.Contains(got, ".envrc") {
+		t.Fatalf("drift strip should offer .envrc: %q", got)
+	}
+	// The warning names both tenant-qualified sides (the B2B guest case).
+	if !strings.Contains(got, "velrada.com") || !strings.Contains(got, "expects u@fiig.com.au · fiig.com.au") {
+		t.Fatalf("drift strip should name both identities: %q", got)
 	}
 	// without drift, no warning
 	m.drift = false

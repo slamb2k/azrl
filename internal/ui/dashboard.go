@@ -473,7 +473,19 @@ func dashboardHint(ov Overview) string {
 	}
 	for _, r := range ov.Mappings {
 		if r.Drifted {
-			return failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + mutedStyle.Render(" — ") + keycap("↵") + mutedStyle.Render(" opens its tab to re-pin")
+			shell := ""
+			for _, a := range ov.Ambient {
+				if a.Provider == r.Provider {
+					shell = a.Identity
+				}
+			}
+			side := mutedStyle.Render(" — shell has no session, pin expects ") + accentStyle.Render(r.Profile)
+			if shell != "" {
+				side = mutedStyle.Render(" — shell is ") + accentStyle.Render(shell) +
+					mutedStyle.Render(", pin expects ") + accentStyle.Render(r.Profile)
+			}
+			return failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + side +
+				mutedStyle.Render(" · ") + keycap("↵") + mutedStyle.Render(" to fix")
 		}
 	}
 	for _, r := range ov.Mappings {
