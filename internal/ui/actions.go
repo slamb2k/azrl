@@ -117,9 +117,6 @@ func handoffArgs(key, profileName string) []string {
 			return []string{"login"}
 		}
 		return []string{"login", profileName}
-	case "i":
-		// init was removed in v0.7.0; login creates a profile on first use.
-		return []string{"login"}
 	case "c":
 		return []string{"capture"}
 	}

@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/slamb2k/azrl/internal/profile"
+	"github.com/slamb2k/azrl/internal/provider"
 )
 
 func TestAwsViewRendersProfilesAndActions(t *testing.T) {
@@ -144,5 +145,60 @@ func TestUseHereHiddenWhenSelectedProfilePinsCwd(t *testing.T) {
 	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
 	if cmd != nil || nm.(awsView).status != "" {
 		t.Fatalf("hidden accelerator must be inert (status=%q)", nm.(awsView).status)
+	}
+}
+
+func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+
+	v := newAwsView()
+	nm, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	av := nm.(awsView)
+	if !av.naming || cmd != nil {
+		t.Fatalf("'a' should open the name prompt (naming=%v)", av.naming)
+	}
+	for _, r := range "fresh" {
+		nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		av = nm.(awsView)
+	}
+	nm, cmd = av.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	av = nm.(awsView)
+	if av.naming || cmd == nil {
+		t.Fatalf("enter should close the prompt and exec the create login (naming=%v cmd=%v)", av.naming, cmd)
+	}
+	// esc cancels a fresh prompt without exec.
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	nm, cmd = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm.(awsView).naming || cmd != nil {
+		t.Fatal("esc should cancel the prompt without exec")
+	}
+}
+
+func TestSignInHiddenWhenSessionLive(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+
+	v := newAwsView()
+	// Inject a live session for the selected profile (disk-only fixtures for
+	// the SSO cache are heavyweight; the predicate is what matters here).
+	v.statuses["work"] = provider.Status{ProfileName: "work", Identity: "123/Admin"}
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	out := nm.(awsView).View()
+	if strings.Contains(out, "Sign in") {
+		t.Fatalf("Sign in should hide for a live session:\n%s", out)
+	}
+	if !strings.Contains(out, "ACTIONS (3)") {
+		t.Fatalf("action count should drop to 3:\n%s", out)
 	}
 }

@@ -216,7 +216,6 @@ func TestHandoffArgs(t *testing.T) {
 	}{
 		{"l", "acme", []string{"login", "acme"}},
 		{"l", "", []string{"login"}},
-		{"i", "acme", []string{"login"}},
 		{"c", "acme", []string{"capture"}},
 		{"u", "acme", nil},
 	}
@@ -266,5 +265,23 @@ func TestKeyHelpFitDropsOptionalTailWhenNarrow(t *testing.T) {
 	mid := keyHelpFit(60, core, optional)
 	if strings.Contains(mid, "options") && !strings.Contains(mid, "quit") {
 		t.Fatalf("drop order should favour earlier optional items: %q", mid)
+	}
+}
+
+func TestAzureNewProfilePromptExecsCreateLogin(t *testing.T) {
+	m := seedModel(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	mm := nm.(Model)
+	if !mm.creating {
+		t.Fatal("'i' did not open the new-profile prompt")
+	}
+	for _, r := range "fresh" {
+		nm, _ = mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		mm = nm.(Model)
+	}
+	nm, cmd := mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm = nm.(Model)
+	if mm.creating || cmd == nil || !mm.busy {
+		t.Fatalf("enter should exec the create login (creating=%v busy=%v)", mm.creating, mm.busy)
 	}
 }
