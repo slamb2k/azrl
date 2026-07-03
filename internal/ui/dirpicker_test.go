@@ -73,7 +73,7 @@ func TestTabsDirPickerChangesCwdEverywhere(t *testing.T) {
 		t.Fatalf("cwd = %q, want %q", cwd, target)
 	}
 	// The broadcast reached the provider tabs: their status names the new dir.
-	if v := tm.tabs[4].model.(githubView).status; !strings.Contains(v, "dir →") {
+	if v := tm.tabs[2].model.(githubView).status; !strings.Contains(v, "dir →") {
 		t.Fatalf("github tab did not acknowledge the cwd change: %q", v)
 	}
 }

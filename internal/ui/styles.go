@@ -38,12 +38,17 @@ var (
 	dotStyle        = lipgloss.NewStyle().Foreground(azureSky)
 	keycapChipStyle = lipgloss.NewStyle().Foreground(white).Background(azureDeep).Bold(true)
 
-	// paneTitleStyle labels each column; paneFocusStyle is the inverted chip on
-	// the focused pane's title so the active pane is unmistakable; dividerStyle
-	// draws the rules and the vertical seam between the two panes.
+	// paneTitleStyle labels each column (bold when its pane is focused);
+	// dividerStyle draws the rules and the vertical seam between the panes.
 	paneTitleStyle = lipgloss.NewStyle().Foreground(azureSky).Bold(true)
-	paneFocusStyle = lipgloss.NewStyle().Foreground(white).Background(azureBlue).Bold(true).Padding(0, 1)
 	dividerStyle   = lipgloss.NewStyle().Foreground(azureDeep)
+
+	// One selection language everywhere: the block in the focused container is
+	// bright blue; every other level retains its selection as a darker block,
+	// so the eye reads the focus hierarchy at a glance (tab bar → profiles →
+	// detail).
+	selBlockActive = lipgloss.NewStyle().Foreground(white).Background(azureBlue).Bold(true)
+	selBlockParent = lipgloss.NewStyle().Foreground(whiteDim).Background(azureDeep)
 
 	frameStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).

@@ -50,10 +50,10 @@ func (r *radio) selectByKey(k string) bool {
 }
 
 // view renders the group. width is the column width used to right-align keycaps.
-// view renders the group: keycap chips on the left of each label, a short
-// muted hint to the right when it fits, and the selection bar + gold
-// highlight only while the pane is focused (an unfocused pane shows plain
-// rows, matching the profiles list).
+// view renders the group: keycap chips on the left of each label and a short
+// muted hint to the right when it fits. The selected row carries the shared
+// selection block — bright while this pane is focused, the darker parent
+// shade otherwise.
 func (r radio) view(width int) string {
 	capW := 0
 	for _, o := range r.options {
@@ -70,17 +70,18 @@ func (r radio) view(width int) string {
 			c := keycap(o.key)
 			cap = c + strings.Repeat(" ", capW-lipgloss.Width(c))
 		}
-		bar := "  "
 		labelStyle := lipgloss.NewStyle().Foreground(white)
-		if r.focused && i == r.cursor {
-			bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
-			labelStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
+		if i == r.cursor {
+			labelStyle = selBlockParent
+			if r.focused {
+				labelStyle = selBlockActive
+			}
 		}
 		sep := " "
 		if capW > 0 {
 			sep = "  "
 		}
-		line := bar + cap + sep + labelStyle.Render(o.label)
+		line := cap + sep + labelStyle.Render(o.label)
 		if o.hint != "" {
 			if room := width - lipgloss.Width(line) - 2; room >= lipgloss.Width(o.hint) {
 				line += "  " + mutedStyle.Render(o.hint)

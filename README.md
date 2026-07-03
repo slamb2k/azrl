@@ -178,12 +178,12 @@ three-section overview on the CLI; `--json` emits
 ## The TUI at a glance
 
 Bare `azrl` lands on a live cross-provider dashboard — "who am I,
-everywhere?" — followed by an **Azure · AWS · Google Cloud · GitHub** tab per
+everywhere?" — followed by an **Azure · GitHub · AWS · Google Cloud** tab per
 provider (every tab shares one profiles/actions layout; `ghrl` opens on the
 GitHub tab):
 
 ```text
- Dashboard │ Azure │ AWS │ Google Cloud │ GitHub
+ Dashboard │ Azure │ GitHub │ AWS │ Google Cloud
  MAPPINGS
   ● ~/work/acme     → azure:acme       .azprofile
   ● ~/oss/tool      → github:personal  (git)          ⚠ drift

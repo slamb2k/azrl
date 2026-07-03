@@ -43,6 +43,7 @@ type providerTabView struct {
 	width      int
 	height     int
 	status     string
+	suspended  bool
 }
 
 // newProviderTabView builds the shared view for prov with the given pre-rendered
@@ -175,6 +176,8 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				}
 			}
 		}
+	case barFocusMsg:
+		v.suspended = msg.focused
 	case cwdChangedMsg:
 		v.reload()
 		v.status = mutedStyle.Render("dir → " + displayDir(msg.dir))
@@ -286,7 +289,7 @@ func (v providerTabView) View() string {
 	for _, p := range v.profiles {
 		scopes[p.Name] = v.rowScope(p.Name)
 	}
-	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles, leftW, scopes)
+	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles && !v.suspended, leftW, scopes)
 
 	// PROFILE DETAIL: the selected profile's info block, then its actions as
 	// the shared radio group (keycaps left; selection bar only when focused).
@@ -294,7 +297,7 @@ func (v providerTabView) View() string {
 	for i, a := range v.actions {
 		opts[i] = radioOption{label: a.label, key: a.key, hint: a.hint}
 	}
-	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions}
+	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions && !v.suspended}
 	info := mutedStyle.Render("(no profile selected)")
 	if v.cursor >= 0 && v.cursor < len(v.profiles) {
 		pr := v.profiles[v.cursor]
