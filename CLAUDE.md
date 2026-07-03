@@ -75,6 +75,12 @@ Cobra subcommands, split across packages:
 - `<repo>/.gcpprofile` — one line naming the GCP profile; resolved the same way. Globally gitignored. The `.envrc` exports `CLOUDSDK_ACTIVE_CONFIG_NAME=<name>` (default) or `CLOUDSDK_CONFIG=~/.gcp-profiles/<name>` (under `--isolate`).
 - `~/.gcp-profiles/<profile>/` — isolated `CLOUDSDK_CONFIG` per profile (only under `--isolate`).
 
+Identity model: the ambient default is a **read-only mirror** of the provider's
+native state (never mutated — PAT-002); **mappings are the opt-in** that earns
+tracking (drift/expiry/guardrails); `capture` is metadata-only. Ambient-backed
+profiles were considered and rejected — see `docs/ambient-identity-model.md`
+before proposing features that manage the native default.
+
 ## Testing approach
 
 Pure logic in `internal/profile` is unit-tested directly. `internal/azure` and `internal/github` integration points are tested by shimming `az`/`gh`/`ssh`/`git` onto `PATH` via `t.Setenv("PATH", tmpDir)` with fake executables (see the `Bridge`, `LoginCapture`, and `internal/github` login/use tests for the pattern). Both providers pass the shared `internal/provider/providertest.RunContract` suite. TUI model behaviour is tested via `internal/ui` model + tab-container unit tests that assert `View()` output and message handling. Items that need a real laptop+VM+GCM+VS Code are listed in `specs/github-remote-login.manual-verify.md`. The project was built TDD-first; see `docs/HANDOVER-origin.md` for full historical context.
