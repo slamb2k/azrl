@@ -215,10 +215,12 @@ native config dir via fsnotify, so it updates the moment you sign in — or
 
 | Key | Action |
 |---|---|
-| `←`/`→` (or `[`/`]`) | switch tabs |
+| `⇥`/`⇧⇥` (or `[`/`]`) | switch tabs |
+| `→`/`←` | focus the PROFILE DETAIL pane / back to profiles |
 | `↑`/`↓` | select a profile or action |
-| `↵` | open the action pane · run the selected action |
+| `↵` | open the detail pane · run the selected action |
 | `esc` | back to the profile list |
+| `d` | change directory (fuzzy finder) — the whole app follows |
 | `Delete` / `F5` | remove profile / refresh |
 | `a` | adopt an unmanaged identity into a new profile (dashboard) |
 | `w` | recheck drift (dashboard) |

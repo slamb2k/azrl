@@ -190,6 +190,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// only, cheap) and re-arm the watch. The timer keeps running as a fallback.
 		m.reload()
 		return m, watchCmd(m.watcher)
+	case cwdChangedMsg:
+		m.reload()
+		return m, nil
 	case opDoneMsg:
 		// A handed-off flow (e.g. adopt → capture) finished: pick up its writes.
 		m.reload()
@@ -233,8 +236,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m dashboardModel) View() string {
 	header := paneTitleStyle.Render("Dashboard") + mutedStyle.Render(" — mappings · ambient defaults · profiles")
 	help := mutedStyle.Render("↑↓ select · ↵ open tab · ") + keycap("a") + mutedStyle.Render(" adopt · ") +
-		keycap("f5") + mutedStyle.Render(" refresh · ") + keycap("w") + mutedStyle.Render(" recheck drift · ←→ tab · ") +
-		keycap("q") + mutedStyle.Render(" quit")
+		keycap("f5") + mutedStyle.Render(" refresh · ") + keycap("w") + mutedStyle.Render(" recheck drift · ⇥ tab · ") +
+		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")
 
 	var body []string
 	idx := 0

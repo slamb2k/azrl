@@ -50,31 +50,43 @@ func (r *radio) selectByKey(k string) bool {
 }
 
 // view renders the group. width is the column width used to right-align keycaps.
+// view renders the group: keycap chips on the left of each label, a short
+// muted hint to the right when it fits, and the selection bar + gold
+// highlight only while the pane is focused (an unfocused pane shows plain
+// rows, matching the profiles list).
 func (r radio) view(width int) string {
-	var lines []string
-	for i, o := range r.options {
-		marker := "○"
-		mStyle := mutedStyle
-		labelStyle := mutedStyle
-		if i == r.cursor {
-			marker = "◉"
-			if r.focused {
-				mStyle, labelStyle = accentStyle, selectedStyle
-			} else {
-				mStyle, labelStyle = dotStyle, lipgloss.NewStyle().Foreground(white)
+	capW := 0
+	for _, o := range r.options {
+		if o.key != "" {
+			if w := lipgloss.Width(keycap(o.key)); w > capW {
+				capW = w
 			}
 		}
-		left := mStyle.Render(marker) + " " + labelStyle.Render(o.label)
-		cap := ""
+	}
+	var lines []string
+	for i, o := range r.options {
+		cap := strings.Repeat(" ", capW)
 		if o.key != "" {
-			cap = keycap(o.key)
+			c := keycap(o.key)
+			cap = c + strings.Repeat(" ", capW-lipgloss.Width(c))
 		}
-		// pad between label and keycap so caps align on the right edge.
-		gap := width - lipgloss.Width(left) - lipgloss.Width(cap)
-		if gap < 1 {
-			gap = 1
+		bar := "  "
+		labelStyle := lipgloss.NewStyle().Foreground(white)
+		if r.focused && i == r.cursor {
+			bar = lipgloss.NewStyle().Foreground(azureBlue).Render("┃") + " "
+			labelStyle = lipgloss.NewStyle().Foreground(gold).Bold(true)
 		}
-		lines = append(lines, left+strings.Repeat(" ", gap)+cap)
+		sep := " "
+		if capW > 0 {
+			sep = "  "
+		}
+		line := bar + cap + sep + labelStyle.Render(o.label)
+		if o.hint != "" {
+			if room := width - lipgloss.Width(line) - 2; room >= lipgloss.Width(o.hint) {
+				line += "  " + mutedStyle.Render(o.hint)
+			}
+		}
+		lines = append(lines, truncateLine(line, width))
 	}
 	// One blank line between rows keeps each action visually distinct,
 	// matching the profile pane's spacing.

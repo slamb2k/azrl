@@ -108,6 +108,10 @@ func (i item) FilterValue() string { return i.name + " " + i.label }
 // Model is the root TUI model.
 type Model struct {
 	list          list.Model
+	statuses      map[string]provider.Status
+	profs         []profile.Listed
+	ambIdent      string
+	dirProfile    string
 	actions       radio
 	confirm       radio
 	spin          spinner.Model
@@ -132,14 +136,17 @@ func NewModel() Model {
 	pwd, _ := os.Getwd()
 	var items []list.Item
 	profs, _ := profile.List(config.ProfilesDir())
-	active := ""
-	if amb, err := azure.NewProvider().Ambient(); err == nil && amb.Identity != "" {
-		statuses := make([]provider.Status, 0, len(profs))
-		for _, p := range profs {
-			if st, err := azure.NewProvider().Status(p.Name, config.ProfilesDir()); err == nil {
-				statuses = append(statuses, st)
-			}
+	statusMap := make(map[string]provider.Status, len(profs))
+	statuses := make([]provider.Status, 0, len(profs))
+	for _, p := range profs {
+		if st, err := azure.NewProvider().Status(p.Name, config.ProfilesDir()); err == nil {
+			statusMap[p.Name] = st
+			statuses = append(statuses, st)
 		}
+	}
+	active, ambIdent := "", ""
+	if amb, err := azure.NewProvider().Ambient(); err == nil && amb.Identity != "" {
+		ambIdent = amb.Identity
 		active = provider.MatchProfile(statuses, amb.Identity)
 	}
 	dirProfile, dirScope := "", ""
@@ -181,7 +188,8 @@ func NewModel() Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = dotStyle
-	m := Model{list: l, spin: sp, pwd: pwd, actions: newRadio(homeActions)}
+	m := Model{list: l, spin: sp, pwd: pwd, actions: newRadio(homeActions),
+		statuses: statusMap, profs: profs, ambIdent: ambIdent, dirProfile: dirProfile}
 	m.applyFocus()
 	return m
 }
@@ -264,8 +272,8 @@ func paneDims(width int) (contentW, leftW, rightW int) {
 // the container truncates any residual overflow.
 func (m Model) dims() (contentW, leftW, rightW, listH int) {
 	contentW, leftW, rightW = paneDims(m.width)
-	// chrome: 3 rules + identity + status + help + frame.
-	listH = m.height - 9
+	// chrome: 3 rules + identity + status + help + frame + the 3-row legend.
+	listH = m.height - 12
 	if listH < 3 {
 		listH = 3
 	}
@@ -318,6 +326,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case cwdChangedMsg:
+		nm := m.refresh()
+		nm.status = mutedStyle.Render("dir → " + displayDir(msg.dir))
+		return nm, nm.identityCmd()
 	case opDoneMsg:
 		nm := m.refresh()
 		nm.busy = false
@@ -362,11 +374,11 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "f5":
 		return m.refresh(), nil
-	case "tab", "shift+tab":
-		m.focus = focusActions - m.focus
+	case "right":
+		m.focus = focusActions
 		m.applyFocus()
 		return m, nil
-	case "esc":
+	case "esc", "left":
 		if m.focus == focusActions {
 			m.focus = focusProfiles
 			m.applyFocus()
@@ -550,9 +562,12 @@ func (m Model) View() string {
 	// The bubbles list emits its own leading blank line, so no extra spacer is
 	// needed here — that keeps the first profile row aligned with the first
 	// action row (which sits below "ACTION" + one blank line).
+	_, lw, _, _ := m.dims()
 	left := lipgloss.JoinVertical(lipgloss.Left,
 		paneTitle(fmt.Sprintf("PROFILES (%d)", len(m.list.Items())), m.focus == focusProfiles),
 		m.list.View(),
+		"",
+		scopeLegend(lw),
 	)
 
 	statusLine := m.status
@@ -659,6 +674,7 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 		b.WriteString(bar + scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW)) + "\n")
 		b.WriteString(bar + "   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
 	}
+	b.WriteString("\n" + scopeLegend(leftW))
 	return b.String()
 }
 
@@ -716,7 +732,13 @@ func (m Model) rightPane(w int) string {
 			m.rename.View() + "\n\n" +
 			mutedStyle.Render("↵ rename · esc cancel")
 	}
-	return paneTitle("ACTION", m.focus == focusActions) + "\n\n" + m.actions.view(w)
+	info := mutedStyle.Render("(no profile selected)")
+	if it, ok := m.list.SelectedItem().(item); ok {
+		pr := profile.Listed{Name: it.name, Label: it.label, Detail: it.tenant}
+		info = profileInfoBlock(pr, m.statuses[it.name], w)
+	}
+	return paneTitle("PROFILE DETAIL", m.focus == focusActions) + "\n\n" +
+		info + "\n\n" + rule(w) + "\n" + m.actions.view(w)
 }
 
 // paneTitle renders a pane header; the focused pane's title becomes an
@@ -735,15 +757,19 @@ func rule(w int) string {
 	return dividerStyle.Render(strings.Repeat("─", w))
 }
 
-// identityStrip shows this dir's profile and its signed-in identity, plus a
-// drift warning offering to pin the shell with an .envrc.
+// identityStrip is the standard provider header (icon · dir · effective
+// identity), plus Azure's drift warning offering to pin the shell.
 func (m Model) identityStrip() string {
-	left := accentStyle.Render("◆") + " " + contextLine(m.pwd)
-	right := mutedStyle.Render("not signed in")
-	if m.signedIn != "" {
-		right = mutedStyle.Render("signed in ") + accentStyle.Render(m.signedIn) + successStyle.Render(" ✓")
+	identity := m.ambIdent
+	if m.dirProfile != "" {
+		if st, ok := m.statuses[m.dirProfile]; ok && st.Identity != "" {
+			identity = st.Identity
+		}
 	}
-	strip := left + mutedStyle.Render("   ·   ") + right
+	if m.signedIn != "" {
+		identity = m.signedIn
+	}
+	strip := headerStrip(providerIcon("azure"), "Azure", m.pwd, identity)
 	if m.drift {
 		what := "uses a different account"
 		if m.ambientEmpty {
@@ -770,8 +796,8 @@ func (m Model) helpBar() string {
 		}
 		return strings.Join(lines, "\n")
 	}
-	return mutedStyle.Render("↑↓ select · ↵ open/run · esc back · ") +
-		keycap("l") + " " + keycap("u") + " " + keycap("c") + " " + keycap("i") + " " + keycap("x") + " " + keycap("n") + " " + keycap("delete") + mutedStyle.Render(" actions · ") +
+	return mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
+		keycap("d") + mutedStyle.Render(" dir · ") +
 		keycap("f5") + mutedStyle.Render(" refresh · ? help · ") + keycap("q") + mutedStyle.Render(" quit")
 }
 
