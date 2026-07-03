@@ -23,11 +23,12 @@ type tab struct {
 // switching is bound to '[' and ']' (both free in the inner views); every other
 // key and all background messages flow to the tab(s).
 type tabsModel struct {
-	tabs   []tab
-	active int
-	width  int
-	height int
-	picker *dirPicker
+	tabs     []tab
+	active   int
+	width    int
+	height   int
+	picker   *dirPicker
+	barFocus bool
 }
 
 // NewTabs builds the tabbed container on the dashboard (the default landing view).
@@ -132,6 +133,24 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		inner := tea.WindowSizeMsg{Width: msg.Width, Height: innerH}
 		return m.broadcast(inner)
 	case tea.KeyMsg:
+		// While the tab bar holds focus, ←/→ walk the tabs and ↓/enter/esc
+		// hand focus back to the active view.
+		if m.barFocus && m.picker == nil {
+			switch msg.String() {
+			case "left", "shift+tab", "[":
+				m.active = (m.active - 1 + len(m.tabs)) % len(m.tabs)
+				return m, nil
+			case "right", "tab", "]":
+				m.active = (m.active + 1) % len(m.tabs)
+				return m, nil
+			case "down", "enter", "esc":
+				m.barFocus = false
+				return m, nil
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			}
+			return m, nil
+		}
 		// The change-directory overlay owns every key while open.
 		if m.picker != nil {
 			np, picked, closed := m.picker.update(msg)
@@ -168,6 +187,9 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nm, c := m.tabs[m.active].model.Update(msg)
 		m.tabs[m.active].model = nm
 		return m, c
+	case focusTabsMsg:
+		m.barFocus = true
+		return m, nil
 	case switchTabMsg:
 		for i, t := range m.tabs {
 			if t.name == msg.provider {
@@ -217,9 +239,14 @@ func (m tabsModel) View() string {
 	var cells []string
 	for i, t := range m.tabs {
 		label := " " + t.title + " "
-		if i == m.active {
+		switch {
+		case i == m.active && m.barFocus:
+			// The bar holds focus: the active tab carries the same inverted
+			// chip used for focused pane headers.
+			cells = append(cells, paneFocusStyle.Render(label))
+		case i == m.active:
 			cells = append(cells, activeTabStyle.Render(label))
-		} else {
+		default:
 			cells = append(cells, inactiveTabStyle.Render(label))
 		}
 	}
@@ -256,3 +283,7 @@ var (
 // cwdChangedMsg is broadcast after the change-directory overlay applies
 // os.Chdir, so every tab re-aggregates against the new working directory.
 type cwdChangedMsg struct{ dir string }
+
+// focusTabsMsg is emitted by a view when ↑ is pressed at the top of its list,
+// handing keyboard focus to the tab bar.
+type focusTabsMsg struct{}

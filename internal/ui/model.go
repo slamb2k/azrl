@@ -402,6 +402,10 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.actions.up()
 			return m, nil
 		}
+		if m.list.Index() == 0 {
+			// Already at the top of the list: hand focus to the tab bar.
+			return m, func() tea.Msg { return focusTabsMsg{} }
+		}
 	case "down", "j":
 		if m.focus == focusActions {
 			m.actions.down()
@@ -566,15 +570,13 @@ func (m Model) View() string {
 	left := lipgloss.JoinVertical(lipgloss.Left,
 		paneTitle(fmt.Sprintf("PROFILES (%d)", len(m.list.Items())), m.focus == focusProfiles),
 		m.list.View(),
-		"",
-		scopeLegend(lw),
 	)
 
 	statusLine := m.status
 	if m.busy {
 		statusLine = m.spin.View() + mutedStyle.Render(" working…")
 	}
-	return renderPaneFrame(m.width, m.height, m.identityStrip(), left, m.rightPane(rightW), statusLine, m.helpBar())
+	return renderPaneFrame(m.width, m.height, m.identityStrip(), left, m.rightPane(rightW), scopeLegend(lw), statusLine, m.helpBar())
 }
 
 // renderPaneFrame draws the canonical azrl layout that every tab shares so they
@@ -583,7 +585,7 @@ func (m Model) View() string {
 // centered footer — filled to the full terminal width and height and wrapped in
 // the frame. All content lines are padded to the content width so the frame
 // spans the terminal edge-to-edge, and truncated so no line ever overflows it.
-func renderPaneFrame(width, height int, identity, left, right, status, footer string) string {
+func renderPaneFrame(width, height int, identity, left, right, leftFoot, status, footer string) string {
 	contentW, leftW, _ := paneDims(width)
 	center := func(s string) string { return lipgloss.PlaceHorizontal(contentW, lipgloss.Center, s) }
 
@@ -595,6 +597,16 @@ func renderPaneFrame(width, height int, identity, left, right, status, footer st
 	bodyH := height - 2 - lipgloss.Height(head) - lipgloss.Height(foot)
 	if bodyH < 1 {
 		bodyH = 1
+	}
+	// leftFoot (the icon legend) anchors to the bottom of the left column,
+	// padded away from the rows above; at tiny heights it follows them directly.
+	if leftFoot != "" {
+		ll := strings.Split(left, "\n")
+		lf := strings.Split(leftFoot, "\n")
+		for pad := bodyH - len(ll) - len(lf); pad > 0; pad-- {
+			ll = append(ll, "")
+		}
+		left = strings.Join(append(ll, lf...), "\n")
 	}
 	body := joinColumns(left, right, leftW, contentW, bodyH)
 
@@ -674,7 +686,6 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 		b.WriteString(bar + scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW)) + "\n")
 		b.WriteString(bar + "   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
 	}
-	b.WriteString("\n" + scopeLegend(leftW))
 	return b.String()
 }
 
