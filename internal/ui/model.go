@@ -762,7 +762,7 @@ func (m Model) rightPane(w int) string {
 		info = profileInfoBlock(pr, m.statuses[it.name], w)
 	}
 	return paneTitle("DETAILS", m.focus == focusActions) + "\n\n" +
-		info + "\n\n" + paneTitle("ACTIONS", m.focus == focusActions && !m.suspended) + "\n\n" + m.actions.view(w)
+		info + "\n\n" + paneTitle(fmt.Sprintf("ACTIONS (%d)", len(m.actions.options)), m.focus == focusActions && !m.suspended) + "\n\n" + m.actions.view(w)
 }
 
 // paneTitle renders a pane header: bold for the focused pane (the selection

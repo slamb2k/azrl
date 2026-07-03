@@ -304,7 +304,7 @@ func (v providerTabView) View() string {
 		info = profileInfoBlock(pr, v.statuses[pr.Name], rightW)
 	}
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
-		info + "\n\n" + paneTitle("ACTIONS", v.focus == focusActions && !v.suspended) + "\n\n" + r.view(rightW)
+		info + "\n\n" + paneTitle(fmt.Sprintf("ACTIONS (%d)", len(v.actions)), v.focus == focusActions && !v.suspended) + "\n\n" + r.view(rightW)
 
 	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
 		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")
