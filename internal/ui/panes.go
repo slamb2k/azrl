@@ -89,8 +89,19 @@ func lastUsedWord(t time.Time) string {
 	return t.Format("2006-01-02")
 }
 
-// scopeLegend is the one-line-per-tier key rendered under the profiles list,
-// decoding the relevance icons.
+// selMode grades how a container's selection renders: bright while focused,
+// the darker parent shade while a descendant holds focus, and not at all
+// while an ancestor does.
+type selMode int
+
+const (
+	selNone selMode = iota
+	selParent
+	selActive
+)
+
+// scopeLegend is the one-line-per-tier key rendered under the profiles list
+// (centered), decoding the relevance icons.
 func scopeLegend(w int) string {
 	rows := []string{
 		successStyle.Render("●") + mutedStyle.Render(" this dir   ") +
@@ -100,7 +111,7 @@ func scopeLegend(w int) string {
 			lipgloss.NewStyle().Foreground(grayDeep).Render("●") + mutedStyle.Render(" unmapped"),
 	}
 	for i, r := range rows {
-		rows[i] = truncateLine(r, w)
+		rows[i] = lipgloss.PlaceHorizontal(w, lipgloss.Center, truncateLine(r, w))
 	}
 	return strings.Join(rows, "\n")
 }
