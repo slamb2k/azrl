@@ -202,3 +202,27 @@ func TestSignInHiddenWhenSessionLive(t *testing.T) {
 		t.Fatalf("action count should drop to 3:\n%s", out)
 	}
 }
+
+func TestEmptyProviderShowsOnlyBootstrapAction(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	os.MkdirAll(filepath.Join(home, ".aws-profiles"), 0o755)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	out := nm.(awsView).View()
+	if !strings.Contains(out, "ACTIONS (1)") || !strings.Contains(out, "New profile") {
+		t.Fatalf("empty provider should offer exactly New profile:\n%s", out)
+	}
+	for _, hidden := range []string{"Sign in", "Use here", "Remove"} {
+		if strings.Contains(out, hidden) {
+			t.Fatalf("%q should hide with zero profiles:\n%s", hidden, out)
+		}
+	}
+	// The bootstrap action works: 'a' opens the name prompt.
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if !nm.(awsView).naming {
+		t.Fatal("'a' should open the new-profile prompt on an empty provider")
+	}
+}
