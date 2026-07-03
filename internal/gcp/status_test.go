@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/slamb2k/azrl/internal/gcp"
 )
@@ -16,7 +17,19 @@ func writeConfigINI(t *testing.T, gcloudDir, configName, account string) {
 		[]byte("[core]\naccount = "+account+"\nproject = acme-prod\n"), 0o644)
 }
 
-func TestStatusReadsIdentityAndLastUsedExpiryNil(t *testing.T) {
+func copyTokenCache(t *testing.T, gcloudDir string) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "access_tokens.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(gcloudDir, 0o755)
+	if err := os.WriteFile(filepath.Join(gcloudDir, "access_tokens.db"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStatusExpiryNilWithoutTokenCache(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	confdir := filepath.Join(home, ".gcp-profiles")
@@ -40,7 +53,7 @@ func TestStatusReadsIdentityAndLastUsedExpiryNil(t *testing.T) {
 		t.Fatal("LastUsed not read")
 	}
 	if st.Expiry != nil {
-		t.Fatalf("Expiry must be nil in v1, got %v", st.Expiry)
+		t.Fatalf("Expiry must be nil without a token cache, got %v", st.Expiry)
 	}
 }
 
@@ -130,5 +143,36 @@ func TestStatusDriftIsolate(t *testing.T) {
 				t.Fatalf("Drifted = %v, want %v", st.Drifted, c.want)
 			}
 		})
+	}
+}
+
+func TestStatusReadsExpiryFromTokenCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	confdir := filepath.Join(home, ".gcp-profiles")
+	os.MkdirAll(confdir, 0o755)
+	os.WriteFile(filepath.Join(confdir, "work.conf"),
+		[]byte("GCP_CONFIG_NAME=work\nGCP_PROJECT=acme-prod\n"), 0o644)
+	gcloudDir := filepath.Join(home, ".config", "gcloud")
+	writeConfigINI(t, gcloudDir, "work", "expired@acme.com")
+	copyTokenCache(t, gcloudDir)
+	// Pin the config INI's mtime to the past so the LastUsed assertion can
+	// only be satisfied by the freshly-written access_tokens.db.
+	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	os.Chtimes(filepath.Join(gcloudDir, "configurations", "config_work"), old, old)
+
+	st, err := gcp.NewProvider().Status("work", confdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Expiry == nil {
+		t.Fatal("Expiry should be read from access_tokens.db")
+	}
+	want := time.Date(1970, 1, 2, 3, 4, 5, 0, time.UTC)
+	if !st.Expiry.Equal(want) {
+		t.Fatalf("Expiry = %v, want %v", st.Expiry, want)
+	}
+	if st.LastUsed.Before(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatal("LastUsed should fold in the fresh access_tokens.db mtime")
 	}
 }

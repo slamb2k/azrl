@@ -10,8 +10,8 @@ import (
 
 // Status returns a disk-only snapshot of profile name from its conf and the
 // gcloud configuration files. It never spawns gcloud or makes a network call.
-// Expiry is always nil in v1: gcloud caches token expiry in access_tokens.db
-// (SQLite), which cannot be read disk-only without a new dependency.
+// Expiry comes from the per-account token_expiry row in access_tokens.db,
+// read via the pure-Go sqlittle reader (see gcpExpiry); nil when absent.
 func (Provider) Status(name, confdir string) (provider.Status, error) {
 	c, _ := LoadConf(name, confdir)
 	last, dir := scheme.LastTouch(name, confdir)
@@ -20,16 +20,18 @@ func (Provider) Status(name, confdir string) (provider.Status, error) {
 	last = provider.LatestMtime(last,
 		filepath.Join(gcDir, "configurations", "config_"+configName),
 		filepath.Join(gcDir, "active_config"),
-		filepath.Join(gcDir, "credentials.db"))
+		filepath.Join(gcDir, "credentials.db"),
+		filepath.Join(gcDir, "access_tokens.db"))
 	drifted := driftedDefault(name, confdir, configName)
 	if c.Isolate {
 		drifted = driftedIsolate(name, confdir)
 	}
+	identity := gcpIdentity(name, confdir, configName, c.Isolate)
 	return provider.Status{
 		ProfileName: name,
-		Identity:    gcpIdentity(name, confdir, configName, c.Isolate),
+		Identity:    identity,
 		Directory:   dir,
-		Expiry:      nil,
+		Expiry:      gcpExpiry(gcDir, identity),
 		Drifted:     drifted,
 		LastUsed:    last,
 	}, nil
