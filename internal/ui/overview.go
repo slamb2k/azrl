@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/slamb2k/azrl/internal/github"
 	"github.com/slamb2k/azrl/internal/profile"
@@ -32,6 +33,7 @@ type MappingRow struct {
 	Source    string // "pointer" | "gitconfig"
 	Scope     string // ScopeCwd | ScopeAncestor | ScopeNone
 	Drifted   bool
+	Expiry    *time.Time // the mapped profile's token expiry; nil = none/unknown
 	Unmanaged string
 	Conflict  *github.Conflict
 	Pointer   string
@@ -200,7 +202,7 @@ func mappingRows(p provider.Provider, confdir, cwd string, statuses map[string]p
 				rows = append(rows, MappingRow{
 					Provider: p.Name(), Title: p.Title(), Dir: e.Dir, Profile: res.Profile,
 					Source: res.Source, Drifted: statuses[res.Profile].Drifted,
-					Conflict: res.Conflict, Pointer: pointer,
+					Expiry: statuses[res.Profile].Expiry, Conflict: res.Conflict, Pointer: pointer,
 				})
 			}
 			if res.Unmanaged != "" {
@@ -214,7 +216,8 @@ func mappingRows(p provider.Provider, confdir, cwd string, statuses map[string]p
 		for _, e := range entries {
 			rows = append(rows, MappingRow{
 				Provider: p.Name(), Title: p.Title(), Dir: e.Dir, Profile: e.Profile,
-				Source: e.Source, Drifted: statuses[e.Profile].Drifted, Pointer: pointer,
+				Source: e.Source, Drifted: statuses[e.Profile].Drifted,
+				Expiry: statuses[e.Profile].Expiry, Pointer: pointer,
 			})
 		}
 	}

@@ -360,6 +360,9 @@ func mappingLine(r MappingRow, dirW, tgtW int) string {
 	if r.Drifted {
 		line += "  " + failureStyle.Render("⚠ drift")
 	}
+	if expired(r.Expiry) {
+		line += "  " + failureStyle.Render("⚠ expired")
+	}
 	if r.Unmanaged != "" {
 		line += "  " + accentStyle.Render("unmanaged") + mutedStyle.Render(" · [a]dopt")
 	}
@@ -452,11 +455,16 @@ func expiryText(exp *time.Time) string {
 	if exp == nil {
 		return "—"
 	}
-	d := time.Until(*exp)
-	if d <= 0 {
+	if expired(exp) {
 		return failureStyle.Render("expired")
 	}
-	return "in " + shortDur(d)
+	return "in " + shortDur(time.Until(*exp))
+}
+
+// expired reports whether a cached expiry timestamp is in the past; a nil
+// (none/unknown) expiry is never expired.
+func expired(exp *time.Time) bool {
+	return exp != nil && time.Until(*exp) <= 0
 }
 
 func shortDur(d time.Duration) string {
@@ -471,7 +479,8 @@ func shortDur(d time.Duration) string {
 }
 
 // dashboardHints picks the next most useful action by priority (conflict >
-// drift > unmanaged > expired > first-pin nudge > all good) and returns two
+// drift > expired governing pin > unmanaged > expired unmapped > first-pin
+// nudge > all good) and returns two
 // renderings: a compact chip that fits the header's right zone, and a full
 // explanation for the notice line beneath ("" when nothing needs attention).
 func dashboardHints(ov Overview) (short, notice string) {
@@ -502,6 +511,15 @@ func dashboardHints(ov Overview) (short, notice string) {
 					mutedStyle.Render(" · ") + keycap("↵") + mutedStyle.Render(" opens its tab to fix")
 		}
 	}
+	// An expired pin that governs the cwd means the next CLI command here will
+	// hit a wall — more urgent than adoptable identities, less than conflict/drift.
+	for _, r := range ov.Mappings {
+		if r.Scope != ScopeNone && expired(r.Expiry) {
+			return failureStyle.Render("⚠ " + r.Provider + ":" + r.Profile + " expired"),
+				accentStyle.Render(r.Provider+":"+r.Profile) + mutedStyle.Render(" is pinned here but its session has expired — ") +
+					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
+		}
+	}
 	for _, r := range ov.Mappings {
 		if r.Unmanaged != "" {
 			return accentStyle.Render("unmanaged identity"),
@@ -510,7 +528,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 		}
 	}
 	for _, u := range ov.Unmapped {
-		if u.Status.Expiry != nil && time.Until(*u.Status.Expiry) <= 0 {
+		if expired(u.Status.Expiry) {
 			return failureStyle.Render("⚠ " + u.Provider + ":" + u.Status.ProfileName + " expired"),
 				accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" has expired — ") +
 					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")

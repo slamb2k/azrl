@@ -336,3 +336,56 @@ func TestDashboardHintNamesBothDriftSides(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardMappingRowShowsExpired(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	future := time.Now().Add(3 * time.Hour)
+	m := dashboardModel{width: 120, ov: Overview{
+		Mappings: []MappingRow{
+			{Provider: "azure", Title: "Azure", Dir: "/work/acme", Profile: "acme",
+				Source: "pointer", Scope: ScopeNone, Pointer: ".azprofile", Expiry: &past},
+			{Provider: "aws", Title: "AWS", Dir: "/work/api", Profile: "prod",
+				Source: "pointer", Scope: ScopeNone, Pointer: ".awsprofile", Expiry: &future},
+		},
+	}}
+	m.items = overviewItems(m.ov)
+	v := m.View()
+	if !strings.Contains(v, "⚠ expired") {
+		t.Fatalf("expired mapping row missing ⚠ expired:\n%s", v)
+	}
+	// The still-valid mapping row carries no expiry text at all.
+	if strings.Count(v, "expired") != 1 {
+		t.Fatalf("expected exactly one expired marker:\n%s", v)
+	}
+}
+
+func TestDashboardHintExpiredGoverningPin(t *testing.T) {
+	past := time.Now().Add(-time.Minute)
+	ov := Overview{Mappings: []MappingRow{
+		{Provider: "azure", Dir: "/w/x", Profile: "acme", Scope: ScopeCwd, Expiry: &past},
+		{Dir: "/w/y", Unmanaged: "who@github.com"},
+	}}
+	// An expired governing pin outranks an unmanaged identity.
+	short, notice := dashboardHints(ov)
+	if !strings.Contains(short, "expired") || !strings.Contains(short, "azure:acme") {
+		t.Fatalf("expired pin chip = %q", short)
+	}
+	if !strings.Contains(notice, "sign in") {
+		t.Fatalf("expired pin notice should point at sign in: %q", notice)
+	}
+	// Drift still outranks an expired pin.
+	ov.Mappings = append([]MappingRow{{Dir: "/w/z", Profile: "p", Drifted: true}}, ov.Mappings...)
+	if short, _ := dashboardHints(ov); !strings.Contains(short, "drift") {
+		t.Fatalf("drift should outrank the expired pin: %q", short)
+	}
+}
+
+func TestDashboardHintIgnoresExpiredNonGoverningMapping(t *testing.T) {
+	past := time.Now().Add(-time.Minute)
+	ov := Overview{Mappings: []MappingRow{
+		{Provider: "azure", Dir: "/w/x", Profile: "acme", Scope: ScopeNone, Expiry: &past},
+	}}
+	if short, _ := dashboardHints(ov); strings.Contains(short, "expired") {
+		t.Fatalf("a pin that does not govern the cwd should not raise the expired hint: %q", short)
+	}
+}
