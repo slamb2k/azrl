@@ -68,6 +68,64 @@ just for remote servers:
 - **Works with subscription-less tenants.** Signs in with
   `--allow-no-subscription`, so Entra-ID-only / tenant-level accounts are fine.
 
+## Install
+
+**Quick install** (Linux/macOS — pulls the latest release binary):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/slamb2k/azrl/main/scripts/install.sh | sh
+```
+
+**Homebrew** (macOS/Linux):
+
+```bash
+brew install slamb2k/tap/azrl
+```
+
+**Go** (any platform with a recent Go toolchain):
+
+```bash
+go install github.com/slamb2k/azrl@latest
+```
+
+**Binaries & packages** — download a `.tar.gz`, `.deb`, or `.rpm` for your
+platform from the [latest release](https://github.com/slamb2k/azrl/releases/latest).
+Every release artifact carries OIDC-signed build provenance; verify a download
+with `gh attestation verify <file> -R slamb2k/azrl`.
+
+**From source** (contributors):
+
+```bash
+./install.sh   # go build + install into ~/.local/bin, gitignore .azprofile,
+               # bootstrap ~/.azure-profiles/azrl.conf from the template
+```
+
+## First-time setup
+
+**Local workstation or laptop** — nothing to configure. azrl opens your
+browser directly; skip straight to the Quick start.
+
+**Headless VM or WSL** (the browser lives on another machine) — tell azrl
+where your browser is, once, in `~/.azure-profiles/azrl.conf` (the installers
+bootstrap it from [`azrl.conf.example`](azrl.conf.example)):
+
+```ini
+LOCAL_HOST=my-laptop        # SSH name of the machine with the browser (e.g. a tailnet name)
+LOCAL_BROWSER_CMD=xdg-open  # what opens a URL there — wslview on WSL, open on macOS
+VM_HOST=my-vm               # this machine's SSH-reachable name
+```
+
+Then `azrl login` does the rest: if `LOCAL_HOST` is SSH-reachable from here,
+the sign-in page **pops on your local machine** through a reverse tunnel and
+the OAuth callback is forwarded back — zero paste. If it isn't reachable, azrl
+prints a one-line `ssh -fNL …` to paste in a local terminal instead. Under
+WSL2 with `LOCAL_BROWSER_CMD=wslview`, the page opens straight in your Windows
+browser.
+
+[direnv](https://direnv.net) is optional but recommended — it's what makes
+accounts switch automatically as you `cd` (azrl writes and allows the `.envrc`
+for you).
+
 ## Quick start
 
 ```bash
@@ -85,6 +143,12 @@ azrl login personal
 cd ~/work/acme      && az account show   # → you@acme.com
 cd ~/personal/side-project && az account show   # → you@outlook.com
 ```
+
+On a **headless VM** the same command is the whole story — after
+[First-time setup](#first-time-setup), `azrl login acme` pops the sign-in page
+on your laptop and the VM receives the session. The same model covers GitHub
+(`ghrl login`), AWS (`azrl aws login`), and Google Cloud (`azrl gcp login`) —
+one repo can pin all four at once, and the dashboard shows them together.
 
 Prefer a dashboard? Run **`azrl`** with no arguments for the TUI: pick a profile,
 sign in, capture, link, or remove — and press `e` to pin the current directory to
@@ -108,21 +172,63 @@ azrl --help                # usage; azrl --version prints the version
 `capture` and `login` both **offer to write an `.envrc`** (and run
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
-Bare `azrl` opens a **tabbed TUI** — a centered winged banner over the tab bar,
-landing on a cross-provider overview ("who am I, everywhere?") in three
-sections: **mappings** (which directories are pinned to which profiles, with
-scope and drift markers — unmanaged directories can be adopted with `[a]`),
-**ambient** (what each CLI is natively signed in as *right now*, read straight
-from its own config on disk — azrl never changes it), and **unmapped profiles**
-(saved profiles pinned nowhere, so expiry warnings stay visible). Then come
-**Azure**, **AWS**, **GCP**, and **GitHub** tabs (Azure first); switch between
-them with `←`/`→` (or `[` and `]`). Every provider tab shares one Azure-style
-profiles/actions layout. The landing view is **live**: it polls and also
-watches each provider's token cache *and* native config dir (`~/.azure`,
-`~/.config/gh`, `~/.aws`, `~/.config/gcloud`) via fsnotify, so it updates the
-moment you sign in — or `gh auth switch` — with any CLI outside azrl, not just
-through azrl itself. `azrl status` prints the same three sections;
-`--json` emits `{"mappings":[…],"ambient":[…],"unmapped":[…]}`.
+Bare `azrl` opens the tabbed TUI (below). `azrl status` prints the same
+three-section overview on the CLI; `--json` emits
+`{"mappings":[…],"ambient":[…],"unmapped":[…]}`.
+
+## The TUI at a glance
+
+Bare `azrl` lands on a live cross-provider dashboard — "who am I,
+everywhere?" — followed by an **Azure · AWS · Google Cloud · GitHub** tab per
+provider (every tab shares one profiles/actions layout; `ghrl` opens on the
+GitHub tab):
+
+```text
+ Dashboard │ Azure │ AWS │ Google Cloud │ GitHub
+ MAPPINGS
+  ● ~/work/acme     → azure:acme       .azprofile
+  ● ~/oss/tool      → github:personal  (git)          ⚠ drift
+ AMBIENT — defaults in effect
+  🌐 GitHub   you@github.com   hosts.yml   managed
+ UNMAPPED PROFILES
+  ● azure:velrada   you@velrada.com   expired
+```
+
+It's **live**: besides polling, it watches each provider's token cache *and*
+native config dir via fsnotify, so it updates the moment you sign in — or
+`gh auth switch` — with any CLI outside azrl.
+
+**What the marks mean:**
+
+| Mark | Meaning |
+|---|---|
+| ● green | pinned to the current directory — effective here |
+| ● orange | inherited from a parent directory's pin |
+| 🌐 | the provider's global default (its ambient identity matches this profile) |
+| ● dark-white | mapped to some other directory — real, just not relevant here |
+| ● grey | mapped nowhere |
+| **bold** name | the profile that would be used right now (closest scope wins) |
+| *italic* name | renamed — display label differs from the profile slug |
+| `⚠ drift` | your shell's ambient session differs from this directory's pin |
+| `managed` / `unmanaged` | the ambient identity is / isn't held by any saved profile |
+
+**Keys:**
+
+| Key | Action |
+|---|---|
+| `←`/`→` (or `[`/`]`) | switch tabs |
+| `↑`/`↓` | select a profile or action |
+| `↵` | open the action pane · run the selected action |
+| `esc` | back to the profile list |
+| `Delete` / `F5` | remove profile / refresh |
+| `a` | adopt an unmanaged identity into a new profile (dashboard) |
+| `w` | recheck drift (dashboard) |
+| `e` | write `.envrc` to pin the shell (Azure tab) |
+| `q` / `ctrl+c` | quit |
+
+Sign in and New profile run the full interactive flow — browser bridge
+included — directly from the TUI; the tab picks up the result when the flow
+finishes.
 
 ## GitHub accounts (`gh`)
 
@@ -282,38 +388,6 @@ selection — its default is `gh auth switch`, and azrl's per-repo wiring via
 The full pattern language (and what was deliberately *not* built) is in
 [docs/ambient-identity-model.md](docs/ambient-identity-model.md).
 
-## Install
-
-**Quick install** (Linux/macOS — pulls the latest release binary):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/slamb2k/azrl/main/scripts/install.sh | sh
-```
-
-**Homebrew** (macOS/Linux):
-
-```bash
-brew install slamb2k/tap/azrl
-```
-
-**Go** (any platform with a recent Go toolchain):
-
-```bash
-go install github.com/slamb2k/azrl@latest
-```
-
-**Binaries & packages** — download a `.tar.gz`, `.deb`, or `.rpm` for your
-platform from the [latest release](https://github.com/slamb2k/azrl/releases/latest).
-Every release artifact carries OIDC-signed build provenance; verify a download
-with `gh attestation verify <file> -R slamb2k/azrl`.
-
-**From source** (contributors):
-
-```bash
-./install.sh   # go build + install into ~/.local/bin, gitignore .azprofile,
-               # bootstrap ~/.azure-profiles/azrl.conf from the template
-```
-
 ## Configuration
 
 | File | Purpose |
@@ -404,4 +478,4 @@ gofmt -l .
 Pure logic lives in `internal/profile` and is unit-tested. `internal/azure` shells
 out to `az`/`ssh` and is tested by shimming them onto `PATH`. The single binary is
 its own `$BROWSER` shim via the hidden `__browser-capture` subcommand. See
-`HANDOVER.md` for full context.
+`docs/HANDOVER-origin.md` for full context.
