@@ -862,6 +862,8 @@ func (m Model) helpBar() string {
 		}
 		return strings.Join(lines, "\n")
 	}
-	return keyHelp("↑↓", "select", "→", "details", "↵", "open/run", "esc", "back", "⇥", "tab",
-		"d", "dir", "o", "options", "f5", "refresh", "?", "help", "q", "quit")
+	contentW, _, _ := paneDims(m.width)
+	return keyHelpFit(contentW,
+		[]string{"↑↓", "select", "↵", "open/run", "esc", "back"},
+		[]string{"q", "quit", "?", "help", "→", "details", "⇥", "tab", "d", "dir", "o", "options", "f5", "refresh"})
 }

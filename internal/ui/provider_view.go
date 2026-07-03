@@ -343,8 +343,10 @@ func (v providerTabView) View() string {
 		info + "\n\n" + rule(rightW) + "\n" +
 		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(acts)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
 
-	help := keyHelp("↑↓", "select", "→", "details", "↵", "open/run", "esc", "back", "⇥", "tab",
-		"d", "dir", "o", "options", "q", "quit")
+	contentW, _, _ := paneDims(v.width)
+	help := keyHelpFit(contentW,
+		[]string{"↑↓", "select", "↵", "open/run", "esc", "back"},
+		[]string{"q", "quit", "→", "details", "⇥", "tab", "d", "dir", "o", "options"})
 	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
 }
 

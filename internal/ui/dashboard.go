@@ -241,8 +241,9 @@ func (m dashboardModel) View() string {
 	header := "🧭 " + paneTitleStyle.Render("Dashboard") +
 		mutedStyle.Render("   ·   ") + "📁 " + displayDir(cwd) +
 		mutedStyle.Render("   ·   ") + dashboardHint(m.ov)
-	help := keyHelp("↑↓", "select", "↵", "open tab", "a", "adopt", "f5", "refresh",
-		"w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options", "q", "quit")
+	help := keyHelpFit(m.width-4,
+		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt"},
+		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
 
 	var body []string
 	idx := 0

@@ -240,3 +240,24 @@ func TestF5Refreshes(t *testing.T) {
 		t.Fatal("F5 refresh dropped the profile list")
 	}
 }
+
+func TestKeyHelpFitDropsOptionalTailWhenNarrow(t *testing.T) {
+	core := []string{"↑↓", "select", "↵", "run"}
+	optional := []string{"q", "quit", "o", "options"}
+	wide := keyHelpFit(200, core, optional)
+	if !strings.Contains(wide, "options") || !strings.Contains(wide, "quit") {
+		t.Fatalf("wide bar should keep optional items: %q", wide)
+	}
+	narrow := keyHelpFit(30, core, optional)
+	if strings.Contains(narrow, "options") {
+		t.Fatalf("narrow bar should drop the optional tail: %q", narrow)
+	}
+	if !strings.Contains(narrow, "select") || !strings.Contains(narrow, "run") {
+		t.Fatalf("narrow bar must keep the core: %q", narrow)
+	}
+	// Optional items drop right-to-left: quit survives longer than options.
+	mid := keyHelpFit(60, core, optional)
+	if strings.Contains(mid, "options") && !strings.Contains(mid, "quit") {
+		t.Fatalf("drop order should favour earlier optional items: %q", mid)
+	}
+}
