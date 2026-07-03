@@ -40,14 +40,6 @@ var homeActions = []radioOption{
 // specific profile config dir.
 var accountShowFn = azure.AccountShowIn
 
-// selectionBar is the azure-palette selection marker shared by the profile list:
-// a blue thick left bar with one column of padding. Both the bubbles list
-// delegate and the provider tabs' hand-rendered profile pane reuse it so the
-// selected-row look is identical everywhere.
-var selectionBar = lipgloss.NewStyle().
-	Border(lipgloss.ThickBorder(), false, false, false, true).
-	BorderForeground(azureBlue).PaddingLeft(1)
-
 // profileDelegate hand-renders profile rows so the leading scope icon keeps
 // its own colour without fighting the row style (a styled glyph inside the
 // stock delegate's Render would reset the selection styling mid-line): each
@@ -872,17 +864,4 @@ func (m Model) helpBar() string {
 	}
 	return keyHelp("↑↓", "select", "→", "details", "↵", "open/run", "esc", "back", "⇥", "tab",
 		"d", "dir", "o", "options", "f5", "refresh", "?", "help", "q", "quit")
-}
-
-// contextLine describes the current directory's relationship to profiles.
-func contextLine(pwd string) string {
-	if name, err := profile.Resolve("", pwd); err == nil {
-		return fmt.Sprintf("This dir → %s", accentStyle.Render(name))
-	}
-	base := profile.SanitizeName(filepath.Base(pwd))
-	conf := filepath.Join(config.ProfilesDir(), base+".conf")
-	if _, err := os.Stat(conf); err == nil {
-		return fmt.Sprintf("No .azprofile here. Link this dir to %s? (press u)", accentStyle.Render(base))
-	}
-	return fmt.Sprintf("No profile for this dir — create with: azrl login %s", accentStyle.Render(base))
 }

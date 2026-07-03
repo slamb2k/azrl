@@ -320,7 +320,6 @@ func (m tabsModel) View() string {
 }
 
 var (
-	activeTabStyle   = lipgloss.NewStyle().Foreground(gold).Bold(true).Underline(true)
 	inactiveTabStyle = lipgloss.NewStyle().Foreground(gray)
 	tabSepStyle      = lipgloss.NewStyle().Foreground(azureDeep)
 )
