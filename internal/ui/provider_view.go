@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/slamb2k/azrl/internal/profile"
@@ -45,6 +48,8 @@ type providerTabView struct {
 	status     string
 	suspended  bool
 	touched    bool
+	naming     bool
+	nameInput  textinput.Model
 }
 
 // newProviderTabView builds the shared view for prov with the given pre-rendered
@@ -109,6 +114,10 @@ func (v providerTabView) visibleActions() []providerAction {
 		if a.key == "u" && sel != "" && sel == v.dirProfile && v.dirScope == ScopeCwd {
 			continue
 		}
+		if a.key == "s" && sel != "" && sessionLive(v.statuses[sel]) {
+			// Sign in is the recovery verb; a live session has nothing to recover.
+			continue
+		}
 		out = append(out, a)
 	}
 	return out
@@ -132,6 +141,24 @@ func (v providerTabView) rowScope(name string) string {
 
 func (v providerTabView) Init() tea.Cmd { return nil }
 
+// capturesInput reports whether the new-profile name input is active, so the
+// container forwards keys here instead of acting on them.
+func (v providerTabView) capturesInput() bool { return v.naming }
+
+// cliGroup maps a provider name to its azrl command group.
+func cliGroup(name string) string {
+	if name == "github" {
+		return "gh"
+	}
+	return name
+}
+
+// sessionLive reports whether a profile's disk-only status shows a usable
+// session — identity present and not expired.
+func sessionLive(st provider.Status) bool {
+	return st.Identity != "" && (st.Expiry == nil || st.Expiry.After(time.Now()))
+}
+
 // update runs the shared list/pane navigation and action dispatch, returning the
 // mutated view. The embedding types wrap it so their own concrete type
 // round-trips through Bubble Tea's tea.Model.
@@ -149,6 +176,29 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			}
 		}
 	case tea.KeyMsg:
+		if v.naming {
+			switch msg.String() {
+			case "esc":
+				v.naming = false
+			case "enter":
+				name := strings.TrimSpace(v.nameInput.Value())
+				if name == "" {
+					name = v.nameInput.Placeholder
+				}
+				name = profile.SanitizeName(name)
+				if name == "" {
+					return v, nil
+				}
+				v.naming = false
+				v.status = ""
+				return v, runHandoff(groupArgs(cliGroup(v.prov.Name()), "login", name, "--yes"))
+			default:
+				var cmd tea.Cmd
+				v.nameInput, cmd = v.nameInput.Update(msg)
+				_ = cmd
+			}
+			return v, nil
+		}
 		if k := msg.String(); k != "q" && k != "ctrl+c" {
 			// Any navigation marks the pane as visited (bold titles from here on).
 			v.touched = true
@@ -242,20 +292,30 @@ func (v providerTabView) dispatch(key string) (providerTabView, tea.Cmd) {
 	return v, nil
 }
 
-// loginAction hands off to the provider's interactive `login` flow in the
-// terminal (browser bridge and prompts included), signing into the selected
-// profile — or the bare picker/create flow when withSelected is false.
-func loginAction(group string, withSelected bool) func(v *providerTabView) tea.Cmd {
+// loginAction hands off to the provider's interactive `login` flow for the
+// selected profile (browser bridge included) — the recovery verb.
+func loginAction(group string) func(v *providerTabView) tea.Cmd {
 	return func(v *providerTabView) tea.Cmd {
 		args := groupArgs(group, "login")
-		if withSelected {
-			if name := v.selected(); name != "" {
-				args = append(args, name)
-			}
+		if name := v.selected(); name != "" {
+			args = append(args, name)
 		}
 		v.status = ""
 		return runHandoff(args)
 	}
+}
+
+// newProfileAction opens the name prompt; confirming execs `login <name>
+// --yes`, whose create path signs in and pins the current directory.
+func newProfileAction(v *providerTabView) tea.Cmd {
+	pwd, _ := os.Getwd()
+	ti := textinput.New()
+	ti.Placeholder = profile.DefaultName("", pwd)
+	ti.Focus()
+	v.nameInput = ti
+	v.naming = true
+	v.status = ""
+	return nil
 }
 
 // useAction pins the current directory to the selected profile. Shared by all
@@ -344,6 +404,11 @@ func (v providerTabView) View() string {
 	actionsBody := r.view(rightW)
 	if len(v.profiles) == 0 {
 		actionsBody = mutedStyle.Render("(no profile selected)")
+	}
+	if v.naming {
+		actionsBody = mutedStyle.Render("Name for the new profile:") + "\n\n" +
+			v.nameInput.View() + "\n\n" +
+			keyHelp("↵", "create + sign in + pin", "esc", "cancel")
 	}
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(rightW) + "\n" +

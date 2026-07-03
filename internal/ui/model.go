@@ -128,6 +128,8 @@ type Model struct {
 	suspended     bool
 	touched       bool
 	dirScope      string
+	creating      bool
+	create        textinput.Model
 }
 
 // NewModel builds the home model from the profiles on disk.
@@ -206,6 +208,10 @@ func (m *Model) rebuildActions() {
 	opts := make([]radioOption, 0, len(homeActions))
 	for _, o := range homeActions {
 		if o.key == "u" && sel.name != "" && sel.name == m.dirProfile && m.dirScope == ScopeCwd {
+			continue
+		}
+		if o.key == "l" && sel.name != "" && sessionLive(m.statuses[sel.name]) {
+			// Sign in is the recovery verb; a live session has nothing to recover.
 			continue
 		}
 		opts = append(opts, o)
@@ -404,6 +410,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.renaming {
 			return m.updateRename(msg)
 		}
+		if m.creating {
+			return m.updateCreate(msg)
+		}
 		return m.updateKey(msg)
 	}
 	var cmd tea.Cmd
@@ -413,7 +422,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // capturesInput reports whether the rename text input is active, so the tab
 // container forwards arrow/bracket keys here instead of switching tabs.
-func (m Model) capturesInput() bool { return m.renaming }
+func (m Model) capturesInput() bool { return m.renaming || m.creating }
 
 // updateKey handles the home-screen keymap.
 func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -507,6 +516,34 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // updateRename handles the rename text-input sub-state.
+// updateCreate handles the new-profile name prompt: enter execs
+// `login <name> --yes`, whose create path signs in and pins this directory.
+func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.creating = false
+		return m, nil
+	case "enter":
+		name := strings.TrimSpace(m.create.Value())
+		if name == "" {
+			name = m.create.Placeholder
+		}
+		name = profile.SanitizeName(name)
+		if name == "" {
+			return m, nil
+		}
+		m.creating = false
+		m.busy = true
+		m.status = ""
+		return m, runHandoff([]string{"login", name, "--yes"})
+	}
+	var cmd tea.Cmd
+	m.create, cmd = m.create.Update(msg)
+	return m, cmd
+}
+
 func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
@@ -572,9 +609,17 @@ func (m Model) dispatch(key string) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, runHandoff(handoffArgs("l", sel.name))
 	case "i":
-		m.busy = true
+		// New profile needs a name — the bare login picker only selects
+		// existing profiles and would never hit the pin-on-create path.
+		pwd, _ := os.Getwd()
+		ti := textinput.New()
+		ti.Placeholder = profile.DefaultName("", pwd)
+		ti.Width = 28
+		cmd := ti.Focus()
+		m.create = ti
+		m.creating = true
 		m.status = ""
-		return m, runHandoff(handoffArgs("i", ""))
+		return m, cmd
 	case "x":
 		if sel.name == "" {
 			m.status = failureStyle.Render("✗ select a profile to edit")
@@ -801,7 +846,13 @@ func (m Model) rightPane(w int) string {
 		return paneTitle("RENAME", true) + "\n\n" +
 			mutedStyle.Render("New name for "+m.renameOld+":") + "\n\n" +
 			m.rename.View() + "\n\n" +
-			mutedStyle.Render("↵ rename · esc cancel")
+			keyHelp("↵", "rename", "esc", "cancel")
+	}
+	if m.creating {
+		return paneTitle("NEW PROFILE", true) + "\n\n" +
+			mutedStyle.Render("Name for the new profile:") + "\n\n" +
+			m.create.View() + "\n\n" +
+			keyHelp("↵", "create + sign in + pin", "esc", "cancel")
 	}
 	info := mutedStyle.Render("(no profile selected)")
 	if it, ok := m.list.SelectedItem().(item); ok {
@@ -867,6 +918,9 @@ func (m Model) helpBar() string {
 	}
 	if m.renaming {
 		return mutedStyle.Render("type new name · ") + keyHelp("↵", "rename", "esc", "cancel")
+	}
+	if m.creating {
+		return mutedStyle.Render("type a profile name · ") + keyHelp("↵", "create + sign in + pin", "esc", "cancel")
 	}
 	if m.showHelp {
 		lines := []string{
