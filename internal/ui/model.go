@@ -27,10 +27,10 @@ const (
 
 // homeActions is the action radio group; keys double as hotkey accelerators.
 var homeActions = []radioOption{
-	{label: "Sign in", key: "l", hint: "bridge + az login"},
-	{label: "Use here", key: "u", hint: "link this dir"},
+	{label: "Sign in", key: "l", hint: "session only — no pin"},
+	{label: "Use here", key: "u", hint: "pin only — no login"},
 	{label: "Capture session", key: "c", hint: "save current login"},
-	{label: "New profile", key: "i", hint: "init + sign in"},
+	{label: "New profile", key: "i", hint: "sign in + pin here"},
 	{label: "Edit…", key: "x", hint: "open .conf in $EDITOR"},
 	{label: "Rename…", key: "n", hint: "change profile name"},
 	{label: "Remove…", key: "delete", hint: "delete profile"},
@@ -134,6 +134,7 @@ type Model struct {
 	renameOld     string
 	suspended     bool
 	touched       bool
+	dirScope      string
 }
 
 // NewModel builds the home model from the profiles on disk.
@@ -194,9 +195,33 @@ func NewModel() Model {
 	sp.Spinner = spinner.Dot
 	sp.Style = dotStyle
 	m := Model{list: l, spin: sp, pwd: pwd, actions: newRadio(homeActions),
-		statuses: statusMap, profs: profs, ambIdent: ambIdent, dirProfile: dirProfile}
+		statuses: statusMap, profs: profs, ambIdent: ambIdent, dirProfile: dirProfile, dirScope: dirScope}
+	m.rebuildActions()
 	m.applyFocus()
 	return m
+}
+
+// rebuildActions filters the action set for the current selection — actions
+// that cannot apply are hidden (Use here when the selected profile already
+// pins this directory) — preserving the cursor by key where possible.
+func (m *Model) rebuildActions() {
+	sel, _ := m.list.SelectedItem().(item)
+	cur := ""
+	if len(m.actions.options) > 0 && m.actions.cursor < len(m.actions.options) {
+		cur = m.actions.options[m.actions.cursor].key
+	}
+	opts := make([]radioOption, 0, len(homeActions))
+	for _, o := range homeActions {
+		if o.key == "u" && sel.name != "" && sel.name == m.dirProfile && m.dirScope == ScopeCwd {
+			continue
+		}
+		opts = append(opts, o)
+	}
+	m.actions.options = opts
+	if !m.actions.selectByKey(cur) {
+		m.actions.cursor = 0
+	}
+	m.applyFocus()
 }
 
 // Init implements tea.Model — kicks off the identity lookup for this dir.
@@ -424,7 +449,11 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.dispatch(m.actions.selected().key)
 	case "l", "u", "c", "i", "x", "n", "delete":
-		m.actions.selectByKey(msg.String())
+		if !m.actions.selectByKey(msg.String()) {
+			// The action is hidden for this selection (e.g. Use here on the
+			// already-pinned profile).
+			return m, nil
+		}
 		return m.dispatch(msg.String())
 	case "e":
 		return m.dispatch("e")
@@ -437,6 +466,7 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Already at the top of the list: hand focus to the tab bar.
 			return m, func() tea.Msg { return focusTabsMsg{} }
 		}
+		defer func() { m.rebuildActions() }()
 	case "down", "j":
 		if m.focus == focusActions {
 			m.actions.down()
@@ -445,6 +475,7 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+	m.rebuildActions()
 	return m, cmd
 }
 

@@ -220,6 +220,10 @@ func TestAwsLoginCreatesWithStartURLAndYes(t *testing.T) {
 	if !strings.Contains(string(b), "AWS_SSO_START_URL=https://fresh.awsapps.com/start") {
 		t.Fatalf("created conf missing start URL:\n%s", b)
 	}
+	// Pin-on-create: the new profile pins the cwd.
+	if pin, err := os.ReadFile(filepath.Join(work, ".awsprofile")); err != nil || strings.TrimSpace(string(pin)) != "fresh" {
+		t.Fatalf(".awsprofile not pinned on create (err=%v pin=%q)", err, pin)
+	}
 }
 
 // TestAwsLoginFirstLoginCreatesFromPrompt proves that on a TTY with zero saved
@@ -251,7 +255,7 @@ func TestAwsLoginFirstLoginCreatesFromPrompt(t *testing.T) {
 	if !strings.Contains(buf.String(), `created profile "`+want+`"`) {
 		t.Fatalf("missing created-profile announce:\n%s", buf.String())
 	}
-	if strings.Contains(buf.String(), "[y/N]") {
+	if strings.Contains(buf.String(), "doesn't exist. Create it") {
 		t.Fatalf("must not double-confirm the just-named profile:\n%s", buf.String())
 	}
 	b, err := os.ReadFile(filepath.Join(home, ".aws-profiles", want+".conf"))

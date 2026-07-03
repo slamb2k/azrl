@@ -117,3 +117,32 @@ func TestGroupArgs(t *testing.T) {
 		t.Fatalf("groupArgs(gh) = %q", got)
 	}
 }
+
+func TestUseHereHiddenWhenSelectedProfilePinsCwd(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+	pinned := t.TempDir()
+	os.WriteFile(filepath.Join(pinned, ".awsprofile"), []byte("work\n"), 0o644)
+	t.Chdir(pinned)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	av := nm.(awsView)
+	out := av.View()
+	if strings.Contains(out, "Use here") {
+		t.Fatalf("Use here should be hidden for the cwd-pinned selection:\n%s", out)
+	}
+	if !strings.Contains(out, "ACTIONS (3)") {
+		t.Fatalf("action count should drop to 3:\n%s", out)
+	}
+	// The 'u' accelerator is inert for this selection.
+	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if cmd != nil || nm.(awsView).status != "" {
+		t.Fatalf("hidden accelerator must be inert (status=%q)", nm.(awsView).status)
+	}
+}

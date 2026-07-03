@@ -49,6 +49,7 @@ func newAwsLoginCmd() *cobra.Command {
 			if err := validAwsName(name); err != nil {
 				return err
 			}
+			created := false
 			conf, err := aws.LoadConf(name, dir)
 			if err != nil {
 				// Unknown profile: never create one without an SSO start URL — this
@@ -65,6 +66,7 @@ func newAwsLoginCmd() *cobra.Command {
 				if werr := conf.Write(awsConfPath(dir, name)); werr != nil {
 					return werr
 				}
+				created = true
 				cmd.Printf("azrl aws: created profile %q (%s)\n", name, startURL)
 			} else if isolate && !conf.Isolate {
 				conf.Isolate = true
@@ -89,6 +91,15 @@ func newAwsLoginCmd() *cobra.Command {
 				}
 			}
 			pwd, _ := os.Getwd()
+			if created {
+				// Pin-on-create (all providers): creating = Sign in + Use here in
+				// one. Sign-in of an existing profile deliberately never pins.
+				if err := prov.Use(name, dir, pwd); err != nil {
+					return err
+				}
+				cmd.Printf("aws: pinned %s/.awsprofile -> %q\n", pwd, name)
+				offerAwsEnvrc(pwd, name, conf.Isolate, cmd.OutOrStdout(), cmd.InOrStdin())
+			}
 			return aws.Scheme().Touch(name, dir, pwd)
 		},
 	}

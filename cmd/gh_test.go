@@ -142,6 +142,11 @@ func TestGhLoginCreatesWithYes(t *testing.T) {
 	if !strings.Contains(string(b), "GH_HOST=github.com") {
 		t.Fatalf("created conf missing host:\n%s", b)
 	}
+	// Pin-on-create: the new profile pins the cwd.
+	pwd, _ := os.Getwd()
+	if pin, err := os.ReadFile(filepath.Join(pwd, ".ghprofile")); err != nil || strings.TrimSpace(string(pin)) != "fresh" {
+		t.Fatalf(".ghprofile not pinned on create (err=%v pin=%q)", err, pin)
+	}
 }
 
 // TestGhLoginFirstLoginCreatesFromPrompt proves that on a TTY with zero saved

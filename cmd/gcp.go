@@ -49,6 +49,7 @@ func newGcpLoginCmd() *cobra.Command {
 			if err := validGcpName(name); err != nil {
 				return err
 			}
+			created := false
 			conf, err := gcp.LoadConf(name, dir)
 			if err != nil {
 				cn := configName
@@ -68,6 +69,7 @@ func newGcpLoginCmd() *cobra.Command {
 				if werr := conf.Write(gcpConfPath(dir, name)); werr != nil {
 					return werr
 				}
+				created = true
 				cmd.Printf("azrl gcp: created profile %q (%s)\n", name, detail)
 			} else if isolate && !conf.Isolate {
 				conf.Isolate = true
@@ -96,6 +98,15 @@ func newGcpLoginCmd() *cobra.Command {
 				cmd.Println(warn)
 			}
 			pwd, _ := os.Getwd()
+			if created {
+				// Pin-on-create (all providers): creating = Sign in + Use here in
+				// one. Sign-in of an existing profile deliberately never pins.
+				if err := prov.Use(name, dir, pwd); err != nil {
+					return err
+				}
+				cmd.Printf("gcp: pinned %s/.gcpprofile -> %q\n", pwd, name)
+				offerGcpEnvrc(pwd, name, conf.Isolate, cmd.OutOrStdout(), cmd.InOrStdin())
+			}
 			return gcp.Scheme().Touch(name, dir, pwd)
 		},
 	}
