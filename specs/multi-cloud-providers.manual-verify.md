@@ -260,3 +260,15 @@ azrl            # landing view shows the row as unmanaged; press [a]
 **Pass:** the capture flow launches for the right provider with the name prompt
 defaulting to the directory name; accepting it creates the profile, and the
 landing view re-renders the row as managed (mapping recorded in the index).
+
+## TUI visual acceptance (v0.9.0 – v0.26.0)
+
+The unit suite pins content and state machines but cannot see colour,
+width, or overlay compositing. One real-terminal pass over:
+
+- [ ] **Why:** selection blocks are pure background ANSI. **Repro:** walk tab bar → PROFILES → ACTIONS with `↑`/`→`. **Pass:** exactly one bright-azure block at a time; ancestors dim to deep-blue; descendants show nothing; contrast readable in your theme.
+- [ ] **Why:** the five-tier icon ramp is colour-only in places. **Repro:** view a tab with cwd-pinned, parent-pinned, default, elsewhere-mapped, and unmapped profiles. **Pass:** green/orange/🌐/dark-white/deep-grey all distinguishable; legend centered at the pane bottom.
+- [ ] **Why:** the options popup splices into the background with ANSI-aware truncation. **Repro:** press `o` on a busy dashboard. **Pass:** box centered, background visible around it, no colour bleed at the left/right seams.
+- [ ] **Why:** the fuzzy dir picker walks the real filesystem. **Repro:** `d`, type fragments of a deep project path. **Pass:** sensible ranking, `~` display, enter changes every tab's 📁 header.
+- [ ] **Why:** keycap chips and header glyphs (📁/👤/🌐/provider icons) are emoji/width-sensitive. **Repro:** resize to ~80 cols. **Pass:** footers truncate without frame overflow; header stays on one line; no misaligned columns.
+- [ ] **Why:** pin-on-create now spans providers. **Repro:** `azrl aws login <new>` (or gcp/gh) in a scratch dir on a real tenant. **Pass:** browser pops via the bridge, profile created, pointer written, envrc offered (aws/gcp) or credentials wired (gh).
