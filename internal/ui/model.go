@@ -13,6 +13,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/slamb2k/azrl/internal/azure"
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
@@ -907,8 +909,9 @@ func (m Model) identityStrip() string {
 		if m.ambientEmpty {
 			what = "has no active session"
 		}
-		strip += "\n" + failureStyle.Render("⚠ shell az "+what+" — this dir expects "+m.signedIn) +
+		warning := failureStyle.Render("⚠ shell az "+what+" — this dir expects "+m.signedIn) +
 			mutedStyle.Render(" · ") + keycap("e") + mutedStyle.Render(" writes .envrc")
+		strip += "\n" + ansi.Wordwrap(warning, contentW, "")
 	}
 	return strip
 }

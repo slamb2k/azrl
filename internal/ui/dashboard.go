@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/slamb2k/azrl/internal/config"
@@ -243,13 +244,20 @@ func (m dashboardModel) View() string {
 	if contentW < 1 {
 		contentW = 1
 	}
+	short, notice := dashboardHints(m.ov)
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
-		"📁 "+displayDir(cwd), dashboardHint(m.ov))
+		"📁 "+displayDir(cwd), short)
 	help := keyHelpFit(m.width-4,
 		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt"},
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
 
 	var body []string
+	if notice != "" {
+		// The full explanation wraps beneath the header — the right zone only
+		// carries the compact chip.
+		body = append(body, strings.Split(ansi.Wordwrap(notice, contentW, ""), "\n")...)
+		body = append(body, "")
+	}
 	idx := 0
 	marker := func() string {
 		s := "  "
@@ -462,13 +470,18 @@ func shortDur(d time.Duration) string {
 	}
 }
 
-// dashboardHint suggests the next most useful action, by priority: fix a
-// conflict, investigate drift, adopt an unmanaged identity, re-login an
-// expired profile, pin a first directory — or confirm all is well.
-func dashboardHint(ov Overview) string {
+// dashboardHints picks the next most useful action by priority (conflict >
+// drift > unmanaged > expired > first-pin nudge > all good) and returns two
+// renderings: a compact chip that fits the header's right zone, and a full
+// explanation for the notice line beneath ("" when nothing needs attention).
+func dashboardHints(ov Overview) (short, notice string) {
 	for _, r := range ov.Mappings {
 		if r.Conflict != nil {
-			return failureStyle.Render("⚠ conflict in "+shortDir(r.Dir)) + mutedStyle.Render(" — git config wins; fix the pointer")
+			return failureStyle.Render("⚠ conflict in " + shortDir(r.Dir)),
+				failureStyle.Render("⚠ conflict in "+shortDir(r.Dir)) +
+					mutedStyle.Render(" — git config says ") + accentStyle.Render(r.Conflict.GitConfigUser) +
+					mutedStyle.Render(" ("+r.Conflict.GitConfigProfile+") but "+r.Pointer+" says ") +
+					accentStyle.Render(r.Conflict.PointerProfile) + mutedStyle.Render(" — git config wins; fix the pointer")
 		}
 	}
 	for _, r := range ov.Mappings {
@@ -479,27 +492,32 @@ func dashboardHint(ov Overview) string {
 					shell = a.Identity
 				}
 			}
-			side := mutedStyle.Render(" — shell has no session, pin expects ") + accentStyle.Render(r.Profile)
+			side := mutedStyle.Render(" — the shell has no session; the pin expects ") + accentStyle.Render(r.Profile)
 			if shell != "" {
-				side = mutedStyle.Render(" — shell is ") + accentStyle.Render(shell) +
-					mutedStyle.Render(", pin expects ") + accentStyle.Render(r.Profile)
+				side = mutedStyle.Render(" — the shell would act as ") + accentStyle.Render(shell) +
+					mutedStyle.Render(" but this directory is pinned to ") + accentStyle.Render(r.Profile)
 			}
-			return failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + side +
-				mutedStyle.Render(" · ") + keycap("↵") + mutedStyle.Render(" to fix")
+			return failureStyle.Render("⚠ drift in " + shortDir(r.Dir)),
+				failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + side +
+					mutedStyle.Render(" · ") + keycap("↵") + mutedStyle.Render(" opens its tab to fix")
 		}
 	}
 	for _, r := range ov.Mappings {
 		if r.Unmanaged != "" {
-			return accentStyle.Render(r.Unmanaged) + mutedStyle.Render(" is unmanaged — ") + keycap("a") + mutedStyle.Render(" adopts it")
+			return accentStyle.Render("unmanaged identity"),
+				accentStyle.Render(r.Unmanaged) + mutedStyle.Render(" in "+shortDir(r.Dir)+" is unmanaged — ") +
+					keycap("a") + mutedStyle.Render(" adopts it into a profile")
 		}
 	}
 	for _, u := range ov.Unmapped {
 		if u.Status.Expiry != nil && time.Until(*u.Status.Expiry) <= 0 {
-			return accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" expired — ") + keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
+			return failureStyle.Render("⚠ " + u.Provider + ":" + u.Status.ProfileName + " expired"),
+				accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" has expired — ") +
+					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
 		}
 	}
 	if len(ov.Mappings) == 0 {
-		return mutedStyle.Render("no directories pinned yet — open a provider tab and “Use here”")
+		return mutedStyle.Render("no directories pinned yet"), ""
 	}
-	return mutedStyle.Render("all good · ") + keycap("↵") + mutedStyle.Render(" drills into a profile · ") + keycap("d") + mutedStyle.Render(" changes dir")
+	return mutedStyle.Render("all good · ") + keycap("↵") + mutedStyle.Render(" drills in · ") + keycap("d") + mutedStyle.Render(" changes dir"), ""
 }

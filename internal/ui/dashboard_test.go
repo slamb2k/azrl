@@ -302,19 +302,25 @@ func TestDashboardHeaderShowsCwdAndHint(t *testing.T) {
 }
 
 func TestDashboardHintPriorities(t *testing.T) {
-	// Empty overview → onboarding nudge.
-	if h := dashboardHint(Overview{}); !strings.Contains(h, "no directories pinned") {
-		t.Fatalf("empty hint = %q", h)
+	// Empty overview → onboarding nudge in the chip, no notice line.
+	if short, notice := dashboardHints(Overview{}); !strings.Contains(short, "no directories pinned") || notice != "" {
+		t.Fatalf("empty hints = %q / %q", short, notice)
 	}
 	// An unmanaged mapping outranks the all-good message.
 	ov := Overview{Mappings: []MappingRow{{Dir: "/x", Unmanaged: "who@github.com"}}}
-	if h := dashboardHint(ov); !strings.Contains(h, "unmanaged") {
-		t.Fatalf("unmanaged hint = %q", h)
+	if short, notice := dashboardHints(ov); !strings.Contains(short, "unmanaged") || !strings.Contains(notice, "who@github.com") {
+		t.Fatalf("unmanaged hints = %q / %q", short, notice)
 	}
-	// Drift outranks unmanaged.
+	// Drift outranks unmanaged; the chip stays compact while the notice
+	// carries both sides.
 	ov.Mappings = append([]MappingRow{{Dir: "/y", Profile: "p", Drifted: true}}, ov.Mappings...)
-	if h := dashboardHint(ov); !strings.Contains(h, "drift") {
-		t.Fatalf("drift hint = %q", h)
+	ov.Ambient = []AmbientRow{{Provider: "", Identity: ""}}
+	short, notice := dashboardHints(ov)
+	if !strings.Contains(short, "drift") || strings.Contains(short, "pinned to") {
+		t.Fatalf("drift chip should stay compact: %q", short)
+	}
+	if !strings.Contains(notice, "the pin expects") {
+		t.Fatalf("drift notice should explain the pin side: %q", notice)
 	}
 }
 
@@ -323,10 +329,10 @@ func TestDashboardHintNamesBothDriftSides(t *testing.T) {
 		Mappings: []MappingRow{{Provider: "azure", Dir: "/w/x", Profile: "fiig", Drifted: true}},
 		Ambient:  []AmbientRow{{Provider: "azure", Identity: "u@velrada.com · velrada.com"}},
 	}
-	h := dashboardHint(ov)
+	_, notice := dashboardHints(ov)
 	for _, want := range []string{"drift", "u@velrada.com · velrada.com", "fiig"} {
-		if !strings.Contains(h, want) {
-			t.Fatalf("drift hint missing %q: %q", want, h)
+		if !strings.Contains(notice, want) {
+			t.Fatalf("drift notice missing %q: %q", want, notice)
 		}
 	}
 }
