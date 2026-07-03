@@ -216,7 +216,7 @@ native config dir via fsnotify, so it updates the moment you sign in — or
 | Key | Action |
 |---|---|
 | `⇥`/`⇧⇥` (or `[`/`]`) | switch tabs · `↑` at the top of a list focuses the tab bar (`←`/`→` to pick, `↓` to return) |
-| `→`/`←` | focus the PROFILE DETAIL pane / back to profiles |
+| `→`/`←` | focus the DETAILS pane / back to profiles |
 | `↑`/`↓` | select a profile or action |
 | `↵` | open the detail pane · run the selected action |
 | `esc` | back to the profile list |

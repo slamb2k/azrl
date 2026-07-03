@@ -341,8 +341,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyFocus()
 		return m, nil
 	case cwdChangedMsg:
+		// The header shows the directory; no bottom-bar echo needed.
 		nm := m.refresh()
-		nm.status = mutedStyle.Render("dir → " + displayDir(msg.dir))
 		return nm, nm.identityCmd()
 	case opDoneMsg:
 		nm := m.refresh()
@@ -761,8 +761,8 @@ func (m Model) rightPane(w int) string {
 		pr := profile.Listed{Name: it.name, Label: it.label, Detail: it.tenant}
 		info = profileInfoBlock(pr, m.statuses[it.name], w)
 	}
-	return paneTitle("PROFILE DETAIL", m.focus == focusActions) + "\n\n" +
-		info + "\n\n" + rule(w) + "\n\n" + m.actions.view(w)
+	return paneTitle("DETAILS", m.focus == focusActions) + "\n\n" +
+		info + "\n\n" + paneTitle("ACTIONS", m.focus == focusActions && !m.suspended) + "\n\n" + m.actions.view(w)
 }
 
 // paneTitle renders a pane header: bold for the focused pane (the selection

@@ -179,8 +179,8 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 	case barFocusMsg:
 		v.suspended = msg.focused
 	case cwdChangedMsg:
+		// The header shows the directory; no bottom-bar echo needed.
 		v.reload()
-		v.status = mutedStyle.Render("dir → " + displayDir(msg.dir))
 	case opDoneMsg:
 		// An interactive handoff (sign in, new profile, adopt) finished; pick up
 		// whatever it changed on disk.
@@ -303,8 +303,8 @@ func (v providerTabView) View() string {
 		pr := v.profiles[v.cursor]
 		info = profileInfoBlock(pr, v.statuses[pr.Name], rightW)
 	}
-	right := paneTitle("PROFILE DETAIL", v.focus == focusActions) + "\n\n" +
-		info + "\n\n" + rule(rightW) + "\n\n" + r.view(rightW)
+	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
+		info + "\n\n" + paneTitle("ACTIONS", v.focus == focusActions && !v.suspended) + "\n\n" + r.view(rightW)
 
 	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
 		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")

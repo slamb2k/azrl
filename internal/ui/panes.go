@@ -39,21 +39,22 @@ func headerStrip(icon, title, cwd, identity string) string {
 		mutedStyle.Render("   ·   ") + mutedStyle.Render("id ") + id
 }
 
-// profileInfoBlock renders the top of the PROFILE DETAIL pane for one
-// profile: its conf detail plus the disk-only status (identity, expiry,
-// last-used).
+// profileInfoBlock renders the top of the DETAILS pane for one profile: a
+// key/value sheet with a fixed key column — the conf detail plus the
+// disk-only status (identity, expiry, last-used).
 func profileInfoBlock(pr profile.Listed, st provider.Status, w int) string {
-	line := func(k, v string) string {
+	row := func(k, v string) string {
 		if v == "" {
 			v = mutedStyle.Render("—")
 		}
-		return truncateLine(mutedStyle.Render(k)+" "+v, w)
+		return truncateLine(mutedStyle.Render(padTo(k, 10))+" "+v, w)
 	}
 	rows := []string{
-		line("identity ", st.Identity),
-		line("detail   ", pr.Detail),
-		line("expiry   ", expiryWord(st.Expiry)),
-		line("last used", lastUsedWord(st.LastUsed)),
+		row("Name", pr.Display()),
+		row("Identity", st.Identity),
+		row("Detail", pr.Detail),
+		row("Expiry", expiryWord(st.Expiry)),
+		row("Last used", lastUsedWord(st.LastUsed)),
 	}
 	return strings.Join(rows, "\n")
 }
