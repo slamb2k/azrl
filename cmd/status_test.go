@@ -195,3 +195,42 @@ func TestStatusCmdJSONEmptySectionsAreArrays(t *testing.T) {
 		}
 	}
 }
+
+func TestStatusCmdMappingExpiry(t *testing.T) {
+	seedStatusHome(t)
+	home := os.Getenv("HOME")
+	work := filepath.Join(home, "work")
+	os.MkdirAll(work, 0o755)
+	os.WriteFile(filepath.Join(work, ".azprofile"), []byte("acme\n"), 0o644)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "mappings"),
+		[]byte(work+"\tacme\tpointer\n"), 0o644)
+	// A long-past MSAL access-token expiry.
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme", "msal_token_cache.json"),
+		[]byte(`{"AccessToken":{"k":{"expires_on":"1000000"}}}`), 0o644)
+	t.Chdir(work)
+
+	statusJSON = false
+	out := runRoot(t, "status")
+	if !strings.Contains(out, "azure:acme") || !strings.Contains(out, "expired") {
+		t.Fatalf("plain mapping row missing expired note:\n%s", out)
+	}
+
+	out = runRoot(t, "status", "--json")
+	statusJSON = false
+	var rep statusReport
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("bad JSON: %v\n%s", err, out)
+	}
+	found := false
+	for _, m := range rep.Mappings {
+		if m.Profile == "acme" {
+			found = true
+			if m.Expiry == nil {
+				t.Fatalf("mapping JSON missing expiry: %+v", m)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("acme mapping missing from JSON: %+v", rep.Mappings)
+	}
+}

@@ -16,12 +16,13 @@ var statusJSON bool
 
 // statusMapping is one directory→profile association for `azrl status`.
 type statusMapping struct {
-	Dir      string `json:"dir"`
-	Provider string `json:"provider"`
-	Profile  string `json:"profile"`
-	Source   string `json:"source"`
-	Scope    string `json:"scope"`
-	Drifted  bool   `json:"drifted"`
+	Dir      string     `json:"dir"`
+	Provider string     `json:"provider"`
+	Profile  string     `json:"profile"`
+	Source   string     `json:"source"`
+	Scope    string     `json:"scope"`
+	Drifted  bool       `json:"drifted"`
+	Expiry   *time.Time `json:"expiry"`
 }
 
 // statusAmbient is one provider's native default identity for `azrl status`.
@@ -63,7 +64,7 @@ var statusCmd = &cobra.Command{
 		for _, m := range ov.Mappings {
 			rep.Mappings = append(rep.Mappings, statusMapping{
 				Dir: m.Dir, Provider: m.Provider, Profile: m.Profile,
-				Source: m.Source, Scope: m.Scope, Drifted: m.Drifted,
+				Source: m.Source, Scope: m.Scope, Drifted: m.Drifted, Expiry: m.Expiry,
 			})
 		}
 		for _, a := range ov.Ambient {
@@ -124,6 +125,9 @@ func printStatusSections(w io.Writer, ov ui.Overview, rep statusReport) {
 		}
 		if m.Drifted {
 			note += "  drift"
+		}
+		if m.Expiry != nil && time.Until(*m.Expiry) <= 0 {
+			note += "  expired"
 		}
 		fmt.Fprintf(w, "  %s %s → %s  %s%s\n", mark, m.Dir, target, src, note)
 	}

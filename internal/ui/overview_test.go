@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/slamb2k/azrl/internal/provider"
 )
@@ -328,5 +329,35 @@ func TestBuildOverviewDropsDeadGitConfigEntry(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(gh, "mappings"))
 	if strings.Contains(string(b), repo) {
 		t.Fatalf("dead entry not dropped:\n%s", b)
+	}
+}
+
+func TestBuildOverviewMappingCarriesExpiry(t *testing.T) {
+	seedDashHome(t)
+	home := os.Getenv("HOME")
+	work := filepath.Join(home, "work")
+	os.MkdirAll(work, 0o755)
+	os.WriteFile(filepath.Join(work, ".azprofile"), []byte("acme\n"), 0o644)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "mappings"),
+		[]byte(work+"\tacme\tpointer\n"), 0o644)
+	// A long-past MSAL access-token expiry (unix 1000000 ≈ 1970).
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme", "msal_token_cache.json"),
+		[]byte(`{"AccessToken":{"k":{"expires_on":"1000000"}}}`), 0o644)
+
+	ov := BuildOverview(provider.All(), work)
+	var row *MappingRow
+	for i := range ov.Mappings {
+		if ov.Mappings[i].Profile == "acme" {
+			row = &ov.Mappings[i]
+		}
+	}
+	if row == nil {
+		t.Fatalf("acme mapping row missing: %+v", ov.Mappings)
+	}
+	if row.Expiry == nil {
+		t.Fatalf("mapping row should carry the profile's expiry, got nil")
+	}
+	if time.Until(*row.Expiry) > 0 {
+		t.Fatalf("expected a past expiry, got %v", row.Expiry)
 	}
 }
