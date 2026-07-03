@@ -317,3 +317,16 @@ func TestDashboardHintPriorities(t *testing.T) {
 		t.Fatalf("drift hint = %q", h)
 	}
 }
+
+func TestDashboardHintNamesBothDriftSides(t *testing.T) {
+	ov := Overview{
+		Mappings: []MappingRow{{Provider: "azure", Dir: "/w/x", Profile: "fiig", Drifted: true}},
+		Ambient:  []AmbientRow{{Provider: "azure", Identity: "u@velrada.com · velrada.com"}},
+	}
+	h := dashboardHint(ov)
+	for _, want := range []string{"drift", "u@velrada.com · velrada.com", "fiig"} {
+		if !strings.Contains(h, want) {
+			t.Fatalf("drift hint missing %q: %q", want, h)
+		}
+	}
+}

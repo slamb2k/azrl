@@ -23,7 +23,7 @@ func TestAmbientReadsDefaultSubscriptionUserWithBOM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Identity != "simon@contoso.com" {
+	if a.Identity != "simon@contoso.com · guid-1" {
 		t.Fatalf("Identity = %q", a.Identity)
 	}
 	if a.Source != "file:~/.azure/azureProfile.json" {

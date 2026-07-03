@@ -26,7 +26,7 @@ func TestStatusReadsIdentityExpiryAndLastUsed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Identity != "u@acme.com" {
+	if st.Identity != "u@acme.com · guid-1" {
 		t.Fatalf("Identity = %q", st.Identity)
 	}
 	if st.Directory != "/work/acme" {
@@ -53,8 +53,8 @@ func TestStatusReadsIdentityWithUTF8BOM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Identity != "u@acme.com" {
-		t.Fatalf("Identity = %q, want u@acme.com (BOM not stripped?)", st.Identity)
+	if st.Identity != "u@acme.com · guid-1" {
+		t.Fatalf("Identity = %q, want qualified identity (BOM not stripped?)", st.Identity)
 	}
 }
 

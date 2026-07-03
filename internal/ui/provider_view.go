@@ -334,7 +334,12 @@ func (v providerTabView) View() string {
 	info := mutedStyle.Render("(no profile selected)")
 	if v.cursor >= 0 && v.cursor < len(v.profiles) {
 		pr := v.profiles[v.cursor]
-		info = profileInfoBlock(pr, v.statuses[pr.Name], rightW)
+		st := v.statuses[pr.Name]
+		note := ""
+		if st.Drifted {
+			note = "shell uses " + orNoSession(v.ambIdent)
+		}
+		info = profileInfoBlock(pr, st, note, rightW)
 	}
 	actionsBody := r.view(rightW)
 	if len(v.profiles) == 0 {

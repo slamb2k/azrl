@@ -115,6 +115,7 @@ type Model struct {
 	width, height int
 	status        string
 	signedIn      string
+	ambientWho    string
 	focus         int
 	busy          bool
 	confirming    bool
@@ -220,10 +221,13 @@ func (m *Model) rebuildActions() {
 func (m Model) Init() tea.Cmd { return m.identityCmd() }
 
 // identityMsg carries the signed-in identity of this dir's profile session
-// ("" when that profile has no live session) and whether the ambient `az`
-// session differs from it with no .envrc pinning it (drift).
+// ("" when that profile has no live session), the ambient session's identity,
+// and whether they differ with no .envrc pinning them together (drift). Both
+// identities are tenant-qualified, so a B2B guest signed into two tenants
+// with one UPN still reads as drift.
 type identityMsg struct {
 	who          string
+	ambientWho   string
 	drift        bool
 	ambientEmpty bool
 }
@@ -240,23 +244,25 @@ func (m Model) identityCmd() tea.Cmd {
 		if rErr == nil {
 			dir = filepath.Join(config.ProfilesDir(), name)
 		}
-		who := userOf(accountShowFn(dir))
+		who := identityOf(accountShowFn(dir))
 		msg := identityMsg{who: who}
 		envrcDir := pwd
 		if d, ok := profile.LocateAzprofile(pwd); ok {
 			envrcDir = d
 		}
 		if rErr == nil && who != "" && !profile.HasEnvrc(envrcDir) {
-			ambient := userOf(accountShowFn(""))
-			msg.drift = ambient != who
-			msg.ambientEmpty = ambient == ""
+			msg.ambientWho = identityOf(accountShowFn(""))
+			msg.drift = msg.ambientWho != who
+			msg.ambientEmpty = msg.ambientWho == ""
 		}
 		return msg
 	}
 }
 
-// userOf extracts the account's user name from `az account show` output.
-func userOf(b []byte, err error) string {
+// identityOf extracts the tenant-qualified identity from `az account show`
+// output — the same composition the disk-only readers use, so comparisons
+// stay tenant-aware (B2B guests share a UPN across tenants).
+func identityOf(b []byte, err error) string {
 	if err != nil {
 		return ""
 	}
@@ -264,7 +270,7 @@ func userOf(b []byte, err error) string {
 	if json.Unmarshal(b, &a) != nil {
 		return ""
 	}
-	return a.User.Name
+	return azure.QualifiedIdentity(a.User.Name, a.TenantDefaultDomain, a.TenantID)
 }
 
 // paneDims computes the shared content and two-pane column widths for a given
@@ -349,6 +355,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case identityMsg:
 		m.signedIn = msg.who
+		m.ambientWho = msg.ambientWho
 		m.drift = msg.drift
 		m.ambientEmpty = msg.ambientEmpty
 		return m, nil
@@ -799,7 +806,12 @@ func (m Model) rightPane(w int) string {
 	info := mutedStyle.Render("(no profile selected)")
 	if it, ok := m.list.SelectedItem().(item); ok {
 		pr := profile.Listed{Name: it.name, Label: it.label, Detail: it.tenant}
-		info = profileInfoBlock(pr, m.statuses[it.name], w)
+		st := m.statuses[it.name]
+		note := ""
+		if st.Drifted {
+			note = "shell uses " + orNoSession(m.ambIdent)
+		}
+		info = profileInfoBlock(pr, st, note, w)
 	}
 	actionsBody := m.actions.view(w)
 	if len(m.list.Items()) == 0 {
@@ -838,11 +850,12 @@ func (m Model) identityStrip() string {
 	strip := headerStrip(contentW, providerIcon("azure"), "Azure", m.pwd,
 		effectiveIdentity(m.dirProfile, dirIdentity, m.ambIdent))
 	if m.drift {
-		what := "uses a different account"
+		what := "is " + m.ambientWho
 		if m.ambientEmpty {
 			what = "has no active session"
 		}
-		strip += "\n" + failureStyle.Render("⚠ your shell's az "+what+" — press e to write .envrc")
+		strip += "\n" + failureStyle.Render("⚠ shell az "+what+" — this dir expects "+m.signedIn) +
+			mutedStyle.Render(" · ") + keycap("e") + mutedStyle.Render(" writes .envrc")
 	}
 	return strip
 }
