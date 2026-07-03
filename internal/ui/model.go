@@ -207,6 +207,11 @@ func (m *Model) rebuildActions() {
 	}
 	opts := make([]radioOption, 0, len(homeActions))
 	for _, o := range homeActions {
+		if len(m.list.Items()) == 0 && o.key != "i" && o.key != "c" {
+			// Nothing to select: only the bootstrap actions apply
+			// (New profile, and Capture for an already-signed-in az).
+			continue
+		}
 		if o.key == "u" && sel.name != "" && sel.name == m.dirProfile && m.dirScope == ScopeCwd {
 			continue
 		}
@@ -739,7 +744,7 @@ func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touc
 	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), mode == selActive && touched))
 	b.WriteString("\n\n")
 	if len(profiles) == 0 {
-		b.WriteString(mutedStyle.Render("  (none yet — Sign in to add one)"))
+		b.WriteString(mutedStyle.Render("  (none yet — ") + keycap("a") + mutedStyle.Render(" creates one)"))
 		return b.String()
 	}
 	textW := leftW - 5 // selection bar/pad (2) + icon slot (3)
@@ -865,9 +870,6 @@ func (m Model) rightPane(w int) string {
 		info = profileInfoBlock(pr, st, note, w)
 	}
 	actionsBody := m.actions.view(w)
-	if len(m.list.Items()) == 0 {
-		actionsBody = mutedStyle.Render("(no profile selected)")
-	}
 	return paneTitle("DETAILS", m.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(w) + "\n" +
 		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(m.actions.options)), m.focus == focusActions && !m.suspended) + "\n\n" + actionsBody

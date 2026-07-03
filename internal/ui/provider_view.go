@@ -108,6 +108,15 @@ func (v *providerTabView) reload() {
 // that cannot apply are hidden (Use here when the selected profile already
 // pins this directory).
 func (v providerTabView) visibleActions() []providerAction {
+	if len(v.profiles) == 0 {
+		// Nothing to select: only the bootstrap action applies.
+		for _, a := range v.actions {
+			if a.key == "a" {
+				return []providerAction{a}
+			}
+		}
+		return nil
+	}
 	sel := v.selected()
 	out := make([]providerAction, 0, len(v.actions))
 	for _, a := range v.actions {
@@ -402,9 +411,6 @@ func (v providerTabView) View() string {
 		info = profileInfoBlock(pr, st, note, rightW)
 	}
 	actionsBody := r.view(rightW)
-	if len(v.profiles) == 0 {
-		actionsBody = mutedStyle.Render("(no profile selected)")
-	}
 	if v.naming {
 		actionsBody = mutedStyle.Render("Name for the new profile:") + "\n\n" +
 			v.nameInput.View() + "\n\n" +
