@@ -296,7 +296,7 @@ func TestDashboardDriftAndExpiryRendering(t *testing.T) {
 func TestDashboardHeaderShowsCwdAndHint(t *testing.T) {
 	seedDashHome(t)
 	v := sizedDashboard(t).View()
-	if !strings.Contains(v, "dir ") {
+	if !strings.Contains(v, "📁") {
 		t.Fatalf("dashboard header missing the current directory:\n%s", v)
 	}
 }

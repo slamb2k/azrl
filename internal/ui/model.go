@@ -133,6 +133,7 @@ type Model struct {
 	pendingDelete string
 	renameOld     string
 	suspended     bool
+	touched       bool
 }
 
 // NewModel builds the home model from the profiles on disk.
@@ -346,6 +347,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case barFocusMsg:
 		m.suspended = msg.focused
+		if !msg.focused {
+			// Navigating down from the tab bar counts as entering the pane.
+			m.touched = true
+		}
 		m.applyFocus()
 		return m, nil
 	case cwdChangedMsg:
@@ -388,6 +393,10 @@ func (m Model) capturesInput() bool { return m.renaming }
 
 // updateKey handles the home-screen keymap.
 func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if k := msg.String(); k != "q" && k != "ctrl+c" {
+		// Any navigation marks the pane as visited (bold titles from here on).
+		m.touched = true
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -590,7 +599,7 @@ func (m Model) View() string {
 	// action row (which sits below "ACTION" + one blank line).
 	_, lw, _, _ := m.dims()
 	left := lipgloss.JoinVertical(lipgloss.Left,
-		paneTitle(fmt.Sprintf("PROFILES (%d)", len(m.list.Items())), m.focus == focusProfiles),
+		paneTitle(fmt.Sprintf("PROFILES (%d)", len(m.list.Items())), m.focus == focusProfiles && !m.suspended && m.touched),
 		m.list.View(),
 	)
 
@@ -650,9 +659,9 @@ func renderPaneFrame(width, height int, identity, left, right, leftFoot, status,
 // orange parent pin, 🌐 global default); renamed profiles render their label
 // in the renamedStyle accent instead of a footnote legend. Segments are
 // styled independently so the icon keeps its own colour on selected rows.
-func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, leftW int, scopes map[string]string) string {
+func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touched bool, leftW int, scopes map[string]string) string {
 	var b strings.Builder
-	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), mode == selActive))
+	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), mode == selActive && touched))
 	b.WriteString("\n\n")
 	if len(profiles) == 0 {
 		b.WriteString(mutedStyle.Render("  (none yet — Sign in to add one)"))
@@ -769,9 +778,13 @@ func (m Model) rightPane(w int) string {
 		pr := profile.Listed{Name: it.name, Label: it.label, Detail: it.tenant}
 		info = profileInfoBlock(pr, m.statuses[it.name], w)
 	}
+	actionsBody := m.actions.view(w)
+	if len(m.list.Items()) == 0 {
+		actionsBody = mutedStyle.Render("(no profile selected)")
+	}
 	return paneTitle("DETAILS", m.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(w) + "\n" +
-		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(m.actions.options)), m.focus == focusActions && !m.suspended) + "\n\n" + m.actions.view(w)
+		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(m.actions.options)), m.focus == focusActions && !m.suspended) + "\n\n" + actionsBody
 }
 
 // paneTitle renders a pane header: bold for the focused pane (the selection

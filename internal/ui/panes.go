@@ -35,8 +35,8 @@ func headerStrip(icon, title, cwd, identity string) string {
 		id = accentStyle.Render(identity)
 	}
 	return icon + " " + paneTitleStyle.Render(title) +
-		mutedStyle.Render("   ·   ") + mutedStyle.Render("dir ") + displayDir(cwd) +
-		mutedStyle.Render("   ·   ") + mutedStyle.Render("id ") + id
+		mutedStyle.Render("   ·   ") + "📁 " + displayDir(cwd) +
+		mutedStyle.Render("   ·   ") + "👤 " + id
 }
 
 // profileInfoBlock renders the top of the DETAILS pane for one profile: a
