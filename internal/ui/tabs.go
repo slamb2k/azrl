@@ -127,8 +127,9 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		// Reserve the banner rows and the tab-bar line so each tab's own frame fits.
-		innerH := msg.Height - lipgloss.Height(bannerFor(msg.Width)) - 1
+		// Reserve the banner rows, the gap under it, and the tab-bar line so each
+		// tab's own frame fits.
+		innerH := msg.Height - lipgloss.Height(bannerFor(msg.Width)) - 2
 		if innerH < 0 {
 			innerH = 0
 		}
@@ -180,7 +181,7 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "d":
 			if !m.activeCapturesInput() {
-				innerH := m.height - lipgloss.Height(bannerFor(m.width)) - 1
+				innerH := m.height - lipgloss.Height(bannerFor(m.width)) - 2
 				pk := newDirPicker(m.width, innerH)
 				m.picker = &pk
 				return m, nil
@@ -263,7 +264,7 @@ func (m tabsModel) View() string {
 	if m.picker != nil {
 		body = m.picker.view()
 	}
-	out := banner + "\n" + bar + "\n" + body
+	out := banner + "\n\n" + bar + "\n" + body
 	// Backstop invariant: no line may exceed the terminal width, whatever a child
 	// renders. Truncate every line (ANSI-aware) to guarantee it.
 	if m.width > 0 {
