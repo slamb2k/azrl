@@ -70,8 +70,8 @@ func TestModelViewRenders(t *testing.T) {
 func TestHelpBarListsOnlyWiredKeys(t *testing.T) {
 	m := seedModel(t)
 	help := m.helpBar()
-	// keys that are actually wired
-	for _, k := range []string{"open/run", "esc back", "quit"} {
+	// keys that are actually wired (labels now sit beside keycap chips)
+	for _, k := range []string{"open/run", "back", "quit"} {
 		if !strings.Contains(help, k) {
 			t.Fatalf("help missing wired key %q: %q", k, help)
 		}

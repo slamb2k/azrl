@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -129,4 +130,31 @@ func scopeLegend(w int) string {
 		rows[i] = lipgloss.PlaceHorizontal(w, lipgloss.Center, truncateLine(r, w))
 	}
 	return strings.Join(rows, "\n")
+}
+
+// overlayCenter splices box over the middle of bg (a full-width rendered
+// view), preserving the background around it — a true popup. Both truncation
+// sides are ANSI-aware so styling doesn't bleed across the seams.
+func overlayCenter(bg, box string, width int) string {
+	bgl := strings.Split(bg, "\n")
+	bl := strings.Split(box, "\n")
+	boxW := lipgloss.Width(box)
+	x := (width - boxW) / 2
+	if x < 0 {
+		x = 0
+	}
+	y := (len(bgl) - len(bl)) / 2
+	if y < 0 {
+		y = 0
+	}
+	for i, l := range bl {
+		if y+i >= len(bgl) {
+			break
+		}
+		line := padTo(bgl[y+i], width)
+		left := ansi.Truncate(line, x, "")
+		right := ansi.TruncateLeft(line, x+boxW, "")
+		bgl[y+i] = left + padTo(l, boxW) + right
+	}
+	return strings.Join(bgl, "\n")
 }

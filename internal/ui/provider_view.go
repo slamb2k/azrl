@@ -343,8 +343,8 @@ func (v providerTabView) View() string {
 		info + "\n\n" + rule(rightW) + "\n" +
 		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(acts)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
 
-	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
-		keycap("d") + mutedStyle.Render(" dir · ") + keycap("o") + mutedStyle.Render(" options · ") + keycap("q") + mutedStyle.Render(" quit")
+	help := keyHelp("↑↓", "select", "→", "details", "↵", "open/run", "esc", "back", "⇥", "tab",
+		"d", "dir", "o", "options", "q", "quit")
 	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
 }
 

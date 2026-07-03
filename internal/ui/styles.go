@@ -105,3 +105,13 @@ func scopeSlot(scope string) string {
 	}
 	return lipgloss.NewStyle().Foreground(grayDeep).Render("●") + "  "
 }
+
+// keyHelp renders alternating key/label pairs as keycap chips with muted
+// labels, dot-separated — the one way every footer spells its bindings.
+func keyHelp(pairs ...string) string {
+	var parts []string
+	for i := 0; i+1 < len(pairs); i += 2 {
+		parts = append(parts, keycap(pairs[i])+" "+mutedStyle.Render(pairs[i+1]))
+	}
+	return strings.Join(parts, mutedStyle.Render(" · "))
+}
