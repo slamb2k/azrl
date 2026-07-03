@@ -806,16 +806,13 @@ func rule(w int) string {
 // identityStrip is the standard provider header (icon · dir · effective
 // identity), plus Azure's drift warning offering to pin the shell.
 func (m Model) identityStrip() string {
-	identity := m.ambIdent
-	if m.dirProfile != "" {
-		if st, ok := m.statuses[m.dirProfile]; ok && st.Identity != "" {
-			identity = st.Identity
-		}
-	}
+	dirIdentity := m.statuses[m.dirProfile].Identity
 	if m.signedIn != "" {
-		identity = m.signedIn
+		// The async az account show is the freshest source for the pinned dir.
+		dirIdentity = m.signedIn
 	}
-	strip := headerStrip(providerIcon("azure"), "Azure", m.pwd, identity)
+	strip := headerStrip(providerIcon("azure"), "Azure", m.pwd,
+		effectiveIdentity(m.dirProfile, dirIdentity, m.ambIdent))
 	if m.drift {
 		what := "uses a different account"
 		if m.ambientEmpty {
@@ -843,7 +840,7 @@ func (m Model) helpBar() string {
 		return strings.Join(lines, "\n")
 	}
 	return mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
-		keycap("d") + mutedStyle.Render(" dir · ") +
+		keycap("d") + mutedStyle.Render(" dir · ") + keycap("o") + mutedStyle.Render(" options · ") +
 		keycap("f5") + mutedStyle.Render(" refresh · ? help · ") + keycap("q") + mutedStyle.Render(" quit")
 }
 

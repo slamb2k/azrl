@@ -183,7 +183,7 @@ provider (every tab shares one profiles/actions layout; `ghrl` opens on the
 GitHub tab):
 
 ```text
- Dashboard │ Azure │ GitHub │ AWS │ Google Cloud
+ Dashboard │ Azure │ GitHub
  MAPPINGS
   ● ~/work/acme     → azure:acme       .azprofile
   ● ~/oss/tool      → github:personal  (git)          ⚠ drift
@@ -221,6 +221,7 @@ native config dir via fsnotify, so it updates the moment you sign in — or
 | `↵` | open the detail pane · run the selected action |
 | `esc` | back to the profile list |
 | `d` | change directory (fuzzy finder) — the whole app follows |
+| `o` | options — choose which provider tabs to show (saved to `azrl.conf`; default Azure + GitHub) |
 | `Delete` / `F5` | remove profile / refresh |
 | `a` | adopt an unmanaged identity into a new profile (dashboard) |
 | `w` | recheck drift (dashboard) |

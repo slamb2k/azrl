@@ -282,13 +282,8 @@ func removeAction(v *providerTabView) tea.Cmd {
 // identity, else the provider's ambient default).
 func (v providerTabView) identityStrip() string {
 	pwd, _ := os.Getwd()
-	identity := v.ambIdent
-	if v.dirProfile != "" {
-		if st, ok := v.statuses[v.dirProfile]; ok && st.Identity != "" {
-			identity = st.Identity
-		}
-	}
-	return headerStrip(providerIcon(v.prov.Name()), v.prov.Title(), pwd, identity)
+	return headerStrip(providerIcon(v.prov.Name()), v.prov.Title(), pwd,
+		effectiveIdentity(v.dirProfile, v.statuses[v.dirProfile].Identity, v.ambIdent))
 }
 
 func (v providerTabView) View() string {
@@ -330,6 +325,6 @@ func (v providerTabView) View() string {
 		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(v.actions)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
 
 	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
-		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")
+		keycap("d") + mutedStyle.Render(" dir · ") + keycap("o") + mutedStyle.Render(" options · ") + keycap("q") + mutedStyle.Render(" quit")
 	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
 }

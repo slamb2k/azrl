@@ -243,7 +243,7 @@ func (m dashboardModel) View() string {
 		mutedStyle.Render("   ·   ") + dashboardHint(m.ov)
 	help := mutedStyle.Render("↑↓ select · ↵ open tab · ") + keycap("a") + mutedStyle.Render(" adopt · ") +
 		keycap("f5") + mutedStyle.Render(" refresh · ") + keycap("w") + mutedStyle.Render(" recheck drift · ⇥ tab · ") +
-		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")
+		keycap("d") + mutedStyle.Render(" dir · ") + keycap("o") + mutedStyle.Render(" options · ") + keycap("q") + mutedStyle.Render(" quit")
 
 	var body []string
 	idx := 0
