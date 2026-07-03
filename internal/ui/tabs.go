@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,6 +27,7 @@ type tabsModel struct {
 	active int
 	width  int
 	height int
+	picker *dirPicker
 }
 
 // NewTabs builds the tabbed container on the dashboard (the default landing view).
@@ -130,17 +132,36 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		inner := tea.WindowSizeMsg{Width: msg.Width, Height: innerH}
 		return m.broadcast(inner)
 	case tea.KeyMsg:
+		// The change-directory overlay owns every key while open.
+		if m.picker != nil {
+			np, picked, closed := m.picker.update(msg)
+			m.picker = &np
+			if closed {
+				m.picker = nil
+				if picked != "" && os.Chdir(picked) == nil {
+					return m.broadcast(cwdChangedMsg{dir: picked})
+				}
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
-		case "]", "right":
+		case "]", "tab":
 			if !m.activeCapturesInput() {
 				m.active = (m.active + 1) % len(m.tabs)
 				return m, nil
 			}
-		case "[", "left":
+		case "[", "shift+tab":
 			if !m.activeCapturesInput() {
 				m.active = (m.active - 1 + len(m.tabs)) % len(m.tabs)
+				return m, nil
+			}
+		case "d":
+			if !m.activeCapturesInput() {
+				innerH := m.height - lipgloss.Height(bannerFor(m.width)) - 1
+				pk := newDirPicker(m.width, innerH)
+				m.picker = &pk
 				return m, nil
 			}
 		}
@@ -209,7 +230,11 @@ func (m tabsModel) View() string {
 	if m.width > 0 {
 		banner = lipgloss.PlaceHorizontal(m.width, lipgloss.Center, banner)
 	}
-	out := banner + "\n" + bar + "\n" + m.tabs[m.active].model.View()
+	body := m.tabs[m.active].model.View()
+	if m.picker != nil {
+		body = m.picker.view()
+	}
+	out := banner + "\n" + bar + "\n" + body
 	// Backstop invariant: no line may exceed the terminal width, whatever a child
 	// renders. Truncate every line (ANSI-aware) to guarantee it.
 	if m.width > 0 {
@@ -227,3 +252,7 @@ var (
 	inactiveTabStyle = lipgloss.NewStyle().Foreground(gray)
 	tabSepStyle      = lipgloss.NewStyle().Foreground(azureDeep)
 )
+
+// cwdChangedMsg is broadcast after the change-directory overlay applies
+// os.Chdir, so every tab re-aggregates against the new working directory.
+type cwdChangedMsg struct{ dir string }

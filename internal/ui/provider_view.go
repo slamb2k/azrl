@@ -16,6 +16,7 @@ import (
 // and may return a command (e.g. a runHandoff exec) for interactive flows.
 type providerAction struct {
 	key, label string
+	hint       string // short muted description shown beside the label when it fits
 	run        func(v *providerTabView) tea.Cmd
 }
 
@@ -30,6 +31,8 @@ type providerTabView struct {
 	actions    []providerAction
 	header     string
 	profiles   []profile.Listed
+	statuses   map[string]provider.Status
+	ambIdent   string
 	active     string
 	dirProfile string
 	dirScope   string
@@ -57,14 +60,17 @@ func newProviderTabView(prov provider.Provider, header string, actions []provide
 func (v *providerTabView) reload() {
 	dir := v.prov.ProfilesDir()
 	v.profiles, _ = v.prov.ListProfiles(dir)
-	v.active = ""
-	if amb, err := v.prov.Ambient(); err == nil && amb.Identity != "" {
-		statuses := make([]provider.Status, 0, len(v.profiles))
-		for _, p := range v.profiles {
-			if st, err := v.prov.Status(p.Name, dir); err == nil {
-				statuses = append(statuses, st)
-			}
+	v.statuses = make(map[string]provider.Status, len(v.profiles))
+	statuses := make([]provider.Status, 0, len(v.profiles))
+	for _, p := range v.profiles {
+		if st, err := v.prov.Status(p.Name, dir); err == nil {
+			v.statuses[p.Name] = st
+			statuses = append(statuses, st)
 		}
+	}
+	v.active, v.ambIdent = "", ""
+	if amb, err := v.prov.Ambient(); err == nil && amb.Identity != "" {
+		v.ambIdent = amb.Identity
 		v.active = provider.MatchProfile(statuses, amb.Identity)
 	}
 	v.mapped = map[string]bool{}
@@ -129,9 +135,9 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return v, tea.Quit
-		case "tab", "shift+tab":
-			v.focus = focusActions - v.focus
-		case "esc":
+		case "right":
+			v.focus = focusActions
+		case "esc", "left":
 			v.focus = focusProfiles
 		case "up", "k":
 			if v.focus == focusActions {
@@ -166,6 +172,9 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				}
 			}
 		}
+	case cwdChangedMsg:
+		v.reload()
+		v.status = mutedStyle.Render("dir → " + displayDir(msg.dir))
 	case opDoneMsg:
 		// An interactive handoff (sign in, new profile, adopt) finished; pick up
 		// whatever it changed on disk.
@@ -253,17 +262,18 @@ func removeAction(v *providerTabView) tea.Cmd {
 	return nil
 }
 
-// identityStrip mirrors the Azure Model's header: a ◆-accented provider
-// descriptor on the left and this dir's pinned profile (or a muted "not linked"
-// note) on the right, separated by the same dotted divider.
+// identityStrip is the standard provider header: icon + title, the current
+// directory, and the effective identity there (the dir-pinned profile's
+// identity, else the provider's ambient default).
 func (v providerTabView) identityStrip() string {
-	left := accentStyle.Render("◆") + " " + v.header
-	right := mutedStyle.Render("not linked to this dir")
 	pwd, _ := os.Getwd()
-	if name, err := v.prov.Resolve("", pwd); err == nil && name != "" {
-		right = mutedStyle.Render("this dir → ") + accentStyle.Render(name)
+	identity := v.ambIdent
+	if v.dirProfile != "" {
+		if st, ok := v.statuses[v.dirProfile]; ok && st.Identity != "" {
+			identity = st.Identity
+		}
 	}
-	return left + mutedStyle.Render("   ·   ") + right
+	return headerStrip(providerIcon(v.prov.Name()), v.prov.Title(), pwd, identity)
 }
 
 func (v providerTabView) View() string {
@@ -275,15 +285,22 @@ func (v providerTabView) View() string {
 	}
 	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles, leftW, scopes)
 
-	// Render the provider's own action set as the shared radio group so the right
-	// pane matches Azure's ◉/○ + [key] look exactly (dispatch is unchanged).
+	// PROFILE DETAIL: the selected profile's info block, then its actions as
+	// the shared radio group (keycaps left; selection bar only when focused).
 	opts := make([]radioOption, len(v.actions))
 	for i, a := range v.actions {
-		opts[i] = radioOption{label: a.label, key: a.key}
+		opts[i] = radioOption{label: a.label, key: a.key, hint: a.hint}
 	}
 	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions}
-	right := paneTitle("ACTION", v.focus == focusActions) + "\n\n" + r.view(rightW)
+	info := mutedStyle.Render("(no profile selected)")
+	if v.cursor >= 0 && v.cursor < len(v.profiles) {
+		pr := v.profiles[v.cursor]
+		info = profileInfoBlock(pr, v.statuses[pr.Name], rightW)
+	}
+	right := paneTitle("PROFILE DETAIL", v.focus == focusActions) + "\n\n" +
+		info + "\n\n" + rule(rightW) + "\n" + r.view(rightW)
 
-	help := mutedStyle.Render("↑↓ select · ↵ open/run · esc back · ←→ tab · ") + keycap("q") + mutedStyle.Render(" quit")
+	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
+		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")
 	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, v.status, help)
 }

@@ -109,10 +109,10 @@ func TestTabsForwardsKeysToActiveTab(t *testing.T) {
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	gh := nm.(tabsModel)
 	before := gh.tabs[4].model.(githubView).focus
-	nm2, _ := gh.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm2, _ := gh.Update(tea.KeyMsg{Type: tea.KeyRight})
 	after := nm2.(tabsModel).tabs[4].model.(githubView).focus
 	if before == after {
-		t.Fatal("tab key was not forwarded to the active GitHub view")
+		t.Fatal("right arrow was not forwarded to the active GitHub view")
 	}
 }
 
@@ -253,30 +253,39 @@ func TestTabsCompactBannerAtNarrowWidth(t *testing.T) {
 	}
 }
 
-func TestTabsArrowKeysSwitchTabs(t *testing.T) {
+func TestTabsTabKeyCyclesTabs(t *testing.T) {
 	m := seedTabs(t)
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	if nm.(tabsModel).active != 1 {
-		t.Fatalf("right arrow: active = %d, want 1 (Azure)", nm.(tabsModel).active)
+		t.Fatalf("tab: active = %d, want 1 (Azure)", nm.(tabsModel).active)
 	}
-	nm2, _ := nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyLeft})
+	nm2, _ := nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	if nm2.(tabsModel).active != 0 {
-		t.Fatalf("left arrow: active = %d, want 0 (Dashboard)", nm2.(tabsModel).active)
+		t.Fatalf("shift+tab: active = %d, want 0 (Dashboard)", nm2.(tabsModel).active)
+	}
+	// Arrows no longer switch tabs — they belong to the panes.
+	nm3, _ := nm2.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRight})
+	if nm3.(tabsModel).active != 0 {
+		t.Fatal("right arrow must not switch tabs")
 	}
 }
 
-func TestTabsArrowKeysForwardedWhileRenaming(t *testing.T) {
+func TestTabsTabKeyForwardedWhileRenaming(t *testing.T) {
 	m := seedTabs(t)
 	// Move to the Azure tab and arm the rename text input ('n' on the profile).
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	tm := nm.(tabsModel)
 	if !tm.tabs[1].model.(Model).renaming {
 		t.Fatal("'n' did not arm the rename input")
 	}
-	// While renaming, arrows must reach the text input, not switch tabs.
-	nm2, _ := tm.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	// While renaming, tab/d must reach the text input, not the container.
+	nm2, _ := tm.Update(tea.KeyMsg{Type: tea.KeyTab})
 	if nm2.(tabsModel).active != 1 {
-		t.Fatal("left arrow switched tabs during rename")
+		t.Fatal("tab key switched tabs during rename")
+	}
+	nm3, _ := nm2.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	if nm3.(tabsModel).picker != nil {
+		t.Fatal("'d' opened the dir picker during rename")
 	}
 }

@@ -62,7 +62,7 @@ func TestModelViewRenders(t *testing.T) {
 			t.Fatalf("view missing action %q:\n%s", label, v)
 		}
 	}
-	if !strings.Contains(v, "PROFILES (1)") || !strings.Contains(v, "ACTION") {
+	if !strings.Contains(v, "PROFILES (1)") || !strings.Contains(v, "PROFILE DETAIL") {
 		t.Fatalf("view missing pane titles:\n%s", v)
 	}
 }
@@ -78,14 +78,18 @@ func TestHelpBarListsOnlyWiredKeys(t *testing.T) {
 	}
 }
 
-func TestTabTogglesFocus(t *testing.T) {
+func TestArrowsMoveFocusBetweenPanes(t *testing.T) {
 	m := seedModel(t)
 	if m.focus != focusProfiles {
 		t.Fatalf("initial focus = %d, want profiles", m.focus)
 	}
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	if nm.(Model).focus != focusActions {
-		t.Fatal("tab did not move focus to actions")
+		t.Fatal("right arrow did not move focus to the detail pane")
+	}
+	nm2, _ := nm.(Model).Update(tea.KeyMsg{Type: tea.KeyLeft})
+	if nm2.(Model).focus != focusProfiles {
+		t.Fatal("left arrow did not return focus to the profiles pane")
 	}
 }
 

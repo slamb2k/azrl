@@ -47,8 +47,9 @@ func TestRadioView(t *testing.T) {
 	r := testRadio()
 	r.focused = true
 	v := r.view(30)
-	if !strings.Contains(v, "◉") || !strings.Contains(v, "○") {
-		t.Fatalf("view missing radio markers:\n%s", v)
+	// The focused pane marks its selection with the bar; keycaps sit left.
+	if !strings.Contains(v, "┃") {
+		t.Fatalf("focused view missing selection bar:\n%s", v)
 	}
 	for _, label := range []string{"Sign in", "Use here", "Remove"} {
 		if !strings.Contains(v, label) {
@@ -57,5 +58,10 @@ func TestRadioView(t *testing.T) {
 	}
 	if !strings.Contains(v, keyGlyph("l")) {
 		t.Fatalf("view missing keycap glyph:\n%s", v)
+	}
+	// An unfocused pane shows no selection elements at all.
+	r.focused = false
+	if uv := r.view(30); strings.Contains(uv, "┃") {
+		t.Fatalf("unfocused view must not render the selection bar:\n%s", uv)
 	}
 }
