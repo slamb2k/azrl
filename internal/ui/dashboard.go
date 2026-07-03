@@ -237,10 +237,14 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m dashboardModel) View() string {
 	cwd, _ := os.Getwd()
-	// The same top-line anatomy as the provider tabs: icon + title · dir · info.
-	header := "🧭 " + paneTitleStyle.Render("Dashboard") +
-		mutedStyle.Render("   ·   ") + "📁 " + displayDir(cwd) +
-		mutedStyle.Render("   ·   ") + dashboardHint(m.ov)
+	// The same top-line anatomy as the provider tabs: title left, dir centered,
+	// the next-action hint right — justified, not dot-separated.
+	contentW := m.width - 4
+	if contentW < 1 {
+		contentW = 1
+	}
+	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
+		"📁 "+displayDir(cwd), dashboardHint(m.ov))
 	help := keyHelpFit(m.width-4,
 		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt"},
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
@@ -402,12 +406,7 @@ func (m dashboardModel) frame(header string, body []string, footer string) strin
 	if m.width <= 0 || contentW < 1 {
 		contentW = 1
 	}
-	// Centered header over a rule — the provider tabs' top-line styling.
-	centered := header
-	if contentW > 1 {
-		centered = lipgloss.PlaceHorizontal(contentW, lipgloss.Center, header)
-	}
-	lines := append([]string{centered, rule(contentW), ""}, body...)
+	lines := append([]string{header, rule(contentW), ""}, body...)
 	// Reserve the frame border (2 rows) and the footer row, then pad the middle so
 	// the footer lands at the bottom instead of a short box with dead space below.
 	for len(lines) < m.height-2-1 {
@@ -474,7 +473,7 @@ func dashboardHint(ov Overview) string {
 	}
 	for _, r := range ov.Mappings {
 		if r.Drifted {
-			return failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + mutedStyle.Render(" — ↵ opens its tab to re-pin")
+			return failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + mutedStyle.Render(" — ") + keycap("↵") + mutedStyle.Render(" opens its tab to re-pin")
 		}
 	}
 	for _, r := range ov.Mappings {
@@ -484,11 +483,11 @@ func dashboardHint(ov Overview) string {
 	}
 	for _, u := range ov.Unmapped {
 		if u.Status.Expiry != nil && time.Until(*u.Status.Expiry) <= 0 {
-			return accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" expired — ↵ opens its tab to sign in")
+			return accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" expired — ") + keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
 		}
 	}
 	if len(ov.Mappings) == 0 {
 		return mutedStyle.Render("no directories pinned yet — open a provider tab and “Use here”")
 	}
-	return mutedStyle.Render("all good · ↵ drills into a profile · ") + keycap("d") + mutedStyle.Render(" changes dir")
+	return mutedStyle.Render("all good · ") + keycap("↵") + mutedStyle.Render(" drills into a profile · ") + keycap("d") + mutedStyle.Render(" changes dir")
 }

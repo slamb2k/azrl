@@ -834,7 +834,8 @@ func (m Model) identityStrip() string {
 		// The async az account show is the freshest source for the pinned dir.
 		dirIdentity = m.signedIn
 	}
-	strip := headerStrip(providerIcon("azure"), "Azure", m.pwd,
+	contentW, _, _ := paneDims(m.width)
+	strip := headerStrip(contentW, providerIcon("azure"), "Azure", m.pwd,
 		effectiveIdentity(m.dirProfile, dirIdentity, m.ambIdent))
 	if m.drift {
 		what := "uses a different account"
