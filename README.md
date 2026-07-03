@@ -150,9 +150,8 @@ on your laptop and the VM receives the session. The same model covers GitHub
 (`ghrl login`), AWS (`azrl aws login`), and Google Cloud (`azrl gcp login`) —
 one repo can pin all four at once, and the dashboard shows them together.
 
-Prefer a dashboard? Run **`azrl`** with no arguments for the TUI: pick a profile,
-sign in, capture, link, or remove — and press `e` to pin the current directory to
-its profile when it warns about drift.
+Prefer a dashboard? Run **`azrl`** with no arguments — see
+[The TUI at a glance](#the-tui-at-a-glance).
 
 ## Usage
 
