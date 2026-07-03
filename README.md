@@ -238,6 +238,11 @@ Now `cd`-ing between projects silently switches Azure accounts — `az account s
 `az group list`, everything follows the directory. Without direnv, export the same
 line in your shell rc.
 
+The pointer walk-up runs all the way to the filesystem root, so pinning your
+**home directory** makes a profile the effective identity everywhere while
+deeper pins still win — see
+[coexistence patterns](#when-not-to-capture--coexistence-patterns).
+
 ## Saving and initializing profiles
 
 - **`azrl login <name>`** — for an unknown `<name>`, signs you in (Azure
@@ -253,6 +258,29 @@ line in your shell rc.
   and `$PWD/.azprofile` when it names `<name>`. Prompts unless you pass `-y`.
 
 Names default to the sanitized current directory when omitted.
+
+### When not to capture — coexistence patterns
+
+You do **not** have to capture your primary account. The identity your CLIs
+use by default is controlled outside azrl; azrl just mirrors it (the AMBIENT
+rows), and `unmanaged` there is a legitimate steady state, not a problem.
+Capture an identity only when you want what profiles buy: directory pinning,
+guardrail assertions, expiry tracking, or bridge re-login. Capture records
+metadata only — no tokens are copied, and the profile holds no session until
+you `login` it.
+
+When you *do* want your default under azrl's tracking, pin it at home —
+`cd ~ && azrl use <name>` (accept the offered `.envrc`) — and every directory
+without a more specific pin resolves to it. On AWS/GCP you can go one step
+further with zero duplication, because azrl profiles **are** native entries:
+`export AWS_PROFILE=<name>` in your shell rc, or
+`gcloud config configurations activate <name>` (azrl mirrors but can't track
+shell-rc/native state). GitHub is the exception: `gh` has no env-based
+selection — its default is `gh auth switch`, and azrl's per-repo wiring via
+`ghrl use` covers the rest.
+
+The full pattern language (and what was deliberately *not* built) is in
+[docs/ambient-identity-model.md](docs/ambient-identity-model.md).
 
 ## Install
 
