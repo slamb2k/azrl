@@ -239,7 +239,7 @@ func (m dashboardModel) View() string {
 	cwd, _ := os.Getwd()
 	// The same top-line anatomy as the provider tabs: icon + title · dir · info.
 	header := "🧭 " + paneTitleStyle.Render("Dashboard") +
-		mutedStyle.Render("   ·   dir ") + displayDir(cwd) +
+		mutedStyle.Render("   ·   ") + "📁 " + displayDir(cwd) +
 		mutedStyle.Render("   ·   ") + dashboardHint(m.ov)
 	help := mutedStyle.Render("↑↓ select · ↵ open tab · ") + keycap("a") + mutedStyle.Render(" adopt · ") +
 		keycap("f5") + mutedStyle.Render(" refresh · ") + keycap("w") + mutedStyle.Render(" recheck drift · ⇥ tab · ") +

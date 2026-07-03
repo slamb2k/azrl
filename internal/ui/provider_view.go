@@ -44,6 +44,7 @@ type providerTabView struct {
 	height     int
 	status     string
 	suspended  bool
+	touched    bool
 }
 
 // newProviderTabView builds the shared view for prov with the given pre-rendered
@@ -133,6 +134,10 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			}
 		}
 	case tea.KeyMsg:
+		if k := msg.String(); k != "q" && k != "ctrl+c" {
+			// Any navigation marks the pane as visited (bold titles from here on).
+			v.touched = true
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return v, tea.Quit
@@ -178,6 +183,10 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 		}
 	case barFocusMsg:
 		v.suspended = msg.focused
+		if !msg.focused {
+			// Navigating down from the tab bar counts as entering the pane.
+			v.touched = true
+		}
 	case cwdChangedMsg:
 		// The header shows the directory; no bottom-bar echo needed.
 		v.reload()
@@ -298,7 +307,7 @@ func (v providerTabView) View() string {
 	case v.focus == focusActions:
 		profMode = selParent
 	}
-	left := renderProfilePane(v.profiles, v.cursor, profMode, leftW, scopes)
+	left := renderProfilePane(v.profiles, v.cursor, profMode, v.touched, leftW, scopes)
 
 	// PROFILE DETAIL: the selected profile's info block, then its actions as
 	// the shared radio group (keycaps left; selection bar only when focused).
@@ -312,9 +321,13 @@ func (v providerTabView) View() string {
 		pr := v.profiles[v.cursor]
 		info = profileInfoBlock(pr, v.statuses[pr.Name], rightW)
 	}
+	actionsBody := r.view(rightW)
+	if len(v.profiles) == 0 {
+		actionsBody = mutedStyle.Render("(no profile selected)")
+	}
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(rightW) + "\n" +
-		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(v.actions)), v.focus == focusActions && !v.suspended) + "\n\n" + r.view(rightW)
+		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(v.actions)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
 
 	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
 		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")
