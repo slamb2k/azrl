@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 )
@@ -62,12 +63,17 @@ func azureIdentity(confdir string) string {
 }
 
 // QualifiedIdentity composes "user · tenant" — the tenant being the default
-// domain when known, else a shortened tenant GUID (B2B guests often have no
-// resolvable domain). Both the profile Status and ambient readers, and the
-// TUI's az-account-show comparisons, use this one composition so identity
-// matching stays tenant-aware and consistent.
+// domain when known, else the domain a saved profile conf declares for the
+// tenant GUID (guest/B2B tenants have no resolvable tenantDefaultDomain, but
+// their conf carries AZ_TENANT + AZ_TENANT_ID), else a shortened GUID. Both
+// the profile Status and ambient readers, and the TUI's az-account-show
+// comparisons, use this one composition so identity matching stays
+// tenant-aware and consistent.
 func QualifiedIdentity(user, domain, tenantID string) string {
 	tenant := domain
+	if tenant == "" {
+		tenant = tenantDomainFromConfs(tenantID)
+	}
 	if tenant == "" {
 		tenant = tenantID
 		if len(tenant) > 8 {
@@ -83,6 +89,27 @@ func QualifiedIdentity(user, domain, tenantID string) string {
 		return user
 	}
 	return user + " · " + tenant
+}
+
+// tenantDomainFromConfs resolves a tenant GUID to the human domain a saved
+// profile declares for it (AZ_TENANT, matched by AZ_TENANT_ID). Disk-only;
+// "" when no conf knows the tenant.
+func tenantDomainFromConfs(tenantID string) string {
+	if tenantID == "" {
+		return ""
+	}
+	listed, err := profile.List(config.ProfilesDir())
+	if err != nil {
+		return ""
+	}
+	for _, l := range listed {
+		if c, err := profile.LoadConf(l.Name, config.ProfilesDir()); err == nil {
+			if c.TenantID == tenantID && c.Tenant != "" && c.Tenant != c.TenantID {
+				return c.Tenant
+			}
+		}
+	}
+	return ""
 }
 
 // azureExpiry reads the latest access-token expiry from the MSAL cache; nil on
