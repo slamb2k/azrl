@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -67,34 +68,32 @@ func (o optionsPicker) update(msg tea.KeyMsg) (optionsPicker, []string, bool) {
 	return o, nil, false
 }
 
-// view renders the overlay body (the container supplies banner + tab bar).
+// view renders a compact bordered box; the container overlays it centered on
+// the active tab so settings read as a popup, not a screen.
 func (o optionsPicker) view() string {
-	contentW := o.width - 4
-	if contentW < 1 {
-		contentW = 1
-	}
+	innerW := 40
 	var b strings.Builder
 	b.WriteString(paneTitle("PROVIDER TABS", true) + "\n\n")
-	b.WriteString(mutedStyle.Render("Choose which providers appear as tabs (saved to azrl.conf).") + "\n\n")
+	b.WriteString(mutedStyle.Render("Saved to azrl.conf") + "\n\n")
 	for i, p := range o.provs {
 		box := mutedStyle.Render("[ ]")
 		if o.checked[p.Name()] {
 			box = successStyle.Render("[x]")
 		}
-		line := box + " " + providerIcon(p.Name()) + " " + p.Title()
+		title := p.Title()
 		if i == o.cursor {
-			line = box + " " + providerIcon(p.Name()) + " " + selBlockActive.Render(p.Title())
+			title = selBlockActive.Render(title)
 		}
-		b.WriteString(truncateLine(line, contentW) + "\n\n")
+		b.WriteString(truncateLine(box+" "+providerIcon(p.Name())+" "+title, innerW) + "\n\n")
 	}
-	b.WriteString(mutedStyle.Render("space toggle · ↵ save · esc cancel"))
+	b.WriteString(keyHelp("space", "toggle", "↵", "save", "esc", "cancel"))
 	lines := strings.Split(b.String(), "\n")
 	for i, l := range lines {
-		lines[i] = padTo(truncateLine(l, contentW), contentW)
+		lines[i] = padTo(truncateLine(l, innerW), innerW)
 	}
-	// Fill to the overlay height so the frame matches the tabs' frames.
-	for len(lines) < o.height-2 {
-		lines = append(lines, padTo("", contentW))
-	}
-	return frameStyle.Render(strings.Join(lines, "\n"))
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(azureBlue).
+		Padding(0, 2).
+		Render(strings.Join(lines, "\n"))
 }

@@ -162,6 +162,14 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "down", "enter", "esc":
 				m.barFocus = false
 				return m.broadcast(barFocusMsg{focused: false})
+			case "d":
+				pk := newDirPicker(m.width, m.innerHeight())
+				m.picker = &pk
+				return m, nil
+			case "o":
+				op := newOptionsPicker(m.width, m.innerHeight())
+				m.options = &op
+				return m, nil
 			case "q", "ctrl+c":
 				return m, tea.Quit
 			}
@@ -295,7 +303,8 @@ func (m tabsModel) View() string {
 		body = m.picker.view()
 	}
 	if m.options != nil {
-		body = m.options.view()
+		// Settings float as a centered popup over whatever is beneath.
+		body = overlayCenter(body, m.options.view(), m.width)
 	}
 	out := banner + "\n\n" + bar + "\n" + body
 	// Backstop invariant: no line may exceed the terminal width, whatever a child

@@ -857,22 +857,21 @@ func (m Model) identityStrip() string {
 // helpBar lists only the keys that are actually wired.
 func (m Model) helpBar() string {
 	if m.confirming {
-		return mutedStyle.Render("↑↓ choose · ↵ confirm · y yes · n/esc cancel")
+		return keyHelp("↑↓", "choose", "↵", "confirm", "y", "yes", "n/esc", "cancel")
 	}
 	if m.renaming {
-		return mutedStyle.Render("type new name · ↵ rename · esc cancel")
+		return mutedStyle.Render("type new name · ") + keyHelp("↵", "rename", "esc", "cancel")
 	}
 	if m.showHelp {
 		lines := []string{
 			keycap("l") + " sign in   " + keycap("u") + " use here   " + keycap("c") + " capture   " + keycap("e") + " write .envrc",
 			keycap("i") + " new profile   " + keycap("x") + " edit   " + keycap("n") + " rename   " + keycap("delete") + " remove",
-			mutedStyle.Render("↑↓") + " select · " + mutedStyle.Render("↵") + " open/run · " + mutedStyle.Render("esc") + " back · " + keycap("f5") + " refresh · " + mutedStyle.Render("?") + " less · " + keycap("q") + " quit",
+			keyHelp("↑↓", "select", "↵", "open/run", "esc", "back", "f5", "refresh", "?", "less", "q", "quit"),
 		}
 		return strings.Join(lines, "\n")
 	}
-	return mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
-		keycap("d") + mutedStyle.Render(" dir · ") + keycap("o") + mutedStyle.Render(" options · ") +
-		keycap("f5") + mutedStyle.Render(" refresh · ? help · ") + keycap("q") + mutedStyle.Render(" quit")
+	return keyHelp("↑↓", "select", "→", "details", "↵", "open/run", "esc", "back", "⇥", "tab",
+		"d", "dir", "o", "options", "f5", "refresh", "?", "help", "q", "quit")
 }
 
 // contextLine describes the current directory's relationship to profiles.

@@ -359,3 +359,27 @@ func TestOptionsOverlayEnablesProviderTabs(t *testing.T) {
 		t.Fatalf("fresh container tabs = %d, want 4", got)
 	}
 }
+
+func TestOptionsPopupOverlaysAndOpensFromBar(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	tm := nm.(tabsModel)
+	// Open from tab-bar focus (options must work from anywhere).
+	nm, cmd := tm.Update(tea.KeyMsg{Type: tea.KeyUp})
+	tm = nm.(tabsModel)
+	nm, _ = tm.Update(cmd())
+	tm = nm.(tabsModel)
+	nm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	tm = nm.(tabsModel)
+	if tm.options == nil {
+		t.Fatal("'o' did not open options while the tab bar held focus")
+	}
+	// The popup overlays the underlying view: both are visible at once.
+	v := tm.View()
+	if !strings.Contains(v, "PROVIDER TABS") {
+		t.Fatalf("popup content missing:\n%s", v)
+	}
+	if !strings.Contains(v, "MAPPINGS") {
+		t.Fatalf("underlying dashboard should remain visible around the popup:\n%s", v)
+	}
+}
