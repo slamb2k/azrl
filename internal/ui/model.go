@@ -277,8 +277,8 @@ func paneDims(width int) (contentW, leftW, rightW int) {
 // the container truncates any residual overflow.
 func (m Model) dims() (contentW, leftW, rightW, listH int) {
 	contentW, leftW, rightW = paneDims(m.width)
-	// chrome: 3 rules + identity + status + help + frame + the 3-row legend.
-	listH = m.height - 12
+	// chrome: 2 rules + identity + status + help + frame + the 3-row legend.
+	listH = m.height - 11
 	if listH < 3 {
 		listH = 3
 	}
@@ -603,7 +603,8 @@ func renderPaneFrame(width, height int, identity, left, right, leftFoot, status,
 	contentW, leftW, _ := paneDims(width)
 	center := func(s string) string { return lipgloss.PlaceHorizontal(contentW, lipgloss.Center, s) }
 
-	head := lipgloss.JoinVertical(lipgloss.Left, rule(contentW), center(identity), rule(contentW))
+	// No rule above the header — the frame's top border already bounds it.
+	head := lipgloss.JoinVertical(lipgloss.Left, center(identity), rule(contentW))
 	foot := lipgloss.JoinVertical(lipgloss.Left, rule(contentW), center(status), center(footer))
 
 	// Vertical fill: grow the body so the frame bottom sits near the terminal
@@ -761,7 +762,7 @@ func (m Model) rightPane(w int) string {
 		info = profileInfoBlock(pr, m.statuses[it.name], w)
 	}
 	return paneTitle("PROFILE DETAIL", m.focus == focusActions) + "\n\n" +
-		info + "\n\n" + rule(w) + "\n" + m.actions.view(w)
+		info + "\n\n" + rule(w) + "\n\n" + m.actions.view(w)
 }
 
 // paneTitle renders a pane header: bold for the focused pane (the selection

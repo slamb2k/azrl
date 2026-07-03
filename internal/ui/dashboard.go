@@ -237,7 +237,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m dashboardModel) View() string {
 	cwd, _ := os.Getwd()
-	header := paneTitleStyle.Render("Dashboard") +
+	// The same top-line anatomy as the provider tabs: icon + title · dir · info.
+	header := "🧭 " + paneTitleStyle.Render("Dashboard") +
 		mutedStyle.Render("   ·   dir ") + displayDir(cwd) +
 		mutedStyle.Render("   ·   ") + dashboardHint(m.ov)
 	help := mutedStyle.Render("↑↓ select · ↵ open tab · ") + keycap("a") + mutedStyle.Render(" adopt · ") +
@@ -401,7 +402,12 @@ func (m dashboardModel) frame(header string, body []string, footer string) strin
 	if m.width <= 0 || contentW < 1 {
 		contentW = 1
 	}
-	lines := append([]string{header, ""}, body...)
+	// Centered header over a rule — the provider tabs' top-line styling.
+	centered := header
+	if contentW > 1 {
+		centered = lipgloss.PlaceHorizontal(contentW, lipgloss.Center, header)
+	}
+	lines := append([]string{centered, rule(contentW), ""}, body...)
 	// Reserve the frame border (2 rows) and the footer row, then pad the middle so
 	// the footer lands at the bottom instead of a short box with dead space below.
 	for len(lines) < m.height-2-1 {
