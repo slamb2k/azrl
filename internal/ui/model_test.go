@@ -177,9 +177,12 @@ func TestDriftHintMentionsEnvrc(t *testing.T) {
 	if !strings.Contains(got, ".envrc") {
 		t.Fatalf("drift strip should offer .envrc: %q", got)
 	}
-	// The warning names both tenant-qualified sides (the B2B guest case).
-	if !strings.Contains(got, "velrada.com") || !strings.Contains(got, "expects u@fiig.com.au · fiig.com.au") {
-		t.Fatalf("drift strip should name both identities: %q", got)
+	// The warning names both tenant-qualified sides (the B2B guest case);
+	// the line may word-wrap, so assert the pieces rather than contiguity.
+	for _, want := range []string{"velrada.com", "expects u@fiig.com.au", "fiig.com.au"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("drift strip missing %q: %q", want, got)
+		}
 	}
 	// without drift, no warning
 	m.drift = false
