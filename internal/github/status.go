@@ -21,8 +21,12 @@ func (Provider) Status(name, confdir string) (provider.Status, error) {
 		Identity:    githubIdentity(isolated),
 		Directory:   dir,
 		Expiry:      nil,
-		Drifted:     provider.Drifted(scheme, "GH_CONFIG_DIR", name, isolated),
-		LastUsed:    last,
+		// gh has no env-pinning story — the per-dir association is repo-local
+		// git config, and bare `gh` follows its native default by design (see
+		// docs/ambient-identity-model.md). An unset GH_CONFIG_DIR is therefore
+		// the normal state, not drift; only an explicitly divergent value is.
+		Drifted:  os.Getenv("GH_CONFIG_DIR") != "" && provider.Drifted(scheme, "GH_CONFIG_DIR", name, isolated),
+		LastUsed: last,
 	}, nil
 }
 

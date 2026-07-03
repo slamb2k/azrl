@@ -71,7 +71,7 @@ func TestStatusDrift(t *testing.T) {
 		ambient string // GH_CONFIG_DIR; "" means unset
 		want    bool
 	}{
-		{"ambient unset while pinned drifts", "work", "", true},
+		{"ambient unset while pinned is gh-normal, not drift", "work", "", false},
 		{"ambient equals isolated is clean", "work", iso, false},
 		{"ambient other dir drifts", "work", filepath.Join(confdir, "other"), true},
 		{"cwd pins a different profile is clean", "elsewhere", "", false},
@@ -105,5 +105,33 @@ func TestStatusBlankOnMissingHosts(t *testing.T) {
 	}
 	if st.Identity != "" {
 		t.Fatalf("expected blank identity, got %q", st.Identity)
+	}
+}
+
+func TestPinnedDirWithoutEnvIsNotDrift(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".github-profiles")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "work.conf"), []byte("GH_HOST=github.com\nGH_USER=me\n"), 0o644)
+	pinned := t.TempDir()
+	os.WriteFile(filepath.Join(pinned, ".ghprofile"), []byte("work\n"), 0o644)
+	t.Chdir(pinned)
+
+	// Unset GH_CONFIG_DIR is gh's designed steady state — never drift.
+	t.Setenv("GH_CONFIG_DIR", "")
+	os.Unsetenv("GH_CONFIG_DIR")
+	st, err := github.NewProvider().Status("work", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Drifted {
+		t.Fatal("pinned gh dir without GH_CONFIG_DIR must not read as drift")
+	}
+	// An explicitly divergent GH_CONFIG_DIR is drift.
+	t.Setenv("GH_CONFIG_DIR", filepath.Join(dir, "other"))
+	st, _ = github.NewProvider().Status("work", dir)
+	if !st.Drifted {
+		t.Fatal("divergent GH_CONFIG_DIR should read as drift")
 	}
 }
