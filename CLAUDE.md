@@ -99,8 +99,10 @@ The `mad-skills` pipeline drives feature work here:
 - `/sync` brings `main` up to date before new work
 
 `specs/` holds specifications (`github-remote-login.*` shipped in #17;
-`status-dashboard.*` shipped as Phase 5.5; `multi-cloud-providers.*` is
-scoped/designed but not yet built). `context/` holds domain knowledge and
+`status-dashboard.*` shipped as Phase 5.5; `multi-cloud-providers.*` shipped
+as Phases 8–9 — the AWS and GCP providers above; `resolution-strategies.*`
+shipped as v0.7.0, amended by #79 which added expiry to MAPPINGS rows and an
+expired-governing-pin dashboard hint). `context/` holds domain knowledge and
 references. `docs/` holds
 design notes and historical plans: `docs/HANDOVER-origin.md` (full historical
 context), `docs/design.md`, `docs/build-plan.md`, and dated design plans under

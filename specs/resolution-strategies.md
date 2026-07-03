@@ -371,7 +371,21 @@ Edge cases the implementation must handle:
 - Ships as **v0.7.0**; release notes call out the two breaking changes
   (`switch` removed; `status --json` reshaped).
 
-## 11. Related Specifications / Further Reading
+## 11. Amendments
+
+- **#79 (2026-07-03, v0.34.0)** — expiry is no longer rendered only on
+  UNMAPPED PROFILES rows. Per `docs/ambient-identity-model.md` (expiry
+  warnings attach to *mapped* profiles), MAPPINGS rows now carry the mapped
+  profile's expiry too: an `⚠ expired` annotation (dashboard + plain
+  `status`, alongside the drift/conflict markers) and an always-present
+  `"expiry"` timestamp on `mappings` entries in `status --json`. The
+  dashboard's next-action hint also fires for an expired profile whose pin
+  governs the cwd, ranked conflict > drift > expired governing pin >
+  unmanaged > expired unmapped > first-pin nudge. REQ-043/AC-011 still hold
+  (unmapped rows keep their expiry text); only the "nowhere in MAPPINGS"
+  exclusivity of expiry rendering is superseded.
+
+## 12. Related Specifications / Further Reading
 
 - `specs/status-dashboard.md` — the dashboard this view evolves (Phase 5.5).
 - `specs/multi-cloud-providers.md` — AWS/GCP provider architecture (Phases 8–9).
