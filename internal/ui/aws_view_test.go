@@ -95,7 +95,7 @@ func TestRenderProfilePaneScopeGlyphs(t *testing.T) {
 		{Name: "idle", Detail: "idle.awsapps.com"},
 	}
 	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal, "idle": scopeElsewhere}
-	out := renderProfilePane(profiles, 0, true, 40, scopes)
+	out := renderProfilePane(profiles, 0, selActive, 40, scopes)
 	if !strings.Contains(out, "●  work") || !strings.Contains(out, "●  staging") {
 		t.Fatalf("dir-pinned profiles missing leading ● icon:\n%s", out)
 	}

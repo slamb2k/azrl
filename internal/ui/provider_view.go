@@ -289,7 +289,16 @@ func (v providerTabView) View() string {
 	for _, p := range v.profiles {
 		scopes[p.Name] = v.rowScope(p.Name)
 	}
-	left := renderProfilePane(v.profiles, v.cursor, v.focus == focusProfiles && !v.suspended, leftW, scopes)
+	profMode := selNone
+	switch {
+	case v.suspended:
+		// The tab bar holds focus: no selection below it.
+	case v.focus == focusProfiles:
+		profMode = selActive
+	case v.focus == focusActions:
+		profMode = selParent
+	}
+	left := renderProfilePane(v.profiles, v.cursor, profMode, leftW, scopes)
 
 	// PROFILE DETAIL: the selected profile's info block, then its actions as
 	// the shared radio group (keycaps left; selection bar only when focused).
@@ -304,7 +313,8 @@ func (v providerTabView) View() string {
 		info = profileInfoBlock(pr, v.statuses[pr.Name], rightW)
 	}
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
-		info + "\n\n" + paneTitle(fmt.Sprintf("ACTIONS (%d)", len(v.actions)), v.focus == focusActions && !v.suspended) + "\n\n" + r.view(rightW)
+		info + "\n\n" + rule(rightW) + "\n" +
+		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(v.actions)), v.focus == focusActions && !v.suspended) + "\n\n" + r.view(rightW)
 
 	help := mutedStyle.Render("↑↓ select · → details · ↵ open/run · esc back · ⇥ tab · ") +
 		keycap("d") + mutedStyle.Render(" dir · ") + keycap("q") + mutedStyle.Render(" quit")

@@ -44,9 +44,9 @@ var (
 	dividerStyle   = lipgloss.NewStyle().Foreground(azureDeep)
 
 	// One selection language everywhere: the block in the focused container is
-	// bright blue; every other level retains its selection as a darker block,
-	// so the eye reads the focus hierarchy at a glance (tab bar → profiles →
-	// detail).
+	// bright blue; each ANCESTOR retains its selection as a darker block (the
+	// trail points up: tab bar → profiles → detail); descendants show no
+	// selection until entered.
 	selBlockActive = lipgloss.NewStyle().Foreground(white).Background(azureBlue).Bold(true)
 	selBlockParent = lipgloss.NewStyle().Foreground(whiteDim).Background(azureDeep)
 

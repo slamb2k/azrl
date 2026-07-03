@@ -54,7 +54,7 @@ var selectionBar = lipgloss.NewStyle().
 // segment — selection bar, icon, name, detail — is styled independently and
 // composed. One blank line between rows keeps each two-line profile distinct.
 type profileDelegate struct {
-	bright bool // the profiles pane holds focus (bright selection block)
+	mode selMode // how this pane's selection renders in the focus hierarchy
 }
 
 func (profileDelegate) Height() int                         { return 2 }
@@ -72,14 +72,13 @@ func (d profileDelegate) Render(w io.Writer, m list.Model, index int, li list.It
 	selected := index == m.Index()
 	nameStyle := lipgloss.NewStyle().Foreground(white)
 	detailStyle := mutedStyle
-	if selected {
-		// The shared selection block: bright while this pane is focused,
-		// the darker parent shade otherwise.
-		nameStyle = selBlockParent
-		if d.bright {
-			nameStyle = selBlockActive
-		}
+	switch {
+	case selected && d.mode == selActive:
+		nameStyle = selBlockActive
 		detailStyle = lipgloss.NewStyle().Foreground(azureSky)
+	case selected && d.mode == selParent:
+		nameStyle = selBlockParent
+		detailStyle = lipgloss.NewStyle().Foreground(gray)
 	}
 	name := p.name
 	if p.label != "" && p.label != p.name {
@@ -184,7 +183,7 @@ func NewModel() Model {
 		}
 		items = append(items, item{name: p.Name, label: p.Label, tenant: p.Detail, scope: scope, emph: p.Name == emph})
 	}
-	l := list.New(items, profileDelegate{bright: true}, 0, 0)
+	l := list.New(items, profileDelegate{mode: selActive}, 0, 0)
 	l.Title = "Profiles"
 	l.SetShowHelp(false)
 	l.SetShowTitle(false)
@@ -297,7 +296,16 @@ func (m *Model) layout() {
 // the profiles pane is — and neither while the tab bar holds focus.
 func (m *Model) applyFocus() {
 	m.actions.focused = m.focus == focusActions && !m.suspended
-	m.list.SetDelegate(profileDelegate{bright: m.focus == focusProfiles && !m.suspended})
+	mode := selNone
+	switch {
+	case m.suspended:
+		// The tab bar holds focus: no selection below it.
+	case m.focus == focusProfiles:
+		mode = selActive
+	case m.focus == focusActions:
+		mode = selParent
+	}
+	m.list.SetDelegate(profileDelegate{mode: mode})
 }
 
 // refresh rebuilds the profile list from disk, preserving view state.
@@ -642,9 +650,9 @@ func renderPaneFrame(width, height int, identity, left, right, leftFoot, status,
 // orange parent pin, 🌐 global default); renamed profiles render their label
 // in the renamedStyle accent instead of a footnote legend. Segments are
 // styled independently so the icon keeps its own colour on selected rows.
-func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, leftW int, scopes map[string]string) string {
+func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, leftW int, scopes map[string]string) string {
 	var b strings.Builder
-	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), focused))
+	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), mode == selActive))
 	b.WriteString("\n\n")
 	if len(profiles) == 0 {
 		b.WriteString(mutedStyle.Render("  (none yet — Sign in to add one)"))
@@ -677,12 +685,12 @@ func renderProfilePane(profiles []profile.Listed, cursor int, focused bool, left
 		nameStyle := lipgloss.NewStyle().Foreground(white)
 		detailStyle := mutedStyle
 		switch {
-		case selected && focused:
+		case selected && mode == selActive:
 			// The shared selection block: bright in the focused container.
 			nameStyle = selBlockActive
 			detailStyle = lipgloss.NewStyle().Foreground(azureSky)
-		case selected:
-			// Focus lives elsewhere in the hierarchy: retained, dimmed.
+		case selected && mode == selParent:
+			// A child holds focus: this level's selection dims as the trail.
 			nameStyle = selBlockParent
 			detailStyle = lipgloss.NewStyle().Foreground(gray)
 		}
@@ -762,7 +770,8 @@ func (m Model) rightPane(w int) string {
 		info = profileInfoBlock(pr, m.statuses[it.name], w)
 	}
 	return paneTitle("DETAILS", m.focus == focusActions) + "\n\n" +
-		info + "\n\n" + paneTitle(fmt.Sprintf("ACTIONS (%d)", len(m.actions.options)), m.focus == focusActions && !m.suspended) + "\n\n" + m.actions.view(w)
+		info + "\n\n" + rule(w) + "\n" +
+		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(m.actions.options)), m.focus == focusActions && !m.suspended) + "\n\n" + m.actions.view(w)
 }
 
 // paneTitle renders a pane header: bold for the focused pane (the selection
