@@ -115,3 +115,17 @@ func keyHelp(pairs ...string) string {
 	}
 	return strings.Join(parts, mutedStyle.Render(" · "))
 }
+
+// keyHelpFit renders core then optional key/label pairs, dropping optional
+// items from the right (least important last) until the bar fits width —
+// narrow terminals keep the essentials instead of truncating mid-chip.
+func keyHelpFit(width int, core, optional []string) string {
+	pairs := append(append([]string{}, core...), optional...)
+	for len(pairs) > len(core) {
+		if s := keyHelp(pairs...); width <= 0 || lipgloss.Width(s) <= width {
+			return s
+		}
+		pairs = pairs[:len(pairs)-2]
+	}
+	return keyHelp(core...)
+}
