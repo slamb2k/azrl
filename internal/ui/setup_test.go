@@ -89,6 +89,37 @@ func TestSetupRemoteFlow(t *testing.T) {
 	}
 }
 
+// TestSetupViewChrome checks the visual scaffolding: the winged banner, the
+// stage breadcrumb, and the mode badge all render across steps.
+func TestSetupViewChrome(t *testing.T) {
+	cands := []envdetect.Candidate{
+		{Mode: envdetect.Remote, Label: "Remote", Reason: "SSH session detected", VMSSHHost: "203.0.113.10", Recommended: true},
+		{Mode: envdetect.Local, Label: "Local", Reason: "WSL detected", BrowserCmd: "wslview", BrowserHost: "localhost"},
+	}
+	m := newSetupModel(cands)
+	m.width = 74
+	v := m.View()
+	// Banner crest (wordmark glyph), breadcrumb stages, and both mode badges.
+	for _, want := range []string{"█", "Detect", "Configure", "Confirm", "LOCAL", "REMOTE"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("pick view missing %q", want)
+		}
+	}
+
+	// Drive to confirm; the sheet shows the REMOTE badge and resolved keys.
+	m = send(m, key("enter")) // remote
+	m = send(m, key("down"))  // WSL OS
+	m = send(m, key("enter"))
+	m = send(m, key("enter")) // VM host
+	m = send(m, key("enter")) // browser host → confirm
+	cv := m.View()
+	for _, want := range []string{"REMOTE", "BROWSER_CMD", "wslview", "azrl.conf.bak"} {
+		if !strings.Contains(cv, want) {
+			t.Fatalf("confirm view missing %q", want)
+		}
+	}
+}
+
 // TestSetupCancel: esc anywhere cancels without a confirmed result.
 func TestSetupCancel(t *testing.T) {
 	m := newSetupModel([]envdetect.Candidate{{Mode: envdetect.Local, BrowserCmd: "open", BrowserHost: "localhost"}})

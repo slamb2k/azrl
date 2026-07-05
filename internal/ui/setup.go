@@ -50,6 +50,7 @@ type setupModel struct {
 	chosen envdetect.Candidate
 	fields []setupField
 	fcur   int
+	width  int
 	result config.Global
 	ok     bool // true once the user confirms
 }
@@ -91,7 +92,7 @@ func (m *setupModel) buildFields() {
 	if m.chosen.Mode == envdetect.Local {
 		add("BROWSER_CMD", "Browser command", "opens a URL on this machine", m.chosen.BrowserCmd)
 	} else {
-		add("VM_SSH_HOST", "VM SSH host", "this VM's SSH name (derived; edit for NAT/jump hosts)", m.chosen.VMSSHHost)
+		add("VM_SSH_HOST", "VM SSH host", "this VM's SSH name — edit for NAT / jump hosts", m.chosen.VMSSHHost)
 		add("BROWSER_HOST", "Browser SSH host (optional)", "set for zero-paste; blank = paste mode", m.chosen.BrowserHost)
 	}
 	m.fcur = 0
@@ -127,6 +128,10 @@ func (m setupModel) Result() (config.Global, bool) { return m.result, m.ok }
 func (m setupModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m setupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = ws.Width
+		return m, nil
+	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return m, nil
@@ -227,65 +232,173 @@ func (m setupModel) updateConfirm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m setupModel) View() string {
-	var b strings.Builder
-	b.WriteString(paneTitle("AZRL SETUP", true) + "\n\n")
+// setupCardWidth is the fixed inner width of the wizard card so every step's
+// content and framing line up regardless of terminal size. Sized to seat the
+// longest one-line blurb/hint without wrapping.
+const setupCardWidth = 66
+
+var (
+	setupCardStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(azureBlue).
+			Padding(1, 3).
+			Width(setupCardWidth)
+
+	setupHeadStyle = lipgloss.NewStyle().Foreground(azureSky).Bold(true)
+	fieldKeyStyle  = lipgloss.NewStyle().Foreground(gold).Bold(true)
+	confKeyStyle   = lipgloss.NewStyle().Foreground(azureSky)
+	localBadge     = lipgloss.NewStyle().Foreground(white).Background(green).Bold(true)
+	remoteBadge    = lipgloss.NewStyle().Foreground(white).Background(azureBlue).Bold(true)
+	arrowStyle     = lipgloss.NewStyle().Foreground(gold).Bold(true)
+)
+
+// modeBadge renders a LOCAL/REMOTE pill: green for local (no bridge), blue for
+// remote (browser over SSH).
+func modeBadge(local bool) string {
+	if local {
+		return localBadge.Render(" LOCAL ")
+	}
+	return remoteBadge.Render(" REMOTE ")
+}
+
+// modeBlurb is the one-line description that sits beside the mode badge.
+func modeBlurb(local bool) string {
+	if local {
+		return "browser opens on this machine — no SSH bridge"
+	}
+	return "browser opens on your dev machine over SSH"
+}
+
+// stageLabels lists the ordered wizard stages for the current flow; the browser
+// (OS) stage only exists on the remote path.
+func (m setupModel) stageLabels() []string {
+	if m.chosen.Mode == envdetect.Remote {
+		return []string{"Detect", "Browser", "Configure", "Confirm"}
+	}
+	return []string{"Detect", "Configure", "Confirm"}
+}
+
+// activeStage maps the current step onto its stage label.
+func (m setupModel) activeStage() string {
 	switch m.step {
 	case stepPick:
-		b.WriteString("Detected environments — pick one:\n\n")
-		for i, c := range m.cands {
-			label := c.Label
-			if c.Recommended {
-				label += "  " + mutedStyle.Render("(recommended)")
-			}
-			if i == m.pick {
-				b.WriteString("  " + selBlockActive.Render(label) + "\n")
-			} else {
-				b.WriteString("  " + label + "\n")
-			}
-			b.WriteString("    " + mutedStyle.Render(c.Reason) + "\n")
-		}
-		b.WriteString("\n" + keyHelp("↑↓", "select", "↵", "next", "esc", "cancel"))
+		return "Detect"
 	case stepOS:
-		b.WriteString("Which OS is your dev machine (where the browser opens)?\n\n")
-		for i, o := range osChoices {
-			line := o.label + "  " + mutedStyle.Render(o.cmd)
-			if i == m.osPick {
-				b.WriteString("  " + selBlockActive.Render(line) + "\n")
-			} else {
-				b.WriteString("  " + line + "\n")
-			}
-		}
-		b.WriteString("\n" + keyHelp("↑↓", "select", "↵", "next", "esc", "cancel"))
+		return "Browser"
 	case stepFields:
-		b.WriteString(m.chosen.Label + "\n\n")
-		for i, f := range m.fields {
-			marker := "  "
-			if i == m.fcur {
-				marker = "▸ "
-			}
-			b.WriteString(marker + f.label + ": " + f.ti.View() + "\n")
-			b.WriteString("    " + mutedStyle.Render(f.hint) + "\n")
+		return "Configure"
+	default:
+		return "Confirm"
+	}
+}
+
+// breadcrumb renders the stage trail: completed stages ticked blue, the active
+// stage gold, upcoming stages muted.
+func (m setupModel) breadcrumb() string {
+	active := m.activeStage()
+	seen := false
+	var parts []string
+	for _, l := range m.stageLabels() {
+		switch {
+		case l == active:
+			seen = true
+			parts = append(parts, accentStyle.Render("● "+l))
+		case !seen:
+			parts = append(parts, dotStyle.Render("✓ "+l))
+		default:
+			parts = append(parts, mutedStyle.Render("○ "+l))
 		}
-		b.WriteString("\n" + keyHelp("↑↓", "field", "↵", "next", "esc", "cancel"))
+	}
+	return strings.Join(parts, mutedStyle.Render("  ─  "))
+}
+
+// stepTitle is the headline inside the card for the current step.
+func (m setupModel) stepTitle() string {
+	switch m.step {
+	case stepPick:
+		return "Which environment is this?"
+	case stepOS:
+		return "Where does your browser open?"
+	case stepFields:
+		return "Review the details"
+	default:
+		return "Ready to write"
+	}
+}
+
+// footerHelp is the keycap hint bar for the current step.
+func (m setupModel) footerHelp() string {
+	switch m.step {
+	case stepConfirm:
+		return keyHelp("↵/y", "write", "n", "back", "esc", "cancel")
+	case stepFields:
+		return keyHelp("↑↓", "field", "↵", "next", "esc", "cancel")
+	default:
+		return keyHelp("↑↓", "select", "↵", "next", "esc", "cancel")
+	}
+}
+
+func (m setupModel) View() string {
+	w := m.width
+	if w <= 0 {
+		w = bannerWidth()
+	}
+	var b strings.Builder
+	b.WriteString(setupHeadStyle.Render(m.stepTitle()) + "\n\n")
+	switch m.step {
+	case stepPick:
+		for i, c := range m.cands {
+			marker, name := "  ", c.Label
+			if i == m.pick {
+				marker, name = arrowStyle.Render("▸ "), selBlockActive.Render(c.Label)
+			}
+			star := ""
+			if c.Recommended {
+				star = "  " + accentStyle.Render("★")
+			}
+			b.WriteString(marker + modeBadge(c.Mode == envdetect.Local) + "  " + name + star + "\n")
+			b.WriteString("     " + mutedStyle.Render(c.Reason) + "\n\n")
+		}
+	case stepOS:
+		for i, o := range osChoices {
+			marker, name := "  ", o.label
+			if i == m.osPick {
+				marker, name = arrowStyle.Render("▸ "), selBlockActive.Render(o.label)
+			}
+			b.WriteString(marker + name + "   " + mutedStyle.Render(o.cmd) + "\n")
+		}
+	case stepFields:
+		local := m.chosen.Mode == envdetect.Local
+		b.WriteString(modeBadge(local) + "  " + mutedStyle.Render(modeBlurb(local)) + "\n\n")
+		for i, f := range m.fields {
+			marker, label := "  ", mutedStyle.Render(f.label)
+			if i == m.fcur {
+				marker, label = arrowStyle.Render("▸ "), fieldKeyStyle.Render(f.label)
+			}
+			b.WriteString(marker + label + "\n")
+			b.WriteString("    " + f.ti.View() + "\n")
+			b.WriteString("    " + mutedStyle.Render(f.hint) + "\n\n")
+		}
 	case stepConfirm:
 		g := m.result
-		b.WriteString("Write this to ~/.azure-profiles/azrl.conf?\n\n")
-		fmt.Fprintf(&b, "  BROWSER_CMD  = %s\n", g.BrowserCmd)
-		fmt.Fprintf(&b, "  BROWSER_HOST = %s\n", emptyDash(g.BrowserHost))
-		fmt.Fprintf(&b, "  VM_SSH_HOST  = %s\n", emptyDash(g.VMSSHHost))
-		mode := "remote"
-		if g.IsLocal() {
-			mode = "local (no SSH bridge)"
+		local := g.IsLocal()
+		b.WriteString(modeBadge(local) + "  " + mutedStyle.Render(modeBlurb(local)) + "\n\n")
+		row := func(k, v string) {
+			b.WriteString("  " + confKeyStyle.Render(fmt.Sprintf("%-13s", k)) + accentStyle.Render(v) + "\n")
 		}
-		b.WriteString("\n  " + mutedStyle.Render("mode: "+mode) + "\n")
-		b.WriteString("\n" + keyHelp("↵/y", "write", "n", "back", "esc", "cancel"))
+		row("BROWSER_CMD", g.BrowserCmd)
+		row("BROWSER_HOST", emptyDash(g.BrowserHost))
+		row("VM_SSH_HOST", emptyDash(g.VMSSHHost))
+		b.WriteString("\n" + arrowStyle.Render("→ ") + mutedStyle.Render("writes ~/.azure-profiles/azrl.conf") + "\n")
+		b.WriteString("  " + mutedStyle.Render("existing config is backed up to azrl.conf.bak") + "\n")
 	}
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(azureBlue).
-		Padding(0, 2).
-		Render(b.String())
+	b.WriteString("\n" + m.footerHelp())
+
+	var out strings.Builder
+	out.WriteString(bannerFor(w) + "\n")
+	out.WriteString(m.breadcrumb() + "\n\n")
+	out.WriteString(setupCardStyle.Render(b.String()))
+	return out.String()
 }
 
 func emptyDash(s string) string {
