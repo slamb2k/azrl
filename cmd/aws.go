@@ -285,7 +285,7 @@ func offerAwsEnvrc(pwd, name string, isolate bool, out io.Writer, in io.Reader) 
 func awsSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newAwsLoginCmd(), newAwsListCmd(), newAwsUseCmd(),
-		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(),
+		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(), newAwsBrowserCmd(),
 	}
 }
 

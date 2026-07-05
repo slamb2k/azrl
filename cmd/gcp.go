@@ -294,7 +294,7 @@ func offerGcpEnvrc(pwd, name string, isolate bool, out io.Writer, in io.Reader) 
 func gcpSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newGcpLoginCmd(), newGcpListCmd(), newGcpUseCmd(),
-		newGcpRmCmd(), newGcpCaptureCmd(), newGcpStatusCmd(),
+		newGcpRmCmd(), newGcpCaptureCmd(), newGcpStatusCmd(), newGcpBrowserCmd(),
 	}
 }
 

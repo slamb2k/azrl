@@ -223,7 +223,7 @@ func newGhStatusCmd() *cobra.Command {
 func githubSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newGhLoginCmd(), newGhListCmd(), newGhUseCmd(), newGhSwitchStubCmd(),
-		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(),
+		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(), newGhBrowserCmd(),
 	}
 }
 
