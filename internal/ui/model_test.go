@@ -8,6 +8,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/slamb2k/azrl/internal/browserpick"
 )
 
 // seedModel returns a sized model with one profile on disk.
@@ -268,6 +270,89 @@ func TestKeyHelpFitDropsOptionalTailWhenNarrow(t *testing.T) {
 	mid := keyHelpFit(60, core, optional)
 	if strings.Contains(mid, "options") && !strings.Contains(mid, "quit") {
 		t.Fatalf("drop order should favour earlier optional items: %q", mid)
+	}
+}
+
+func TestAzureBrowserActionOpensPickerAndWritesKeys(t *testing.T) {
+	m := seedModel(t)
+	confPath := filepath.Join(os.Getenv("HOME"), ".azure-profiles", "acme.conf")
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	mm := nm.(Model)
+	if mm.browserFor != "acme" {
+		t.Fatalf("'b' did not arm browserFor: %q", mm.browserFor)
+	}
+	if cmd == nil {
+		t.Fatal("expected a discovery command from the browser hotkey")
+	}
+	nm2, _ := mm.Update(browserProfilesMsg{forProfile: "acme", profiles: []browserpick.Profile{
+		{Browser: "edge", OS: "linux", Dir: "Profile 2", Name: "Work", Email: "simon@acme.com"},
+	}})
+	mm2 := nm2.(Model)
+	if mm2.browserPick == nil {
+		t.Fatal("browser profiles msg did not open the picker")
+	}
+	if !strings.Contains(mm2.View(), "BROWSER PROFILE") {
+		t.Fatalf("picker not rendered:\n%s", mm2.View())
+	}
+	nm3, _ := mm2.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm3 := nm3.(Model)
+	if mm3.browserPick != nil {
+		t.Fatal("picker should close after enter")
+	}
+	b, _ := os.ReadFile(confPath)
+	if !strings.Contains(string(b), `AZ_BROWSER_CMD=microsoft-edge --profile-directory="Profile 2"`) ||
+		!strings.Contains(string(b), "AZ_BROWSER_LABEL=Edge — Work") {
+		t.Fatalf("keys not written:\n%s", b)
+	}
+}
+
+func TestAzureBrowserDiscoveryFailureFallsBackToManualInput(t *testing.T) {
+	m := seedModel(t)
+	confPath := filepath.Join(os.Getenv("HOME"), ".azure-profiles", "acme.conf")
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	nm2, _ := nm.(Model).Update(browserProfilesMsg{forProfile: "acme", err: os.ErrDeadlineExceeded})
+	mm2 := nm2.(Model)
+	if !mm2.browserManual {
+		t.Fatal("discovery failure did not fall back to manual input")
+	}
+	mm2.browserInput.SetValue("my-browser --foo")
+	nm3, _ := mm2.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if nm3.(Model).browserManual {
+		t.Fatal("manual input should close after enter")
+	}
+	b, _ := os.ReadFile(confPath)
+	if !strings.Contains(string(b), "AZ_BROWSER_CMD=my-browser --foo") {
+		t.Fatalf("manual command not written:\n%s", b)
+	}
+}
+
+func TestAzureBrowserEscClearsStatus(t *testing.T) {
+	m := seedModel(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	mm := nm.(Model)
+	if mm.status == "" {
+		t.Fatal("expected a status message while discovery is pending")
+	}
+	// Manual-entry esc.
+	nm2, _ := mm.Update(browserProfilesMsg{forProfile: "acme", err: os.ErrDeadlineExceeded})
+	mm2 := nm2.(Model)
+	nm3, _ := mm2.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	mm3 := nm3.(Model)
+	if mm3.status != "" {
+		t.Fatalf("esc from manual entry left a stale status: %q", mm3.status)
+	}
+
+	// Picker esc.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	mm = nm.(Model)
+	nm2, _ = mm.Update(browserProfilesMsg{forProfile: "acme", profiles: []browserpick.Profile{
+		{Browser: "edge", OS: "linux", Dir: "Profile 2", Name: "Work", Email: "simon@acme.com"},
+	}})
+	mm2 = nm2.(Model)
+	nm3b, _ := mm2.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	mm3b := nm3b.(Model)
+	if mm3b.status != "" {
+		t.Fatalf("esc from picker left a stale status: %q", mm3b.status)
 	}
 }
 

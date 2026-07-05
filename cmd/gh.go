@@ -186,6 +186,11 @@ func newGhCaptureCmd() *cobra.Command {
 				return err
 			}
 			conf := github.Conf{Host: hostname, User: login, Protocol: "https"}
+			if existing, err := github.LoadConf(name, dir); err == nil {
+				conf.Label = existing.Label
+				conf.BrowserCmd = existing.BrowserCmd
+				conf.BrowserLabel = existing.BrowserLabel
+			}
 			if err := conf.Write(ghConfPath(dir, name)); err != nil {
 				return err
 			}
@@ -223,7 +228,7 @@ func newGhStatusCmd() *cobra.Command {
 func githubSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newGhLoginCmd(), newGhListCmd(), newGhUseCmd(), newGhSwitchStubCmd(),
-		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(),
+		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(), newGhBrowserCmd(),
 	}
 }
 

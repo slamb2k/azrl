@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/slamb2k/azrl/internal/browserpick"
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 )
@@ -88,6 +89,44 @@ func TestProviderViewDeleteKeyRemoves(t *testing.T) {
 	}
 }
 
+func TestProviderViewBrowserEscClearsStatus(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	av := nm.(awsView)
+	if av.status == "" {
+		t.Fatal("expected a status message while discovery is pending")
+	}
+
+	// Manual-entry esc.
+	nm2, _ := av.Update(browserProfilesMsg{forProfile: "work", err: os.ErrDeadlineExceeded})
+	av2 := nm2.(awsView)
+	nm3, _ := av2.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	av3 := nm3.(awsView)
+	if av3.status != "" {
+		t.Fatalf("esc from manual entry left a stale status: %q", av3.status)
+	}
+
+	// Picker esc.
+	nm, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	av = nm.(awsView)
+	nm2, _ = av.Update(browserProfilesMsg{forProfile: "work", profiles: []browserpick.Profile{
+		{Browser: "edge", OS: "linux", Dir: "Profile 2", Name: "Work", Email: "simon@acme.com"},
+	}})
+	av2 = nm2.(awsView)
+	nm3, _ = av2.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	av3 = nm3.(awsView)
+	if av3.status != "" {
+		t.Fatalf("esc from picker left a stale status: %q", av3.status)
+	}
+}
+
 func TestRenderProfilePaneScopeGlyphs(t *testing.T) {
 	profiles := []profile.Listed{
 		{Name: "work", Detail: "acme.awsapps.com"},
@@ -138,8 +177,8 @@ func TestUseHereHiddenWhenSelectedProfilePinsCwd(t *testing.T) {
 	if strings.Contains(out, "Use here") {
 		t.Fatalf("Use here should be hidden for the cwd-pinned selection:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (3)") {
-		t.Fatalf("action count should drop to 3:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (4)") {
+		t.Fatalf("action count should drop to 4:\n%s", out)
 	}
 	// The 'u' accelerator is inert for this selection.
 	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
@@ -198,8 +237,8 @@ func TestSignInHiddenWhenSessionLive(t *testing.T) {
 	if strings.Contains(out, "Sign in") {
 		t.Fatalf("Sign in should hide for a live session:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (3)") {
-		t.Fatalf("action count should drop to 3:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (4)") {
+		t.Fatalf("action count should drop to 4:\n%s", out)
 	}
 }
 

@@ -18,6 +18,7 @@ func TestConfWriteAndLoad(t *testing.T) {
 		Label:         "Acme Prod",
 		Isolate:       true,
 		BrowserCmd:    "chrome-work",
+		BrowserLabel:  "Edge — Work",
 	}
 	if err := c.Write(path); err != nil {
 		t.Fatal(err)

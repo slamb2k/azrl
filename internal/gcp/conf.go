@@ -22,6 +22,7 @@ type Conf struct {
 	ExpectAccount string
 	Label         string
 	BrowserCmd    string // optional local browser command overriding the global LOCAL_BROWSER_CMD
+	BrowserLabel  string // human label for BrowserCmd, e.g. "Edge — Work" (display-only)
 	Isolate       bool
 }
 
@@ -57,6 +58,7 @@ func LoadConf(name, confdir string) (Conf, error) {
 		ExpectAccount: m["GCP_EXPECT_ACCOUNT"],
 		Label:         m["GCP_LABEL"],
 		BrowserCmd:    m["GCP_BROWSER_CMD"],
+		BrowserLabel:  m["GCP_BROWSER_LABEL"],
 		Isolate:       strings.EqualFold(m["GCP_ISOLATE"], "true"),
 	}
 	if c.Project == "" {
@@ -74,8 +76,8 @@ func (c Conf) Write(path string) error {
 	if c.Isolate {
 		isolate = "true"
 	}
-	body := fmt.Sprintf("GCP_CONFIG_NAME=%s\nGCP_PROJECT=%s\nGCP_REGION=%s\nGCP_EXPECT_ACCOUNT=%s\nGCP_LABEL=%s\nGCP_ISOLATE=%s\nGCP_BROWSER_CMD=%s\n",
-		c.ConfigName, c.Project, c.Region, c.ExpectAccount, c.Label, isolate, c.BrowserCmd)
+	body := fmt.Sprintf("GCP_CONFIG_NAME=%s\nGCP_PROJECT=%s\nGCP_REGION=%s\nGCP_EXPECT_ACCOUNT=%s\nGCP_LABEL=%s\nGCP_ISOLATE=%s\nGCP_BROWSER_CMD=%s\nGCP_BROWSER_LABEL=%s\n",
+		c.ConfigName, c.Project, c.Region, c.ExpectAccount, c.Label, isolate, c.BrowserCmd, c.BrowserLabel)
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
 	if err != nil {
 		return err

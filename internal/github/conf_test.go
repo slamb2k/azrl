@@ -8,7 +8,7 @@ import (
 
 func TestConfWriteAndLoad(t *testing.T) {
 	dir := t.TempDir()
-	c := Conf{Host: "github.com", User: "octocat", Label: "Work", Protocol: "https", BrowserCmd: "chrome-work"}
+	c := Conf{Host: "github.com", User: "octocat", Label: "Work", Protocol: "https", BrowserCmd: "chrome-work", BrowserLabel: "Edge — Work"}
 	path := filepath.Join(dir, "work.conf")
 	if err := c.Write(path); err != nil {
 		t.Fatal(err)
@@ -17,7 +17,7 @@ func TestConfWriteAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rd.Host != "github.com" || rd.User != "octocat" || rd.Label != "Work" || rd.Protocol != "https" || rd.BrowserCmd != "chrome-work" {
+	if rd.Host != "github.com" || rd.User != "octocat" || rd.Label != "Work" || rd.Protocol != "https" || rd.BrowserCmd != "chrome-work" || rd.BrowserLabel != "Edge — Work" {
 		t.Fatalf("roundtrip got %+v", rd)
 	}
 }

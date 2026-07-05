@@ -217,6 +217,12 @@ func newAwsCaptureCmd() *cobra.Command {
 				SSOStartURL: startURL, SSORegion: region, AccountID: accountID,
 				RoleName: roleName, ExpectAccount: expectAccount, ExpectARN: expectARN,
 			}
+			if existing, err := aws.LoadConf(name, dir); err == nil {
+				conf.Label = existing.Label
+				conf.Isolate = existing.Isolate
+				conf.BrowserCmd = existing.BrowserCmd
+				conf.BrowserLabel = existing.BrowserLabel
+			}
 			if err := conf.Write(awsConfPath(dir, name)); err != nil {
 				return err
 			}
@@ -285,7 +291,7 @@ func offerAwsEnvrc(pwd, name string, isolate bool, out io.Writer, in io.Reader) 
 func awsSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newAwsLoginCmd(), newAwsListCmd(), newAwsUseCmd(),
-		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(),
+		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(), newAwsBrowserCmd(),
 	}
 }
 

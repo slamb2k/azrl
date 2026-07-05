@@ -79,7 +79,7 @@ func effectiveIdentity(dirProfile, dirIdentity, ambient string) string {
 // profileInfoBlock renders the top of the DETAILS pane for one profile: a
 // key/value sheet with a fixed key column — the conf detail plus the
 // disk-only status (identity, expiry, last-used).
-func profileInfoBlock(pr profile.Listed, st provider.Status, driftNote string, w int) string {
+func profileInfoBlock(pr profile.Listed, st provider.Status, browser, driftNote string, w int) string {
 	row := func(k, v string) string {
 		if v == "" {
 			v = mutedStyle.Render("—")
@@ -90,6 +90,7 @@ func profileInfoBlock(pr profile.Listed, st provider.Status, driftNote string, w
 		row("Name", pr.Display()),
 		row("Identity", st.Identity),
 		row("Detail", pr.Detail),
+		row("Browser", browser),
 		row("Expiry", expiryWord(st.Expiry)),
 		row("Last used", lastUsedWord(st.LastUsed)),
 	}
