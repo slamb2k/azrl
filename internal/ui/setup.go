@@ -3,7 +3,9 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -16,11 +18,20 @@ import (
 type setupStep int
 
 const (
-	stepPick    setupStep = iota // choose among >1 candidate
+	stepDetect  setupStep = iota // spinner splash while "detecting" the environment
+	stepPick                     // choose among >1 candidate
 	stepOS                       // remote only: dev-machine OS → BROWSER_CMD
 	stepFields                   // edit the mode's fields
 	stepConfirm                  // review + write
 )
+
+// detectDelay is how long the Step 1 detection splash lingers before advancing —
+// long enough to read the message, short enough not to nag. Detection itself is
+// instant (pure envdetect); the pause is deliberate UX.
+const detectDelay = 1500 * time.Millisecond
+
+// detectDoneMsg fires once the detection splash has shown for detectDelay.
+type detectDoneMsg struct{}
 
 // osChoice maps a dev-machine OS to the command that opens a URL there.
 type osChoice struct{ label, cmd string }
@@ -50,6 +61,7 @@ type setupModel struct {
 	chosen envdetect.Candidate
 	fields []setupField
 	fcur   int
+	sp     spinner.Model
 	width  int
 	height int
 	result config.Global
@@ -57,17 +69,27 @@ type setupModel struct {
 }
 
 // newSetupModel builds the wizard from detected candidates (recommended first).
+// It opens on the detection splash (Step 1); the single-candidate target is
+// pre-settled so advanceFromDetect can route straight to configure/browser.
 func newSetupModel(cands []envdetect.Candidate) setupModel {
-	m := setupModel{cands: cands}
-	if len(cands) <= 1 {
-		if len(cands) == 1 {
-			m.chosen = cands[0]
-		}
-		m.enterChosen()
-	} else {
-		m.step = stepPick
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(gold)
+	m := setupModel{cands: cands, step: stepDetect, sp: sp}
+	if len(cands) == 1 {
+		m.chosen = cands[0]
 	}
 	return m
+}
+
+// advanceFromDetect leaves the splash for the first real step: the pick when the
+// environment is ambiguous, otherwise straight into the settled candidate.
+func (m *setupModel) advanceFromDetect() {
+	if len(m.cands) > 1 {
+		m.step = stepPick
+		return
+	}
+	m.enterChosen()
 }
 
 // enterChosen advances from a settled candidate into OS pick (remote) or the
@@ -126,13 +148,33 @@ func (m setupModel) collect() config.Global {
 // Result returns the resolved config and whether the user confirmed it.
 func (m setupModel) Result() (config.Global, bool) { return m.result, m.ok }
 
-func (m setupModel) Init() tea.Cmd { return textinput.Blink }
+// Init starts the spinner and the detection timer alongside the input blink.
+func (m setupModel) Init() tea.Cmd {
+	return tea.Batch(
+		m.sp.Tick,
+		textinput.Blink,
+		tea.Tick(detectDelay, func(time.Time) tea.Msg { return detectDoneMsg{} }),
+	)
+}
 
 func (m setupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if ws, ok := msg.(tea.WindowSizeMsg); ok {
-		m.width = ws.Width
-		m.height = ws.Height
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 		return m, nil
+	case detectDoneMsg:
+		if m.step == stepDetect {
+			m.advanceFromDetect()
+		}
+		return m, textinput.Blink
+	case spinner.TickMsg:
+		if m.step != stepDetect {
+			return m, nil // stop animating once past the splash
+		}
+		var cmd tea.Cmd
+		m.sp, cmd = m.sp.Update(msg)
+		return m, cmd
 	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -280,10 +322,12 @@ func (m setupModel) stageLabels() []string {
 	return []string{"Detect", "Configure", "Confirm"}
 }
 
-// activeStage maps the current step onto its stage label.
+// activeStage maps the current step onto its stage label. The splash and the
+// pick both live in the "Detect" stage — the splash detects, the pick resolves
+// an ambiguous detection.
 func (m setupModel) activeStage() string {
 	switch m.step {
-	case stepPick:
+	case stepDetect, stepPick:
 		return "Detect"
 	case stepOS:
 		return "Browser"
@@ -332,6 +376,8 @@ func (m setupModel) stepCounter() string {
 // stepTitle is the headline inside the card for the current step.
 func (m setupModel) stepTitle() string {
 	switch m.step {
+	case stepDetect:
+		return "Detecting your environment"
 	case stepPick:
 		return "Which environment is this?"
 	case stepOS:
@@ -346,6 +392,8 @@ func (m setupModel) stepTitle() string {
 // footerHelp is the keycap hint bar for the current step.
 func (m setupModel) footerHelp() string {
 	switch m.step {
+	case stepDetect:
+		return keyHelp("esc", "cancel")
 	case stepConfirm:
 		return keyHelp("↵/y", "write", "n", "back", "esc", "cancel")
 	case stepFields:
@@ -363,6 +411,10 @@ func (m setupModel) View() string {
 	var b strings.Builder
 	b.WriteString(setupHeadStyle.Render(m.stepTitle()) + "\n\n")
 	switch m.step {
+	case stepDetect:
+		b.WriteString(m.sp.View() + accentStyle.Render(" Detecting…") + "\n\n")
+		b.WriteString(mutedStyle.Render("Inspecting OS · shell · SSH signals to recommend") + "\n")
+		b.WriteString(mutedStyle.Render("the simplest setup that works here.") + "\n")
 	case stepPick:
 		for i, c := range m.cands {
 			marker, name := "  ", c.Label
