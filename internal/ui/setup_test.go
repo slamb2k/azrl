@@ -97,10 +97,10 @@ func TestSetupViewChrome(t *testing.T) {
 		{Mode: envdetect.Local, Label: "Local", Reason: "WSL detected", BrowserCmd: "wslview", BrowserHost: "localhost"},
 	}
 	m := newSetupModel(cands)
-	m.width = 74
+	m.width, m.height = 90, 30
 	v := m.View()
-	// Banner crest (wordmark glyph), breadcrumb stages, and both mode badges.
-	for _, want := range []string{"█", "Detect", "Configure", "Confirm", "LOCAL", "REMOTE"} {
+	// Banner crest, step counter, breadcrumb stages, and both mode badges.
+	for _, want := range []string{"█", "STEP 1 OF", "Detect", "Configure", "Confirm", "LOCAL", "REMOTE"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("pick view missing %q", want)
 		}
