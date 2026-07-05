@@ -82,6 +82,9 @@ func newGcpLoginCmd() *cobra.Command {
 			}
 			configName := conf.ResolvedConfigName(name)
 			cmd.Printf("gcp: signing in to project %q as profile %q\n", conf.Project, name)
+			if conf.BrowserCmd != "" {
+				os.Setenv("AZRL_BROWSER_CMD", conf.BrowserCmd)
+			}
 			if err := gcp.Login(dir, name, configName, conf.Isolate); err != nil {
 				return err
 			}
