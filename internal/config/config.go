@@ -85,6 +85,7 @@ type Global struct {
 }
 
 // LoadGlobal reads <dir>/azrl.conf and validates all three fields are present.
+// The AZRL_BROWSER_CMD env var, when set, overrides LocalBrowserCmd.
 func LoadGlobal(dir string) (Global, error) {
 	var g Global
 	path := filepath.Join(dir, "azrl.conf")
@@ -100,6 +101,12 @@ func LoadGlobal(dir string) (Global, error) {
 	g = Global{LocalHost: m["LOCAL_HOST"], LocalBrowserCmd: m["LOCAL_BROWSER_CMD"], VMHost: m["VM_HOST"]}
 	if g.LocalHost == "" || g.LocalBrowserCmd == "" || g.VMHost == "" {
 		return g, fmt.Errorf("azrl: LOCAL_HOST, LOCAL_BROWSER_CMD and VM_HOST must all be set in %s", path)
+	}
+	// AZRL_BROWSER_CMD overrides the browser command for this process only:
+	// set per-profile by the cmd layer, or exported by the user as an escape
+	// hatch. Applied after validation so azrl.conf must still be complete.
+	if v := os.Getenv("AZRL_BROWSER_CMD"); v != "" {
+		g.LocalBrowserCmd = v
 	}
 	return g, nil
 }

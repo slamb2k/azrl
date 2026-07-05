@@ -19,6 +19,7 @@ func TestParseKV(t *testing.T) {
 }
 
 func TestLoadGlobal(t *testing.T) {
+	t.Setenv("AZRL_BROWSER_CMD", "")
 	dir := t.TempDir()
 	conf := "LOCAL_HOST=pc\nLOCAL_BROWSER_CMD=wslview\nVM_HOST=vm\n"
 	if err := os.WriteFile(filepath.Join(dir, "azrl.conf"), []byte(conf), 0o644); err != nil {
@@ -36,6 +37,22 @@ func TestLoadGlobal(t *testing.T) {
 func TestLoadGlobalMissing(t *testing.T) {
 	if _, err := LoadGlobal(t.TempDir()); err == nil {
 		t.Fatal("expected error for missing azrl.conf")
+	}
+}
+
+func TestLoadGlobalBrowserCmdEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	conf := "LOCAL_HOST=pc\nLOCAL_BROWSER_CMD=wslview\nVM_HOST=vm\n"
+	if err := os.WriteFile(filepath.Join(dir, "azrl.conf"), []byte(conf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AZRL_BROWSER_CMD", "chrome-work")
+	g, err := LoadGlobal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.LocalBrowserCmd != "chrome-work" {
+		t.Fatalf("env override not applied: %+v", g)
 	}
 }
 
