@@ -52,6 +52,25 @@ mkdir -p "$bindir"
 install -m 0755 "$tmp/$BIN" "$bindir/$BIN" 2>/dev/null || { cp "$tmp/$BIN" "$bindir/$BIN" && chmod 0755 "$bindir/$BIN"; }
 
 echo "azrl-install: installed $bindir/$BIN ($tag)"
+
+# --- bootstrap the global config from the example if absent ---
+# azrl refuses to run without ~/.azure-profiles/azrl.conf, so seed it here.
+profiles="$HOME/.azure-profiles"
+mkdir -p "$profiles"
+if [ ! -f "$profiles/azrl.conf" ]; then
+  example_url="https://raw.githubusercontent.com/$REPO/$tag/azrl.conf.example"
+  if curl -fsSL "$example_url" -o "$profiles/azrl.conf" 2>/dev/null; then
+    echo "azrl-install: wrote $profiles/azrl.conf — edit LOCAL_HOST/LOCAL_BROWSER_CMD/VM_HOST before first login"
+  else
+    echo "azrl-install: warning — could not fetch azrl.conf.example; create $profiles/azrl.conf manually" >&2
+  fi
+fi
+
+# --- globally gitignore .azprofile so it is never committed ---
+gi="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
+mkdir -p "$(dirname "$gi")"
+grep -qxF '.azprofile' "$gi" 2>/dev/null || echo '.azprofile' >> "$gi"
+
 case ":$PATH:" in
   *":$bindir:"*) : ;;
   *) echo "azrl-install: note — $bindir is not on your PATH; add it or move the binary." ;;
