@@ -51,6 +51,7 @@ type setupModel struct {
 	fields []setupField
 	fcur   int
 	width  int
+	height int
 	result config.Global
 	ok     bool // true once the user confirms
 }
@@ -130,6 +131,7 @@ func (m setupModel) Init() tea.Cmd { return textinput.Blink }
 func (m setupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = ws.Width
+		m.height = ws.Height
 		return m, nil
 	}
 	key, ok := msg.(tea.KeyMsg)
@@ -312,6 +314,21 @@ func (m setupModel) breadcrumb() string {
 	return strings.Join(parts, mutedStyle.Render("  ─  "))
 }
 
+// stepCounter labels the current step's position in the whole flow, e.g.
+// "STEP 2 OF 4" — the plain-language companion to the breadcrumb.
+func (m setupModel) stepCounter() string {
+	labels := m.stageLabels()
+	active := m.activeStage()
+	idx := 1
+	for i, l := range labels {
+		if l == active {
+			idx = i + 1
+			break
+		}
+	}
+	return accentStyle.Render(fmt.Sprintf("STEP %d OF %d", idx, len(labels)))
+}
+
 // stepTitle is the headline inside the card for the current step.
 func (m setupModel) stepTitle() string {
 	switch m.step {
@@ -394,11 +411,23 @@ func (m setupModel) View() string {
 	}
 	b.WriteString("\n" + m.footerHelp())
 
-	var out strings.Builder
-	out.WriteString(bannerFor(w) + "\n")
-	out.WriteString(m.breadcrumb() + "\n\n")
-	out.WriteString(setupCardStyle.Render(b.String()))
-	return out.String()
+	// Stack the crest, the step counter + breadcrumb, and the card, each centered
+	// on the widest element (the banner), so the whole thing reads as one column.
+	block := lipgloss.JoinVertical(
+		lipgloss.Center,
+		bannerFor(w),
+		"",
+		m.stepCounter(),
+		m.breadcrumb(),
+		"",
+		setupCardStyle.Render(b.String()),
+	)
+	// Full-screen: centre the block in the alt-screen viewport. Falls back to the
+	// bare block when dimensions are unknown (e.g. in tests).
+	if m.width > 0 && m.height > 0 {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, block)
+	}
+	return block
 }
 
 func emptyDash(s string) string {
@@ -408,10 +437,12 @@ func emptyDash(s string) string {
 	return s
 }
 
-// RunSetupWizard runs the interactive wizard and returns the resolved config and
-// whether the user confirmed it.
+// RunSetupWizard runs the interactive wizard full-screen (alt-screen) and
+// returns the resolved config and whether the user confirmed it. The alt-screen
+// is torn down on exit, so any status the caller prints lands on a clean
+// terminal with no leftover wizard chrome.
 func RunSetupWizard(cands []envdetect.Candidate) (config.Global, bool, error) {
-	final, err := tea.NewProgram(newSetupModel(cands)).Run()
+	final, err := tea.NewProgram(newSetupModel(cands), tea.WithAltScreen()).Run()
 	if err != nil {
 		return config.Global{}, false, err
 	}
