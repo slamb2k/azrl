@@ -78,6 +78,11 @@ func newAwsLoginCmd() *cobra.Command {
 				return err
 			}
 			cmd.Printf("aws: signing in to %s as profile %q\n", conf.SSOStartURL, name)
+			if conf.BrowserCmd != "" {
+				// aws.Login loads config.Global itself; the env hook in
+				// LoadGlobal picks this up (same pattern as AZURE_CONFIG_DIR).
+				os.Setenv("AZRL_BROWSER_CMD", conf.BrowserCmd)
+			}
 			if err := aws.Login(dir, name, conf.Isolate, device); err != nil {
 				return err
 			}
