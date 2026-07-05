@@ -60,20 +60,22 @@ Cobra subcommands, split across packages:
 
 ### Configuration model
 
-- `~/.azure-profiles/azrl.conf` — global: `LOCAL_HOST`, `LOCAL_BROWSER_CMD`, `VM_HOST`, `DASHBOARD_POLL_SECS` (optional, default 3).
+- `~/.azure-profiles/azrl.conf` — global: `LOCAL_HOST`, `LOCAL_BROWSER_CMD`, `VM_HOST`, `DASHBOARD_POLL_SECS` (optional, default 3). The `AZRL_BROWSER_CMD` env var overrides `LOCAL_BROWSER_CMD` per process.
 - `~/.<provider>-profiles/mappings` — per-provider TSV index of directory → profile mappings (`<abs-dir>\t<profile>\t<source>`, source `pointer` or `gitconfig`). Auto-managed: written on use/login/capture/`Touch` (and github `SetupRepo`), pruned + revalidated on read, self-healed when azrl first sees a hand-made pointer — not hand-edited.
-- `~/.azure-profiles/<profile>.conf` — per-profile: `AZ_TENANT` (required), `AZ_TENANT_ID` (GUID — required for guest/B2B where `tenantDefaultDomain` is null), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER`. `LAST_USED`/`LAST_DIR` are auto-managed (bumped on use/login/capture) — not hand-edited.
+- `~/.azure-profiles/<profile>.conf` — per-profile: `AZ_TENANT` (required), `AZ_TENANT_ID` (GUID — required for guest/B2B where `tenantDefaultDomain` is null), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER`, `AZ_BROWSER_CMD` (optional; local browser command overriding the global `LOCAL_BROWSER_CMD`, e.g. `google-chrome --profile-directory="Profile 2"`). `LAST_USED`/`LAST_DIR` are auto-managed (bumped on use/login/capture) — not hand-edited.
 - `<repo>/.azprofile` — one line naming the profile; resolved by walking up from `$PWD`. Globally gitignored (never commit it).
 - `~/.azure-profiles/<profile>/` — isolated `AZURE_CONFIG_DIR` per profile.
-- `~/.github-profiles/<profile>.conf` — per-profile GitHub: `GH_HOST` (required), `GH_USER`, `GH_LABEL`, `GH_PROTOCOL`.
+- `~/.github-profiles/<profile>.conf` — per-profile GitHub: `GH_HOST` (required), `GH_USER`, `GH_LABEL`, `GH_PROTOCOL`, `GH_BROWSER_CMD` (optional, same override as `AZ_BROWSER_CMD`).
 - `<repo>/.ghprofile` — one line naming the GitHub profile; resolved the same way. Globally gitignored.
 - `~/.github-profiles/<profile>/` — isolated `GH_CONFIG_DIR` per profile (its own `hosts.yml`/token; requires `gh auth login --insecure-storage`).
-- `~/.aws-profiles/<profile>.conf` — per-profile AWS: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE`. `LAST_USED`/`LAST_DIR` are auto-managed.
+- `~/.aws-profiles/<profile>.conf` — per-profile AWS: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE`, `AWS_BROWSER_CMD` (optional, same override). `LAST_USED`/`LAST_DIR` are auto-managed.
 - `<repo>/.awsprofile` — one line naming the AWS profile; resolved the same way. Globally gitignored. The `.envrc` exports `AWS_PROFILE=<name>` (default) or the isolate file-path vars.
 - `~/.aws-profiles/<profile>/` — isolated `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` per profile (only under `--isolate`).
-- `~/.gcp-profiles/<profile>.conf` — per-profile GCP: `GCP_CONFIG_NAME` (named gcloud configuration; defaults to the profile name), `GCP_PROJECT` (required), `GCP_REGION`, `GCP_EXPECT_ACCOUNT`, `GCP_LABEL`, `GCP_ISOLATE`. `LAST_USED`/`LAST_DIR` are auto-managed.
+- `~/.gcp-profiles/<profile>.conf` — per-profile GCP: `GCP_CONFIG_NAME` (named gcloud configuration; defaults to the profile name), `GCP_PROJECT` (required), `GCP_REGION`, `GCP_EXPECT_ACCOUNT`, `GCP_LABEL`, `GCP_ISOLATE`, `GCP_BROWSER_CMD` (optional, same override). `LAST_USED`/`LAST_DIR` are auto-managed.
 - `<repo>/.gcpprofile` — one line naming the GCP profile; resolved the same way. Globally gitignored. The `.envrc` exports `CLOUDSDK_ACTIVE_CONFIG_NAME=<name>` (default) or `CLOUDSDK_CONFIG=~/.gcp-profiles/<name>` (under `--isolate`).
 - `~/.gcp-profiles/<profile>/` — isolated `CLOUDSDK_CONFIG` per profile (only under `--isolate`).
+
+Known limitation: Git Credential Manager prompts triggered by a plain `git push` run outside any `azrl` login, so they fall back to the global `LOCAL_BROWSER_CMD` unless `AZRL_BROWSER_CMD` is exported in the shell.
 
 Identity model: the ambient default is a **read-only mirror** of the provider's
 native state (never mutated — PAT-002); **mappings are the opt-in** that earns
