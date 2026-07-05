@@ -134,6 +134,13 @@ func browserAction(v *providerTabView) tea.Cmd {
 	}
 	v.browserFor = name
 	v.status = mutedStyle.Render("looking for browser profiles on the local machine…")
+	return discoverBrowsersCmd(name)
+}
+
+// discoverBrowsersCmd loads the global config and discovers the local
+// machine's browser profiles for name, reporting the result as a
+// browserProfilesMsg. Shared by the provider tabs and the Azure home model.
+func discoverBrowsersCmd(name string) tea.Cmd {
 	return func() tea.Msg {
 		g, err := config.LoadGlobal(config.ProfilesDir())
 		if err != nil {

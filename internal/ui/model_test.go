@@ -300,7 +300,8 @@ func TestAzureBrowserActionOpensPickerAndWritesKeys(t *testing.T) {
 		t.Fatal("picker should close after enter")
 	}
 	b, _ := os.ReadFile(confPath)
-	if !strings.Contains(string(b), `AZ_BROWSER_CMD=microsoft-edge --profile-directory="Profile 2"`) {
+	if !strings.Contains(string(b), `AZ_BROWSER_CMD=microsoft-edge --profile-directory="Profile 2"`) ||
+		!strings.Contains(string(b), "AZ_BROWSER_LABEL=Edge — Work") {
 		t.Fatalf("keys not written:\n%s", b)
 	}
 }

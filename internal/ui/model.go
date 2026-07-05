@@ -618,6 +618,7 @@ func (m Model) updateBrowserPick(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if picked != nil {
 			m.applyBrowserMapping(picked.Command(), picked.Label())
 		}
+		m.browserFor = ""
 	}
 	return m, nil
 }
@@ -627,15 +628,17 @@ func (m Model) updateBrowserManual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.browserManual = false
+		m.browserFor = ""
 	case "enter":
 		if c := strings.TrimSpace(m.browserInput.Value()); c != "" {
 			m.browserManual = false
 			m.applyBrowserMapping(c, "")
+			m.browserFor = ""
 		}
 	default:
 		var cmd tea.Cmd
 		m.browserInput, cmd = m.browserInput.Update(msg)
-		return m, cmd
+		_ = cmd
 	}
 	return m, nil
 }
@@ -750,15 +753,7 @@ func (m Model) dispatch(key string) (tea.Model, tea.Cmd) {
 		}
 		m.browserFor = sel.name
 		m.status = mutedStyle.Render("looking for browser profiles on the local machine…")
-		name := sel.name
-		return m, func() tea.Msg {
-			g, err := config.LoadGlobal(config.ProfilesDir())
-			if err != nil {
-				return browserProfilesMsg{forProfile: name, err: err}
-			}
-			ps, derr := browserpick.Discover(g)
-			return browserProfilesMsg{forProfile: name, profiles: ps, err: derr}
-		}
+		return m, discoverBrowsersCmd(sel.name)
 	case "e":
 		if _, err := profile.Resolve("", m.pwd); err != nil {
 			m.status = failureStyle.Render("✗ no profile here to pin")
