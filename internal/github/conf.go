@@ -13,10 +13,11 @@ import (
 // login for post-auth assertion; Label is an optional display name; Protocol is
 // https (GCM/bridge path) or ssh (informational).
 type Conf struct {
-	Host     string
-	User     string
-	Label    string
-	Protocol string
+	Host       string
+	User       string
+	Label      string
+	Protocol   string
+	BrowserCmd string // optional local browser command overriding the global LOCAL_BROWSER_CMD
 }
 
 // LoadConf reads <confdir>/<name>.conf and requires GH_HOST. Protocol defaults
@@ -33,7 +34,7 @@ func LoadConf(name, confdir string) (Conf, error) {
 	if err != nil {
 		return c, err
 	}
-	c = Conf{Host: m["GH_HOST"], User: m["GH_USER"], Label: m["GH_LABEL"], Protocol: m["GH_PROTOCOL"]}
+	c = Conf{Host: m["GH_HOST"], User: m["GH_USER"], Label: m["GH_LABEL"], Protocol: m["GH_PROTOCOL"], BrowserCmd: m["GH_BROWSER_CMD"]}
 	if c.Host == "" {
 		return c, fmt.Errorf("ghrl: GH_HOST not set in %s", path)
 	}
@@ -52,8 +53,8 @@ func (c Conf) Write(path string) error {
 	if protocol == "" {
 		protocol = "https"
 	}
-	body := fmt.Sprintf("GH_HOST=%s\nGH_USER=%s\nGH_LABEL=%s\nGH_PROTOCOL=%s\n",
-		c.Host, c.User, c.Label, protocol)
+	body := fmt.Sprintf("GH_HOST=%s\nGH_USER=%s\nGH_LABEL=%s\nGH_PROTOCOL=%s\nGH_BROWSER_CMD=%s\n",
+		c.Host, c.User, c.Label, protocol, c.BrowserCmd)
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
 	if err != nil {
 		return err

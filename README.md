@@ -400,22 +400,22 @@ The full pattern language (and what was deliberately *not* built) is in
 
 | File | Purpose |
 |---|---|
-| `~/.azure-profiles/azrl.conf` | global: `LOCAL_HOST` (host running the browser, e.g. a tailnet name), `LOCAL_BROWSER_CMD` (e.g. `wslview`), `VM_HOST` (this machine's reachable name) |
-| `~/.azure-profiles/<profile>.conf` | per-profile: `AZ_TENANT` (domain, for `az login --tenant`), `AZ_TENANT_ID` (tenant GUID — **required for guest/B2B** where `az account show` returns a null `tenantDefaultDomain`), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER` |
+| `~/.azure-profiles/azrl.conf` | global: `LOCAL_HOST` (host running the browser, e.g. a tailnet name), `LOCAL_BROWSER_CMD` (e.g. `wslview`), `VM_HOST` (this machine's reachable name). The `AZRL_BROWSER_CMD` env var overrides `LOCAL_BROWSER_CMD` per process |
+| `~/.azure-profiles/<profile>.conf` | per-profile: `AZ_TENANT` (domain, for `az login --tenant`), `AZ_TENANT_ID` (tenant GUID — **required for guest/B2B** where `az account show` returns a null `tenantDefaultDomain`), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER`, `AZ_BROWSER_CMD` (optional; local browser command overriding the global `LOCAL_BROWSER_CMD`, e.g. `google-chrome --profile-directory="Profile 2"` — the `--profile-directory` value is the internal directory name from `chrome://version` / `edge://version`, not the display name shown in the browser's profile switcher) |
 | `<repo>/.azprofile` | one line: the profile name for that repo (uncommitted; globally gitignored) |
 | `<repo>/.envrc` | direnv stanza pinning `AZURE_CONFIG_DIR` to the profile (uncommitted; globally gitignored) |
 | `~/.azure-profiles/<profile>/` | isolated per-profile token cache (`AZURE_CONFIG_DIR`) |
-| `~/.github-profiles/<profile>.conf` | per-profile GitHub: `GH_HOST` (github.com / `*.ghe.com` / GHES host), `GH_USER` (expected login), `GH_LABEL` (optional display name), `GH_PROTOCOL` (`https`) |
+| `~/.github-profiles/<profile>.conf` | per-profile GitHub: `GH_HOST` (github.com / `*.ghe.com` / GHES host), `GH_USER` (expected login), `GH_LABEL` (optional display name), `GH_PROTOCOL` (`https`), `GH_BROWSER_CMD` (optional, same override as `AZ_BROWSER_CMD`) |
 | `<repo>/.ghprofile` | one line: the GitHub profile for that repo (uncommitted; globally gitignored) |
 | `~/.github-profiles/<profile>/` | isolated per-profile `GH_CONFIG_DIR` (its own `hosts.yml`/token) |
-| `~/.aws-profiles/<profile>.conf` | per-profile AWS SSO: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE` |
+| `~/.aws-profiles/<profile>.conf` | per-profile AWS SSO: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE`, `AWS_BROWSER_CMD` (optional, same override) |
 | `<repo>/.awsprofile` | one line: the AWS profile for that repo (uncommitted; globally gitignored) |
 | `~/.aws-profiles/<profile>/` | isolated `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` (only under `--isolate`) |
-| `~/.gcp-profiles/<profile>.conf` | per-profile GCP: `GCP_CONFIG_NAME` (named gcloud configuration; defaults to the profile name), `GCP_PROJECT` (**required**), `GCP_REGION`, `GCP_EXPECT_ACCOUNT`, `GCP_LABEL`, `GCP_ISOLATE` |
+| `~/.gcp-profiles/<profile>.conf` | per-profile GCP: `GCP_CONFIG_NAME` (named gcloud configuration; defaults to the profile name), `GCP_PROJECT` (**required**), `GCP_REGION`, `GCP_EXPECT_ACCOUNT`, `GCP_LABEL`, `GCP_ISOLATE`, `GCP_BROWSER_CMD` (optional, same override) |
 | `<repo>/.gcpprofile` | one line: the GCP profile for that repo (uncommitted; globally gitignored) |
 | `~/.gcp-profiles/<profile>/` | isolated `CLOUDSDK_CONFIG` dir (only under `--isolate`) |
 
-See `azrl.conf.example` and `profile.conf.example` for templates.
+See `azrl.conf.example` and `profile.conf.example` for templates. Note: a plain `git push` runs Git Credential Manager outside any `azrl` login, so `AZ_BROWSER_CMD`/`GH_BROWSER_CMD` don't apply there — export `AZRL_BROWSER_CMD` if you need GCM's browser prompt overridden too.
 
 ## Roadmap
 

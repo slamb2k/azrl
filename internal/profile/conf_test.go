@@ -46,6 +46,7 @@ func TestBuildAndWriteConf(t *testing.T) {
 	}{Name: "u@onenrg.onmicrosoft.com"}}
 	doms := DomainsJSON{Value: []Domain{{ID: "onenrg.mail.onmicrosoft.com"}, {ID: "onenrg.onmicrosoft.com", IsDefault: true}}}
 	c := BuildConf(acct, doms)
+	c.BrowserCmd = `google-chrome --profile-directory="Profile 2"`
 	if c.Tenant != "onenrg.onmicrosoft.com" || c.TenantID != "guid-1" || c.DefaultSub != "sub-9" {
 		t.Fatalf("got %+v", c)
 	}
@@ -55,7 +56,8 @@ func TestBuildAndWriteConf(t *testing.T) {
 		t.Fatal(err)
 	}
 	rd, _ := LoadConf("nrg", dir)
-	if rd.Tenant != "onenrg.onmicrosoft.com" || rd.ExpectUser != "u@onenrg.onmicrosoft.com" {
+	if rd.Tenant != "onenrg.onmicrosoft.com" || rd.ExpectUser != "u@onenrg.onmicrosoft.com" ||
+		rd.BrowserCmd != `google-chrome --profile-directory="Profile 2"` {
 		t.Fatalf("roundtrip got %+v", rd)
 	}
 }

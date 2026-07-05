@@ -17,6 +17,7 @@ func TestConfWriteAndLoad(t *testing.T) {
 		ExpectAccount: "simon@acme.com",
 		Label:         "Acme Prod",
 		Isolate:       true,
+		BrowserCmd:    "chrome-work",
 	}
 	if err := c.Write(path); err != nil {
 		t.Fatal(err)

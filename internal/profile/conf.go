@@ -40,6 +40,7 @@ type Conf struct {
 	DefaultSub string
 	ExpectUser string
 	Label      string
+	BrowserCmd string // optional local browser command overriding the global LOCAL_BROWSER_CMD
 }
 
 // azureScheme parameterizes the shared profile mechanics for Azure: .azprofile
@@ -84,7 +85,7 @@ func LoadConf(name, confdir string) (Conf, error) {
 	if err != nil {
 		return c, err
 	}
-	c = Conf{Tenant: m["AZ_TENANT"], TenantID: m["AZ_TENANT_ID"], DefaultSub: m["AZ_DEFAULT_SUB"], ExpectUser: m["AZ_EXPECT_USER"], Label: m["AZ_LABEL"]}
+	c = Conf{Tenant: m["AZ_TENANT"], TenantID: m["AZ_TENANT_ID"], DefaultSub: m["AZ_DEFAULT_SUB"], ExpectUser: m["AZ_EXPECT_USER"], Label: m["AZ_LABEL"], BrowserCmd: m["AZ_BROWSER_CMD"]}
 	if c.Tenant == "" {
 		return c, fmt.Errorf("azrl: AZ_TENANT not set in %s", path)
 	}
@@ -109,8 +110,8 @@ func (c Conf) Write(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	body := fmt.Sprintf("AZ_TENANT=%s\nAZ_TENANT_ID=%s\nAZ_DEFAULT_SUB=%s\nAZ_EXPECT_USER=%s\nAZ_LABEL=%s\n",
-		c.Tenant, c.TenantID, c.DefaultSub, c.ExpectUser, c.Label)
+	body := fmt.Sprintf("AZ_TENANT=%s\nAZ_TENANT_ID=%s\nAZ_DEFAULT_SUB=%s\nAZ_EXPECT_USER=%s\nAZ_LABEL=%s\nAZ_BROWSER_CMD=%s\n",
+		c.Tenant, c.TenantID, c.DefaultSub, c.ExpectUser, c.Label, c.BrowserCmd)
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
 	if err != nil {
 		return err

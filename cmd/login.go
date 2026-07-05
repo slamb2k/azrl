@@ -77,6 +77,9 @@ var loginCmd = &cobra.Command{
 			}
 			return runAzureInit(cmd, g, name, pwd, loginPaste)
 		}
+		if conf.BrowserCmd != "" {
+			g.LocalBrowserCmd = conf.BrowserCmd
+		}
 		cfgDir := filepath.Join(config.ProfilesDir(), name)
 		os.MkdirAll(cfgDir, 0o755)
 		os.Setenv("AZURE_CONFIG_DIR", cfgDir)

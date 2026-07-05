@@ -88,6 +88,7 @@ func seedAwsLoginEnv(t *testing.T, confBody string) (awsLog, confPath string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("AZRL_BROWSER_CMD", "")
 	az := filepath.Join(home, ".azure-profiles")
 	os.MkdirAll(az, 0o755)
 	os.WriteFile(filepath.Join(az, "azrl.conf"),
@@ -303,5 +304,33 @@ func TestValidAwsNameRejectsReserved(t *testing.T) {
 	}
 	if err := validAwsName(""); err == nil {
 		t.Fatal("expected an empty name to be rejected")
+	}
+}
+
+func TestAwsLoginProfileBrowserCmdOverridesGlobal(t *testing.T) {
+	confBody := "AWS_SSO_START_URL=https://acme.awsapps.com/start\nAWS_BROWSER_CMD=chrome-work\n"
+	awsLog, _ := seedAwsLoginEnv(t, confBody)
+	// Replace the seed's dying ssh with one whose -R tunnel stays alive, so
+	// the bridge takes path B and the browser launch lands in ssh.log.
+	bin := filepath.Dir(awsLog)
+	sshLog := filepath.Join(bin, "ssh.log")
+	alive := "#!/usr/bin/env bash\necho \"$*\" >> \"" + sshLog + "\"\n" +
+		"for a in \"$@\"; do [[ \"$a\" == \"-R\" ]] && { sleep 2; exit 0; }; done\nexit 0\n"
+	os.WriteFile(filepath.Join(bin, "ssh"), []byte(alive), 0o755)
+
+	work := t.TempDir()
+	old, _ := os.Getwd()
+	os.Chdir(work)
+	defer os.Chdir(old)
+
+	if err := runRootErr(t, "aws", "login", "work"); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	b, _ := os.ReadFile(sshLog)
+	if !strings.Contains(string(b), "chrome-work") {
+		t.Fatalf("browser launch should use the profile cmd:\n%s", b)
+	}
+	if strings.Contains(string(b), "wslview") {
+		t.Fatalf("global browser cmd leaked:\n%s", b)
 	}
 }

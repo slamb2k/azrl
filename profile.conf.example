@@ -5,3 +5,4 @@ AZ_TENANT_ID=                      # optional tenant GUID for the post-login ass
                                    #   accounts), since the domain then appears nowhere in the session
 AZ_DEFAULT_SUB=                    # optional: subscription name or id to select after login
 AZ_EXPECT_USER=                    # optional: expected signed-in UPN, asserted post-login
+AZ_BROWSER_CMD=                    # optional: overrides LOCAL_BROWSER_CMD for this profile

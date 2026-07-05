@@ -14,6 +14,7 @@ func seedLoginEnv(t *testing.T, gcloudScript string) (gcloudLog, sshLog string) 
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("AZRL_BROWSER_CMD", "")
 	az := filepath.Join(home, ".azure-profiles")
 	os.MkdirAll(az, 0o755)
 	os.WriteFile(filepath.Join(az, "azrl.conf"),
