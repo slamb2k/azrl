@@ -29,11 +29,42 @@ func key(s string) tea.KeyMsg {
 	}
 }
 
+// afterDetect fires the detection-splash timer, advancing to the first real
+// step (pick, OS, or fields depending on the candidates).
+func afterDetect(m setupModel) setupModel {
+	nm, _ := m.Update(detectDoneMsg{})
+	return nm.(setupModel)
+}
+
+// TestSetupDetectSplash: the wizard opens on the detection splash (Step 1) and
+// only advances once the timer fires.
+func TestSetupDetectSplash(t *testing.T) {
+	cands := envdetect.Detect(envdetect.Env{WSLDistro: "Ubuntu", GOOS: "linux", Has: func(string) bool { return false }})
+	m := newSetupModel(cands)
+	if m.step != stepDetect {
+		t.Fatalf("wizard should open on the detection splash, step=%v", m.step)
+	}
+	m.width, m.height = 90, 30
+	v := m.View()
+	for _, want := range []string{"STEP 1 OF", "Detecting", "Detect"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("splash view missing %q:\n%s", want, v)
+		}
+	}
+	// A stray keypress must not skip the splash.
+	if got := send(m, key("x")); got.step != stepDetect {
+		t.Fatalf("splash should ignore non-esc keys, step=%v", got.step)
+	}
+	if got := afterDetect(m); got.step != stepFields {
+		t.Fatalf("timer should advance the single candidate to fields, step=%v", got.step)
+	}
+}
+
 // TestSetupLocalSingleCandidate: one local candidate skips the pick step, lands
 // on the field form pre-filled, and confirms into the expected Global.
 func TestSetupLocalSingleCandidate(t *testing.T) {
 	cands := envdetect.Detect(envdetect.Env{WSLDistro: "Ubuntu", GOOS: "linux", Has: func(string) bool { return false }})
-	m := newSetupModel(cands)
+	m := afterDetect(newSetupModel(cands))
 	if m.step != stepFields {
 		t.Fatalf("single candidate should skip pick, step=%v", m.step)
 	}
@@ -57,7 +88,7 @@ func TestSetupRemoteFlow(t *testing.T) {
 		{Mode: envdetect.Remote, Label: "Remote", VMSSHHost: "203.0.113.10", Recommended: true},
 		{Mode: envdetect.Local, Label: "Local", BrowserCmd: "wslview", BrowserHost: "localhost"},
 	}
-	m := newSetupModel(cands)
+	m := afterDetect(newSetupModel(cands))
 	if m.step != stepPick {
 		t.Fatalf("two candidates should start at pick, step=%v", m.step)
 	}
@@ -96,7 +127,7 @@ func TestSetupViewChrome(t *testing.T) {
 		{Mode: envdetect.Remote, Label: "Remote", Reason: "SSH session detected", VMSSHHost: "203.0.113.10", Recommended: true},
 		{Mode: envdetect.Local, Label: "Local", Reason: "WSL detected", BrowserCmd: "wslview", BrowserHost: "localhost"},
 	}
-	m := newSetupModel(cands)
+	m := afterDetect(newSetupModel(cands)) // past the splash → pick
 	m.width, m.height = 90, 30
 	v := m.View()
 	// Banner crest, step counter, breadcrumb stages, and both mode badges.
