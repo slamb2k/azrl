@@ -41,10 +41,16 @@ func Login(profilesDir, name string, c Conf) error {
 	args := []string{"auth", "login", "--hostname", c.Host,
 		"--git-protocol", protocol, "--insecure-storage", "--web"}
 	cmd := exec.Command("gh", args...)
-	cmd.Env = append(os.Environ(),
+	env := append(os.Environ(),
 		"GH_CONFIG_DIR="+dir,
 		"BROWSER="+browserCommand(),
 	)
+	if c.BrowserCmd != "" {
+		// Propagates to the azrl __browser shim gh spawns; LoadGlobal's
+		// AZRL_BROWSER_CMD hook applies it there.
+		env = append(env, "AZRL_BROWSER_CMD="+c.BrowserCmd)
+	}
+	cmd.Env = env
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	stderr, err := cmd.StderrPipe()

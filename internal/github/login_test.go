@@ -14,7 +14,7 @@ func fakeGh(t *testing.T) string {
 	bin := t.TempDir()
 	log := filepath.Join(bin, "gh.log")
 	script := "#!/usr/bin/env bash\n" +
-		"{ echo \"ARGS: $*\"; echo \"GH_CONFIG_DIR=$GH_CONFIG_DIR\"; echo \"BROWSER=$BROWSER\"; } >> \"" + log + "\"\n" +
+		"{ echo \"ARGS: $*\"; echo \"GH_CONFIG_DIR=$GH_CONFIG_DIR\"; echo \"BROWSER=$BROWSER\"; echo \"AZRL_BROWSER_CMD=$AZRL_BROWSER_CMD\"; } >> \"" + log + "\"\n" +
 		"exit 0\n"
 	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -57,5 +57,18 @@ func TestLoginCreatesConfigDir(t *testing.T) {
 	fi, err := os.Stat(filepath.Join(profilesDir, "work"))
 	if err != nil || !fi.IsDir() {
 		t.Fatalf("config dir not created: err=%v", err)
+	}
+}
+
+func TestLoginPassesProfileBrowserCmdEnv(t *testing.T) {
+	log := fakeGh(t)
+	profilesDir := t.TempDir()
+	c := Conf{Host: "github.com", BrowserCmd: "chrome-work"}
+	if err := Login(profilesDir, "work", c); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(log)
+	if !strings.Contains(string(b), "AZRL_BROWSER_CMD=chrome-work") {
+		t.Fatalf("gh env missing the profile browser cmd:\n%s", b)
 	}
 }
