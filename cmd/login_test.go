@@ -22,6 +22,7 @@ func seedAzLoginEnv(t *testing.T, confs map[string]string) (azLog string) {
 	t.Setenv("HOME", home)
 	// Keep any leaked AZURE_CONFIG_DIR from login.go scoped to this test.
 	t.Setenv("AZURE_CONFIG_DIR", "")
+	t.Setenv("AZRL_BROWSER_CMD", "")
 
 	az := filepath.Join(home, ".azure-profiles")
 	os.MkdirAll(az, 0o755)
@@ -354,5 +355,25 @@ func TestLoginUsesPinWhenNoArg(t *testing.T) {
 	}
 	if log, _ := os.ReadFile(azLog); !strings.Contains(string(log), "--tenant emu.example.com") {
 		t.Fatalf("az login did not target the pinned tenant:\n%s", log)
+	}
+}
+
+func TestLoginProfileBrowserCmdOverridesGlobal(t *testing.T) {
+	confs := map[string]string{"work": "AZ_TENANT=contoso.com\nAZ_BROWSER_CMD=chrome-work\n"}
+	seedAzLoginEnv(t, confs)
+	t.Setenv("AZ_ACCT", acctJSON("contoso.com", "simon"))
+	chdirClean(t)
+
+	out, err := execRoot(t, "login", "work")
+	if err != nil {
+		t.Fatalf("login: %v (out=%q)", err, out)
+	}
+	// ssh -R fails in the seed, so the bridge prints the paste line — it must
+	// carry the profile's browser command, not the global wslview.
+	if !strings.Contains(out, "chrome-work") {
+		t.Fatalf("paste line should use the profile browser cmd:\n%s", out)
+	}
+	if strings.Contains(out, "wslview") {
+		t.Fatalf("global browser cmd leaked into the paste line:\n%s", out)
 	}
 }
