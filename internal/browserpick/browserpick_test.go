@@ -24,6 +24,19 @@ func TestParseLocalState(t *testing.T) {
 	}
 }
 
+func TestParseLocalStateSkipsUnsafeDir(t *testing.T) {
+	state := `{"profile":{"info_cache":{
+	  "Profile 2":{"name":"Work","user_name":"simon@acme.com"},
+	  "Profile\"; rm -rf x":{"name":"Evil","user_name":"evil@acme.com"}}}}`
+	ps := parseLocalState("edge", "linux", []byte(state))
+	if len(ps) != 1 {
+		t.Fatalf("want 1 safe profile, got %+v", ps)
+	}
+	if ps[0].Dir != "Profile 2" {
+		t.Fatalf("got %+v", ps[0])
+	}
+}
+
 func TestClassify(t *testing.T) {
 	for _, tc := range []struct{ path, browser, os string }{
 		{"/home/u/.config/microsoft-edge/Local State", "edge", "linux"},

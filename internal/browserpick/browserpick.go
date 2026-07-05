@@ -7,11 +7,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/slamb2k/azrl/internal/config"
 )
+
+// safeDir matches Chromium profile directory names we're willing to splice
+// into a shell command line (defense-in-depth: Dir comes from a remote
+// machine's Local State and lands inside a login command).
+var safeDir = regexp.MustCompile(`^[A-Za-z0-9 ._-]+$`)
 
 // Profile is one browser profile discovered on the local machine.
 type Profile struct {
@@ -96,6 +102,9 @@ func parseLocalState(browser, osName string, data []byte) []Profile {
 	}
 	var out []Profile
 	for dir, info := range ls.Profile.InfoCache {
+		if !safeDir.MatchString(dir) {
+			continue
+		}
 		name := info.Name
 		if name == "" {
 			name = dir

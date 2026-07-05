@@ -79,6 +79,27 @@ func TestAwsCaptureWritesConf(t *testing.T) {
 	}
 }
 
+func TestAwsCapturePreservesExistingKeys(t *testing.T) {
+	home := seedAwsHome(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\nAWS_ACCOUNT_ID=123456789012\nAWS_ROLE_NAME=AdminAccess\n"+
+			"AWS_LABEL=Keep Me\nAWS_ISOLATE=true\nAWS_BROWSER_CMD=chrome-work\nAWS_BROWSER_LABEL=Edge — Work\n"), 0o644)
+
+	runRoot(t, "aws", "capture", "work", "--sso-start-url", "https://acme.awsapps.com/start",
+		"--account-id", "123456789012", "--role-name", "AdminAccess")
+
+	b, err := os.ReadFile(filepath.Join(ap, "work.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(b)
+	if !strings.Contains(out, "AWS_LABEL=Keep Me") || !strings.Contains(out, "AWS_ISOLATE=true") ||
+		!strings.Contains(out, "AWS_BROWSER_CMD=chrome-work") || !strings.Contains(out, "AWS_BROWSER_LABEL=Edge — Work") {
+		t.Fatalf("recapture wiped existing keys:\n%s", out)
+	}
+}
+
 // seedAwsLoginEnv wires a full login environment for `aws login`: a global
 // azrl.conf, an aws-profiles conf carrying expect values, and aws/ssh/cap shims
 // on PATH. The aws shim answers `sso login` by driving the BROWSER bridge and

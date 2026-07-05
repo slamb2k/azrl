@@ -88,3 +88,20 @@ func TestBrowserMapUnknownProfileErrors(t *testing.T) {
 		t.Fatal("unknown profile must error")
 	}
 }
+
+func TestBrowserMapNoticesBrokenGlobalConf(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	gp := filepath.Join(home, ".gcp-profiles")
+	os.MkdirAll(gp, 0o755)
+	os.WriteFile(filepath.Join(gp, "work.conf"), []byte("GCP_PROJECT=acme-prod\n"), 0o644)
+	// No azrl.conf at all: config.LoadGlobal fails.
+	RootCmd.SetIn(strings.NewReader("m\nmy-browser --foo\n"))
+	out, err := execRoot(t, "gcp", "browser", "work")
+	if err != nil {
+		t.Fatalf("browser map: %v (out=%q)", err, out)
+	}
+	if !strings.Contains(out, "discovery unavailable") {
+		t.Fatalf("missing discovery-unavailable notice:\n%s", out)
+	}
+}

@@ -228,6 +228,12 @@ func newGcpCaptureCmd() *cobra.Command {
 			conf := gcp.Conf{
 				ConfigName: cn, Project: project, Region: region, ExpectAccount: expectAccount,
 			}
+			if existing, err := gcp.LoadConf(name, dir); err == nil {
+				conf.Label = existing.Label
+				conf.Isolate = existing.Isolate
+				conf.BrowserCmd = existing.BrowserCmd
+				conf.BrowserLabel = existing.BrowserLabel
+			}
 			if err := conf.Write(gcpConfPath(dir, name)); err != nil {
 				return err
 			}

@@ -178,6 +178,9 @@ func (s Scheme) SetLabel(name, confdir, label string) error {
 // SetKey updates a single key of profile name's conf, preserving the other
 // keys and their order (the key is appended when absent).
 func (s Scheme) SetKey(name, confdir, key, value string) error {
+	if strings.ContainsAny(value, "\n\r") {
+		return fmt.Errorf("profile: key %s value must be single-line", key)
+	}
 	path := filepath.Join(confdir, name+".conf")
 	m, order, err := readOrderedKV(path)
 	if err != nil {

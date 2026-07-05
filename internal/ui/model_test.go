@@ -326,6 +326,36 @@ func TestAzureBrowserDiscoveryFailureFallsBackToManualInput(t *testing.T) {
 	}
 }
 
+func TestAzureBrowserEscClearsStatus(t *testing.T) {
+	m := seedModel(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	mm := nm.(Model)
+	if mm.status == "" {
+		t.Fatal("expected a status message while discovery is pending")
+	}
+	// Manual-entry esc.
+	nm2, _ := mm.Update(browserProfilesMsg{forProfile: "acme", err: os.ErrDeadlineExceeded})
+	mm2 := nm2.(Model)
+	nm3, _ := mm2.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	mm3 := nm3.(Model)
+	if mm3.status != "" {
+		t.Fatalf("esc from manual entry left a stale status: %q", mm3.status)
+	}
+
+	// Picker esc.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	mm = nm.(Model)
+	nm2, _ = mm.Update(browserProfilesMsg{forProfile: "acme", profiles: []browserpick.Profile{
+		{Browser: "edge", OS: "linux", Dir: "Profile 2", Name: "Work", Email: "simon@acme.com"},
+	}})
+	mm2 = nm2.(Model)
+	nm3b, _ := mm2.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	mm3b := nm3b.(Model)
+	if mm3b.status != "" {
+		t.Fatalf("esc from picker left a stale status: %q", mm3b.status)
+	}
+}
+
 func TestAzureNewProfilePromptExecsCreateLogin(t *testing.T) {
 	m := seedModel(t)
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})

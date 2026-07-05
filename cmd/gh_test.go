@@ -215,3 +215,33 @@ func TestGhRmRemovesProfile(t *testing.T) {
 		t.Fatal("work.conf not removed")
 	}
 }
+
+// fakeGhWhoAmI installs a gh shim answering `gh api user --hostname ...` with
+// the given login, for capture's WhoAmI call.
+func fakeGhWhoAmI(t *testing.T, login string) {
+	t.Helper()
+	bin := t.TempDir()
+	script := "#!/usr/bin/env bash\nprintf '{\"login\":\"" + login + "\"}'\n"
+	os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestGhCapturePreservesExistingKeys(t *testing.T) {
+	home := seedGhHome(t)
+	gp := filepath.Join(home, ".github-profiles")
+	os.WriteFile(filepath.Join(gp, "work.conf"),
+		[]byte("GH_HOST=github.com\nGH_USER=octocat\nGH_LABEL=Keep Me\nGH_BROWSER_CMD=chrome-work\nGH_BROWSER_LABEL=Edge — Work\n"), 0o644)
+	fakeGhWhoAmI(t, "octocat")
+
+	runRoot(t, "gh", "capture", "work")
+
+	b, err := os.ReadFile(filepath.Join(gp, "work.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(b)
+	if !strings.Contains(out, "GH_LABEL=Keep Me") || !strings.Contains(out, "GH_BROWSER_CMD=chrome-work") ||
+		!strings.Contains(out, "GH_BROWSER_LABEL=Edge — Work") {
+		t.Fatalf("recapture wiped existing keys:\n%s", out)
+	}
+}

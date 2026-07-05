@@ -48,6 +48,8 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 				} else {
 					fmt.Fprintf(out, "%s: discovery failed (%v) — manual entry only\n", tool, derr)
 				}
+			} else {
+				fmt.Fprintf(out, "%s: discovery unavailable (%v) — manual entry only\n", tool, err)
 			}
 			if ident := expectIdent(name, dir); ident != "" {
 				sort.SliceStable(found, func(i, j int) bool {

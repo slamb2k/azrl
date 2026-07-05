@@ -180,9 +180,10 @@ three-section overview on the CLI; `--json` emits
 
 `browser <name>` is available on every provider (`azrl browser`, `azrl gh
 browser`/`ghrl browser`, `azrl aws browser`, `azrl gcp browser`). It discovers
-the local machine's Edge/Chrome profiles over SSH and offers a numbered pick —
-sorted so a profile already signed into the account this azrl profile expects
-comes first:
+the local machine's Edge/Chrome profiles over SSH and offers a numbered pick.
+For azure/gcp/github it's sorted so a profile already signed into the account
+this azrl profile expects comes first; AWS profiles list unsorted (account IDs
+aren't emails, so there's no identity to match against):
 
 ```text
  1) Edge — Work                you@acme.com

@@ -214,6 +214,20 @@ func TestSetKeyPreservesOrderAndAppends(t *testing.T) {
 	}
 }
 
+func TestSetKeyRejectsMultilineValue(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "work.conf"), []byte("AZ_TENANT=contoso.com\n"), 0o644)
+	s := AzureScheme()
+	before, _ := os.ReadFile(filepath.Join(dir, "work.conf"))
+	if err := s.SetKey("work", dir, "AZ_LABEL", "evil\nAZ_TENANT=hacked.com"); err == nil {
+		t.Fatal("expected error for multi-line value")
+	}
+	after, _ := os.ReadFile(filepath.Join(dir, "work.conf"))
+	if string(before) != string(after) {
+		t.Fatalf("file must be untouched on rejected SetKey:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+}
+
 func TestGetKey(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "work.conf"),

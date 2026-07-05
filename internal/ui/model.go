@@ -617,6 +617,8 @@ func (m Model) updateBrowserPick(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.browserPick = nil
 		if picked != nil {
 			m.applyBrowserMapping(picked.Command(), picked.Label())
+		} else {
+			m.status = ""
 		}
 		m.browserFor = ""
 	}
@@ -629,6 +631,7 @@ func (m Model) updateBrowserManual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.browserManual = false
 		m.browserFor = ""
+		m.status = ""
 	case "enter":
 		if c := strings.TrimSpace(m.browserInput.Value()); c != "" {
 			m.browserManual = false

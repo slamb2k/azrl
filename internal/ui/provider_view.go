@@ -200,6 +200,8 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				v.browserPick = nil
 				if picked != nil {
 					v.applyBrowserMapping(picked.Command(), picked.Label())
+				} else {
+					v.status = ""
 				}
 				v.browserFor = ""
 			}
@@ -210,6 +212,7 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			case "esc":
 				v.browserManual = false
 				v.browserFor = ""
+				v.status = ""
 			case "enter":
 				if c := strings.TrimSpace(v.browserInput.Value()); c != "" {
 					v.browserManual = false

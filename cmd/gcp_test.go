@@ -83,6 +83,26 @@ func TestGcpCaptureWritesConf(t *testing.T) {
 	}
 }
 
+func TestGcpCapturePreservesExistingKeys(t *testing.T) {
+	home := seedGcpHome(t)
+	gp := filepath.Join(home, ".gcp-profiles")
+	os.WriteFile(filepath.Join(gp, "work.conf"),
+		[]byte("GCP_CONFIG_NAME=work\nGCP_PROJECT=acme-prod\nGCP_REGION=us-central1\n"+
+			"GCP_LABEL=Keep Me\nGCP_ISOLATE=true\nGCP_BROWSER_CMD=chrome-work\nGCP_BROWSER_LABEL=Edge — Work\n"), 0o644)
+
+	runRoot(t, "gcp", "capture", "work", "--project", "acme-prod", "--region", "us-central1")
+
+	b, err := os.ReadFile(filepath.Join(gp, "work.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(b)
+	if !strings.Contains(out, "GCP_LABEL=Keep Me") || !strings.Contains(out, "GCP_ISOLATE=true") ||
+		!strings.Contains(out, "GCP_BROWSER_CMD=chrome-work") || !strings.Contains(out, "GCP_BROWSER_LABEL=Edge — Work") {
+		t.Fatalf("recapture wiped existing keys:\n%s", out)
+	}
+}
+
 // seedGcpLoginEnv wires a full login environment for `gcp login`: a global
 // azrl.conf, a gcp-profiles conf carrying an expect-account, and gcloud/ssh/cap
 // shims on PATH. The gcloud shim answers `auth login` by driving the BROWSER
