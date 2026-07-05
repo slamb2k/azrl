@@ -6,8 +6,11 @@ package browserpick
 import (
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
+
+	"github.com/slamb2k/azrl/internal/config"
 )
 
 // Profile is one browser profile discovered on the local machine.
@@ -122,4 +125,60 @@ func classify(path string) (string, string) {
 	default:
 		return browser, "linux"
 	}
+}
+
+const marker = "===AZRL "
+
+// posixProbe cats every candidate Local State (Linux, macOS, WSL) with a
+// marker line before each hit, in one ssh round-trip. `true` keeps the exit
+// status 0 when nothing matches.
+const posixProbe = `for f in "$HOME/.config/microsoft-edge/Local State" "$HOME/.config/google-chrome/Local State" "$HOME/Library/Application Support/Microsoft Edge/Local State" "$HOME/Library/Application Support/Google/Chrome/Local State" /mnt/c/Users/*/AppData/Local/Microsoft/Edge/"User Data"/"Local State" /mnt/c/Users/*/AppData/Local/Google/Chrome/"User Data"/"Local State"; do [ -f "$f" ] && { echo "===AZRL $f"; cat "$f"; echo; }; done; true`
+
+// winProbes cover native-Windows OpenSSH, whose default shell is cmd.exe.
+var winProbes = []struct{ browser, path string }{
+	{"edge", `%LOCALAPPDATA%\Microsoft\Edge\User Data\Local State`},
+	{"chrome", `%LOCALAPPDATA%\Google\Chrome\User Data\Local State`},
+}
+
+func sshRun(host, command string) ([]byte, error) {
+	return exec.Command("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, command).Output()
+}
+
+// Discover reads the local machine's Edge/Chrome profile lists over ssh.
+// Best-effort and read-only: any failure yields an error and callers fall
+// back to manual entry.
+func Discover(g config.Global) ([]Profile, error) {
+	out, err := sshRun(g.LocalHost, posixProbe)
+	if err != nil {
+		return nil, fmt.Errorf("browserpick: cannot reach %s: %w", g.LocalHost, err)
+	}
+	if ps := parseProbe(string(out)); len(ps) > 0 {
+		return ps, nil
+	}
+	var all []Profile
+	for _, w := range winProbes {
+		b, werr := sshRun(g.LocalHost, `cmd /c type "`+w.path+`"`)
+		if werr != nil {
+			continue
+		}
+		all = append(all, parseLocalState(w.browser, "windows", b)...)
+	}
+	if len(all) == 0 {
+		return nil, fmt.Errorf("browserpick: no browser profiles found on %s", g.LocalHost)
+	}
+	return all, nil
+}
+
+// parseProbe splits the POSIX probe output on marker lines.
+func parseProbe(out string) []Profile {
+	var all []Profile
+	for _, c := range strings.Split(out, marker)[1:] {
+		nl := strings.IndexByte(c, '\n')
+		if nl < 0 {
+			continue
+		}
+		browser, osName := classify(strings.TrimSpace(c[:nl]))
+		all = append(all, parseLocalState(browser, osName, []byte(c[nl+1:]))...)
+	}
+	return all
 }
