@@ -1,6 +1,23 @@
-# Global azrl config. Copied to ~/.azure-profiles/azrl.conf by install.sh —
-# edit that copy with your own hosts. All three values below are required.
-LOCAL_HOST=my-laptop               # SSH name of the machine that runs the browser
-LOCAL_BROWSER_CMD=xdg-open         # command that opens a URL there (wslview on WSL, open on macOS)
-VM_HOST=my-vm                      # this VM's SSH name (used in the path-A paste line)
-# DASHBOARD_POLL_SECS=3            # optional: dashboard refresh interval (seconds)
+# Global azrl config. Written to ~/.azure-profiles/azrl.conf by `azrl setup`
+# (the installer runs `azrl setup --yes`). Re-run `azrl setup` any time to
+# re-detect and rewrite it, or edit this copy by hand.
+#
+# azrl runs in one of two modes:
+#
+# LOCAL MODE — azrl runs on the same machine as the browser (laptop / WSL /
+# desktop). The sign-in browser opens here directly and the OAuth callback loops
+# back over localhost; no SSH bridge is used. Only BROWSER_CMD is required.
+#
+#   BROWSER_CMD=wslview      # wslview on WSL, open on macOS, xdg-open on Linux
+#   BROWSER_HOST=localhost
+#
+# REMOTE MODE — azrl runs on a headless VM and pops the browser on your dev
+# machine over SSH. BROWSER_CMD is the command that opens a URL on the dev
+# machine; VM_SSH_HOST (this VM's SSH name) is auto-derived from $SSH_CONNECTION
+# for the path-A paste line and is only needed for that fallback. Set
+# BROWSER_HOST for zero-paste (path B), where the VM must be able to SSH to your
+# machine.
+BROWSER_CMD=xdg-open           # command that opens a URL on your dev machine
+# BROWSER_HOST=my-laptop       # SSH name of your dev machine (set for zero-paste path B)
+# VM_SSH_HOST=my-vm            # this VM's SSH name (derived from $SSH_CONNECTION; edit for NAT/jump hosts)
+# DASHBOARD_POLL_SECS=3        # optional: dashboard refresh interval (seconds)

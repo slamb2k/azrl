@@ -19,6 +19,7 @@ func seedGhHome(t *testing.T) string {
 	os.MkdirAll(gp, 0o755)
 	os.WriteFile(filepath.Join(gp, "work.conf"), []byte("GH_HOST=github.com\nGH_USER=octocat\n"), 0o644)
 	os.WriteFile(filepath.Join(gp, "emu.conf"), []byte("GH_HOST=acme.ghe.com\nGH_USER=alice\n"), 0o644)
+	seedGlobalConf(t, home)
 	return home
 }
 

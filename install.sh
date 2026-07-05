@@ -15,12 +15,14 @@ GI="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
 mkdir -p "$(dirname "$GI")"
 grep -qxF '.azprofile' "$GI" 2>/dev/null || echo '.azprofile' >> "$GI"
 
-# Bootstrap the global config from the example if absent.
+# Bootstrap the global config if absent. Environment detection lives once in Go
+# (internal/envdetect); `azrl setup --yes` writes the recommended azrl.conf
+# non-interactively. Re-run `azrl setup` any time to review or change it.
 PROFILES="$HOME/.azure-profiles"
 mkdir -p "$PROFILES"
-if [[ ! -f "$PROFILES/azrl.conf" && -f "$ROOT/azrl.conf.example" ]]; then
-  cp "$ROOT/azrl.conf.example" "$PROFILES/azrl.conf"
-  echo "azrl: wrote $PROFILES/azrl.conf (edit LOCAL_HOST/LOCAL_BROWSER_CMD/VM_HOST)"
+if [[ ! -f "$PROFILES/azrl.conf" ]]; then
+  "$BIN_DIR/azrl" setup --yes || echo "azrl: could not seed config; run 'azrl setup' after install" >&2
+  echo "azrl: run 'azrl setup' to review or change the detected config"
 fi
 
 echo "azrl: done. Ensure $BIN_DIR is on your PATH."

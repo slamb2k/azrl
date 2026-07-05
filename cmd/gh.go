@@ -58,6 +58,9 @@ func newGhLoginCmd() *cobra.Command {
 				cmd.Printf("ghrl: created profile %q (%s)\n", name, hostname)
 			}
 			cmd.Printf("ghrl: signing in to %s as profile %q\n", conf.Host, name)
+			if _, err := loadGlobalOrSetup(cmd.OutOrStdout()); err != nil {
+				return err
+			}
 			if err := github.Login(dir, name, conf); err != nil {
 				return err
 			}

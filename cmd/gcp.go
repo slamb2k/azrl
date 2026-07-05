@@ -87,6 +87,9 @@ func newGcpLoginCmd() *cobra.Command {
 				// LoadGlobal picks this up (same pattern as AZURE_CONFIG_DIR).
 				os.Setenv("AZRL_BROWSER_CMD", conf.BrowserCmd)
 			}
+			if _, err := loadGlobalOrSetup(cmd.OutOrStdout()); err != nil {
+				return err
+			}
 			if err := gcp.Login(dir, name, configName, conf.Isolate); err != nil {
 				return err
 			}

@@ -18,6 +18,9 @@ var RootCmd = &cobra.Command{
 	// usage block; cobra inherits this to subcommands. Errors are still printed.
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := loadGlobalOrSetup(cmd.OutOrStdout()); err != nil {
+			return err
+		}
 		return ui.Run()
 	},
 }

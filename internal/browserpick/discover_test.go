@@ -30,7 +30,7 @@ func TestDiscoverParsesPosixProbe(t *testing.T) {
 {"profile":{"info_cache":{"Default":{"name":"Personal","user_name":"me@gmail.com"}}}}
 EOF
 `)
-	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
 	ps, err := Discover(g)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ EOF
 
 func TestDiscoverUnreachable(t *testing.T) {
 	fakeSSH(t, "exit 1\n")
-	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
 	if _, err := Discover(g); err == nil {
 		t.Fatal("unreachable host must return an error")
 	}
@@ -65,7 +65,7 @@ exit 0 ;;
 *) exit 1 ;;
 esac
 `)
-	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
 	ps, err := Discover(g)
 	if err != nil {
 		t.Fatalf("want fallback to succeed, got error: %v", err)
@@ -81,7 +81,7 @@ esac
 
 func TestDiscoverEmptyOutput(t *testing.T) {
 	fakeSSH(t, "exit 0\n")
-	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
 	if _, err := Discover(g); err == nil {
 		t.Fatal("no profiles found must return an error")
 	}

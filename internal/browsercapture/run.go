@@ -32,14 +32,19 @@ func Run(url string, g config.Global, forcePaste bool, hold time.Duration) (stri
 	return relayDevice(url, g, forcePaste), nil
 }
 
-// relayDevice opens a device/plain URL on the laptop. Path B (LocalHost
-// reachable) launches the browser over SSH; path A returns a local-open line.
+// relayDevice opens a device/plain URL on the laptop. Local mode launches the
+// browser on this host; path B (BrowserHost reachable) launches it over SSH;
+// path A returns a local-open line.
 func relayDevice(url string, g config.Global, forcePaste bool) string {
-	if !forcePaste && reachable(g.LocalHost) {
-		_ = exec.Command("ssh", g.LocalHost, fmt.Sprintf("%s '%s'", g.LocalBrowserCmd, url)).Run()
+	if g.IsLocal() {
+		_ = bridge.LaunchLocal(g.BrowserCmd, url)
 		return ""
 	}
-	return fmt.Sprintf("open this URL on your LOCAL machine:\n\n  %s %s", g.LocalBrowserCmd, url)
+	if !forcePaste && reachable(g.BrowserHost) {
+		_ = exec.Command("ssh", g.BrowserHost, fmt.Sprintf("%s '%s'", g.BrowserCmd, url)).Run()
+		return ""
+	}
+	return fmt.Sprintf("open this URL on your LOCAL machine:\n\n  %s %s", g.BrowserCmd, url)
 }
 
 // reachable reports whether host answers a batch-mode SSH probe.

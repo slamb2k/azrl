@@ -38,14 +38,24 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 	}
 	if tunnel != nil {
 		defer func() { _ = tunnel.Process.Kill() }()
-		fmt.Fprintf(out, "azrl: browser opened on %s (zero-paste path B)\n", g.LocalHost)
+		fmt.Fprintf(out, "azrl: browser opened on %s (zero-paste path B)\n", g.BrowserHost)
+	} else if g.IsLocal() {
+		fmt.Fprintf(out, "azrl: browser opened locally (%s)\n", g.BrowserCmd)
 	} else {
 		fmt.Fprintf(out, "azrl: paste this on your LOCAL machine:\n\n%s\n\n", paste)
+		if _, ok := bridge.VMHost(g); !ok {
+			fmt.Fprintln(out, "azrl: (set VM_SSH_HOST in azrl.conf, or run `azrl setup`, to fill in your VM's SSH name)")
+		}
 	}
 	fmt.Fprintln(out, "azrl: waiting for sign-in to complete...")
 	if err := azure.WaitForLogin(lg, browsercapture.LoginTimeout()); err != nil {
-		fmt.Fprintf(out, "✗ %v\n  Recover with:\n  %s\n", err,
-			bridge.PasteLine(lg.Port, g.VMHost, g.LocalBrowserCmd, lg.URL))
+		if g.IsLocal() {
+			fmt.Fprintf(out, "✗ %v\n  Retry with: azrl login\n", err)
+		} else {
+			vmHost, _ := bridge.VMHost(g)
+			fmt.Fprintf(out, "✗ %v\n  Recover with:\n  %s\n", err,
+				bridge.PasteLine(lg.Port, vmHost, g.BrowserCmd, lg.URL))
+		}
 		return err
 	}
 	return nil
