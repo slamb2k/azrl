@@ -148,25 +148,29 @@ func sshRun(host, command string) ([]byte, error) {
 // Best-effort and read-only: any failure yields an error and callers fall
 // back to manual entry.
 func Discover(g config.Global) ([]Profile, error) {
-	out, err := sshRun(g.LocalHost, posixProbe)
-	if err != nil {
-		return nil, fmt.Errorf("browserpick: cannot reach %s: %w", g.LocalHost, err)
-	}
-	if ps := parseProbe(string(out)); len(ps) > 0 {
-		return ps, nil
+	out, posixErr := sshRun(g.LocalHost, posixProbe)
+	if posixErr == nil {
+		if ps := parseProbe(string(out)); len(ps) > 0 {
+			return ps, nil
+		}
 	}
 	var all []Profile
+	winErrs := 0
 	for _, w := range winProbes {
 		b, werr := sshRun(g.LocalHost, `cmd /c type "`+w.path+`"`)
 		if werr != nil {
+			winErrs++
 			continue
 		}
 		all = append(all, parseLocalState(w.browser, "windows", b)...)
 	}
-	if len(all) == 0 {
-		return nil, fmt.Errorf("browserpick: no browser profiles found on %s", g.LocalHost)
+	if len(all) > 0 {
+		return all, nil
 	}
-	return all, nil
+	if posixErr != nil && winErrs == len(winProbes) {
+		return nil, fmt.Errorf("browserpick: cannot reach %s: %w", g.LocalHost, posixErr)
+	}
+	return nil, fmt.Errorf("browserpick: no browser profiles found on %s", g.LocalHost)
 }
 
 // parseProbe splits the POSIX probe output on marker lines.

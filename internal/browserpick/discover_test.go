@@ -55,6 +55,30 @@ func TestDiscoverUnreachable(t *testing.T) {
 	}
 }
 
+func TestDiscoverWindowsFallbackWhenPosixShellFails(t *testing.T) {
+	fakeSSH(t, `case "${@: -1}" in
+*"for f in"*) exit 1 ;;
+*"cmd /c type"*"Edge"*) cat <<'EOF'
+{"profile":{"info_cache":{"Profile 2":{"name":"Work","user_name":"simon@acme.com"}}}}
+EOF
+exit 0 ;;
+*) exit 1 ;;
+esac
+`)
+	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	ps, err := Discover(g)
+	if err != nil {
+		t.Fatalf("want fallback to succeed, got error: %v", err)
+	}
+	if len(ps) != 1 {
+		t.Fatalf("want 1 profile, got %+v", ps)
+	}
+	p := ps[0]
+	if p.Browser != "edge" || p.OS != "windows" || p.Dir != "Profile 2" {
+		t.Fatalf("want edge/windows/Profile 2, got %+v", p)
+	}
+}
+
 func TestDiscoverEmptyOutput(t *testing.T) {
 	fakeSSH(t, "exit 0\n")
 	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
