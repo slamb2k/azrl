@@ -353,7 +353,7 @@ azrl gcp browser <name> # map to a local browser profile (see "Mapping a local b
 a `localhost` loopback callback that is forwarded back to your local browser.
 `azrl gcp status` is disk-only: it reads the gcloud config dir
 (`configurations/config_<name>` for the signed-in account, `active_config` for
-drift), no network — token expiry isn't surfaced in v1. On login `azrl` runs
+drift, `access_tokens.db` for token expiry), no network. On login `azrl` runs
 `gcloud auth list --filter=status:ACTIVE` to assert you landed on the expected
 account. `gcp use`/`login` idempotently create the named configuration
 (`gcloud config configurations create --no-activate`) and set its project/region.
