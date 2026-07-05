@@ -165,6 +165,7 @@ azrl use <name>            # link this dir to an existing profile
 azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
 azrl list                  # list configured profiles and their tenants
 azrl status [--json]       # "who am I, everywhere?" — mappings / ambient / unmapped (disk-only)
+azrl browser <name>        # map the profile to a local Edge/Chrome browser profile
 azrl --help                # usage; azrl --version prints the version
 ```
 
@@ -174,6 +175,36 @@ azrl --help                # usage; azrl --version prints the version
 Bare `azrl` opens the tabbed TUI (below). `azrl status` prints the same
 three-section overview on the CLI; `--json` emits
 `{"mappings":[…],"ambient":[…],"unmapped":[…]}`.
+
+## Mapping a local browser profile
+
+`browser <name>` is available on every provider (`azrl browser`, `azrl gh
+browser`/`ghrl browser`, `azrl aws browser`, `azrl gcp browser`). It discovers
+the local machine's Edge/Chrome profiles over SSH and offers a numbered pick —
+sorted so a profile already signed into the account this azrl profile expects
+comes first:
+
+```text
+ 1) Edge — Work                you@acme.com
+ 2) Edge — Personal            you@gmail.com
+ 3) Chrome — Default           (not signed in)
+ m) enter command manually
+ 0) clear mapping
+select:
+```
+
+Picking a number writes `*_BROWSER_CMD`/`*_BROWSER_LABEL` for that profile, so
+`azrl login`/`azrl <provider> login` pops the sign-in page in that exact
+browser window from then on. If discovery fails (no SSH reachability, no
+Chromium installed) it falls straight through to manual entry (`m`) — paste
+any local launch command. `0` clears a previous mapping. In the TUI, the same
+flow is one keypress: select a profile, press `b`, pick from the overlay (or
+fall back to manual entry), `↵`.
+
+> **Windows caveat:** discovered commands assume the default install paths
+> (`C:\Program Files (x86)\Microsoft\Edge\...` / `C:\Program Files\Google\Chrome\...`).
+> If your install lives elsewhere, use manual entry (`m` / the TUI's manual
+> fallback) with your actual path instead.
 
 ## The TUI at a glance
 
@@ -221,6 +252,7 @@ native config dir via fsnotify, so it updates the moment you sign in — or
 | `↵` | open the detail pane · run the selected action |
 | `esc` | back to the profile list |
 | `d` | change directory (fuzzy finder) — the whole app follows |
+| `b` | map the selected profile to a local browser profile (overlay picker, falls back to manual entry) |
 | `o` | options — choose which provider tabs to show (saved to `azrl.conf`; default Azure + GitHub) |
 | `Delete` / `F5` | remove profile / refresh |
 | `a` | adopt an unmanaged identity into a new profile (dashboard) |
@@ -245,6 +277,7 @@ azrl gh use <name>                   # pin this repo (.ghprofile) + wire git-HTT
 azrl gh capture <name> [--hostname H]# record the currently signed-in gh session
 azrl gh status                       # show the ambient and repo-pinned accounts
 azrl gh rm <name>                    # remove a GitHub profile and its config dir
+azrl gh browser <name>                # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
 
 The **`ghrl`** alias promotes these to the top level (`ghrl login`, `ghrl use`, …)
@@ -287,6 +320,7 @@ azrl aws use <name>     # pin this dir (.awsprofile) + write an .envrc
 azrl aws capture <name> # record the current SSO session as a profile
 azrl aws status         # disk-only "who am I?" from the SSO token cache
 azrl aws rm <name>      # remove an AWS profile
+azrl aws browser <name> # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
 
 `aws sso login` reuses the SSH browser bridge unchanged — the PKCE loopback
@@ -312,6 +346,7 @@ azrl gcp use <name>     # pin this dir (.gcpprofile) + write an .envrc
 azrl gcp capture <name> # record the current gcloud session as a profile
 azrl gcp status         # disk-only "who am I?" from the gcloud config dir
 azrl gcp rm <name>      # remove a GCP profile
+azrl gcp browser <name> # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
 
 `gcloud auth login` reuses the SSH browser bridge unchanged — by default it binds
@@ -401,17 +436,17 @@ The full pattern language (and what was deliberately *not* built) is in
 | File | Purpose |
 |---|---|
 | `~/.azure-profiles/azrl.conf` | global: `LOCAL_HOST` (host running the browser, e.g. a tailnet name), `LOCAL_BROWSER_CMD` (e.g. `wslview`), `VM_HOST` (this machine's reachable name). The `AZRL_BROWSER_CMD` env var overrides `LOCAL_BROWSER_CMD` per process |
-| `~/.azure-profiles/<profile>.conf` | per-profile: `AZ_TENANT` (domain, for `az login --tenant`), `AZ_TENANT_ID` (tenant GUID — **required for guest/B2B** where `az account show` returns a null `tenantDefaultDomain`), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER`, `AZ_BROWSER_CMD` (optional; local browser command overriding the global `LOCAL_BROWSER_CMD`, e.g. `google-chrome --profile-directory="Profile 2"` — the `--profile-directory` value is the internal directory name from `chrome://version` / `edge://version`, not the display name shown in the browser's profile switcher) |
+| `~/.azure-profiles/<profile>.conf` | per-profile: `AZ_TENANT` (domain, for `az login --tenant`), `AZ_TENANT_ID` (tenant GUID — **required for guest/B2B** where `az account show` returns a null `tenantDefaultDomain`), `AZ_DEFAULT_SUB`, `AZ_EXPECT_USER`, `AZ_BROWSER_CMD` (optional; local browser command overriding the global `LOCAL_BROWSER_CMD`, e.g. `google-chrome --profile-directory="Profile 2"` — the `--profile-directory` value is the internal directory name from `chrome://version` / `edge://version`, not the display name shown in the browser's profile switcher), `AZ_BROWSER_LABEL` (display label set by `azrl browser`/the TUI picker) |
 | `<repo>/.azprofile` | one line: the profile name for that repo (uncommitted; globally gitignored) |
 | `<repo>/.envrc` | direnv stanza pinning `AZURE_CONFIG_DIR` to the profile (uncommitted; globally gitignored) |
 | `~/.azure-profiles/<profile>/` | isolated per-profile token cache (`AZURE_CONFIG_DIR`) |
-| `~/.github-profiles/<profile>.conf` | per-profile GitHub: `GH_HOST` (github.com / `*.ghe.com` / GHES host), `GH_USER` (expected login), `GH_LABEL` (optional display name), `GH_PROTOCOL` (`https`), `GH_BROWSER_CMD` (optional, same override as `AZ_BROWSER_CMD`) |
+| `~/.github-profiles/<profile>.conf` | per-profile GitHub: `GH_HOST` (github.com / `*.ghe.com` / GHES host), `GH_USER` (expected login), `GH_LABEL` (optional display name), `GH_PROTOCOL` (`https`), `GH_BROWSER_CMD` (optional, same override as `AZ_BROWSER_CMD`), `GH_BROWSER_LABEL` (same as `AZ_BROWSER_LABEL`) |
 | `<repo>/.ghprofile` | one line: the GitHub profile for that repo (uncommitted; globally gitignored) |
 | `~/.github-profiles/<profile>/` | isolated per-profile `GH_CONFIG_DIR` (its own `hosts.yml`/token) |
-| `~/.aws-profiles/<profile>.conf` | per-profile AWS SSO: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE`, `AWS_BROWSER_CMD` (optional, same override) |
+| `~/.aws-profiles/<profile>.conf` | per-profile AWS SSO: `AWS_SSO_START_URL`, `AWS_SSO_REGION`, `AWS_ACCOUNT_ID`, `AWS_ROLE_NAME`, `AWS_EXPECT_ACCOUNT`, `AWS_EXPECT_ARN`, `AWS_LABEL`, `AWS_ISOLATE`, `AWS_BROWSER_CMD` (optional, same override), `AWS_BROWSER_LABEL` (same as `AZ_BROWSER_LABEL`) |
 | `<repo>/.awsprofile` | one line: the AWS profile for that repo (uncommitted; globally gitignored) |
 | `~/.aws-profiles/<profile>/` | isolated `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` (only under `--isolate`) |
-| `~/.gcp-profiles/<profile>.conf` | per-profile GCP: `GCP_CONFIG_NAME` (named gcloud configuration; defaults to the profile name), `GCP_PROJECT` (**required**), `GCP_REGION`, `GCP_EXPECT_ACCOUNT`, `GCP_LABEL`, `GCP_ISOLATE`, `GCP_BROWSER_CMD` (optional, same override) |
+| `~/.gcp-profiles/<profile>.conf` | per-profile GCP: `GCP_CONFIG_NAME` (named gcloud configuration; defaults to the profile name), `GCP_PROJECT` (**required**), `GCP_REGION`, `GCP_EXPECT_ACCOUNT`, `GCP_LABEL`, `GCP_ISOLATE`, `GCP_BROWSER_CMD` (optional, same override), `GCP_BROWSER_LABEL` (same as `AZ_BROWSER_LABEL`) |
 | `<repo>/.gcpprofile` | one line: the GCP profile for that repo (uncommitted; globally gitignored) |
 | `~/.gcp-profiles/<profile>/` | isolated `CLOUDSDK_CONFIG` dir (only under `--isolate`) |
 
@@ -473,6 +508,7 @@ internal/aws/         # aws/sts SSO lifecycle; AWS Provider — shimmed-integrat
 internal/gcp/         # gcloud named-config lifecycle; GCP Provider — shimmed-integration tested
 internal/bridge/      # SSH reverse-tunnel / paste-line browser bridge (shared)
 internal/browsercapture/ # smart __browser shim: classify + relay/tunnel; xdg-open shadow
+internal/browserpick/ # ssh discovery of local Edge/Chrome profiles → launch-command mapping
 internal/ui/          # tabbed Bubble Tea TUI (dashboard | Azure | AWS | GCP | GitHub) — model unit tests
 install.sh            # go build + install + config bootstrap
 ```
