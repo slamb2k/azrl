@@ -138,8 +138,8 @@ func TestUseHereHiddenWhenSelectedProfilePinsCwd(t *testing.T) {
 	if strings.Contains(out, "Use here") {
 		t.Fatalf("Use here should be hidden for the cwd-pinned selection:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (3)") {
-		t.Fatalf("action count should drop to 3:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (4)") {
+		t.Fatalf("action count should drop to 4:\n%s", out)
 	}
 	// The 'u' accelerator is inert for this selection.
 	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
@@ -198,8 +198,8 @@ func TestSignInHiddenWhenSessionLive(t *testing.T) {
 	if strings.Contains(out, "Sign in") {
 		t.Fatalf("Sign in should hide for a live session:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (3)") {
-		t.Fatalf("action count should drop to 3:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (4)") {
+		t.Fatalf("action count should drop to 4:\n%s", out)
 	}
 }
 

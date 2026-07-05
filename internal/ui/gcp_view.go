@@ -16,6 +16,7 @@ func newGcpView() gcpView {
 		{key: "s", label: "Sign in", hint: "session only — no pin", run: loginAction("gcp")},
 		{key: "u", label: "Use here", hint: "pin only — no login", run: useAction},
 		{key: "a", label: "New profile", hint: "sign in + pin here", run: newProfileAction},
+		{key: "b", label: "Browser profile", hint: "map to a local browser profile", run: browserAction},
 		{key: "delete", label: "Remove", hint: "delete profile", run: removeAction},
 	}
 	return gcpView{newProviderTabView(gcp.NewProvider(), header, actions)}

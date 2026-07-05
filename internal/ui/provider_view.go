@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/slamb2k/azrl/internal/browserpick"
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 )
@@ -50,6 +51,11 @@ type providerTabView struct {
 	touched    bool
 	naming     bool
 	nameInput  textinput.Model
+
+	browserFor    string // profile a browser mapping is being chosen for
+	browserPick   *browserPicker
+	browserManual bool
+	browserInput  textinput.Model
 }
 
 // newProviderTabView builds the shared view for prov with the given pre-rendered
@@ -152,7 +158,9 @@ func (v providerTabView) Init() tea.Cmd { return nil }
 
 // capturesInput reports whether the new-profile name input is active, so the
 // container forwards keys here instead of acting on them.
-func (v providerTabView) capturesInput() bool { return v.naming }
+func (v providerTabView) capturesInput() bool {
+	return v.naming || v.browserManual || v.browserPick != nil
+}
 
 // cliGroup maps a provider name to its azrl command group.
 func cliGroup(name string) string {
@@ -185,6 +193,33 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			}
 		}
 	case tea.KeyMsg:
+		if v.browserPick != nil {
+			np, picked, closed := v.browserPick.update(msg)
+			v.browserPick = &np
+			if closed {
+				v.browserPick = nil
+				if picked != nil {
+					v.applyBrowserMapping(picked.Command(), picked.Label())
+				}
+			}
+			return v, nil
+		}
+		if v.browserManual {
+			switch msg.String() {
+			case "esc":
+				v.browserManual = false
+			case "enter":
+				if c := strings.TrimSpace(v.browserInput.Value()); c != "" {
+					v.browserManual = false
+					v.applyBrowserMapping(c, "")
+				}
+			default:
+				var cmd tea.Cmd
+				v.browserInput, cmd = v.browserInput.Update(msg)
+				_ = cmd
+			}
+			return v, nil
+		}
 		if v.naming {
 			switch msg.String() {
 			case "esc":
@@ -264,6 +299,23 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			// Navigating down from the tab bar counts as entering the pane.
 			v.touched = true
 		}
+	case browserProfilesMsg:
+		if msg.forProfile != v.browserFor || v.browserFor == "" {
+			return v, nil
+		}
+		if msg.err != nil || len(msg.profiles) == 0 {
+			ti := textinput.New()
+			ti.Placeholder = "e.g. microsoft-edge --profile-directory=\"Profile 2\""
+			ti.Focus()
+			v.browserInput = ti
+			v.browserManual = true
+			v.status = mutedStyle.Render("discovery unavailable — enter a command")
+			return v, nil
+		}
+		ident := v.statuses[v.browserFor].Identity
+		pk := newBrowserPicker(msg.profiles, ident)
+		v.browserPick = &pk
+		return v, nil
 	case cwdChangedMsg:
 		// The header shows the directory; no bottom-bar echo needed.
 		v.reload()
@@ -345,6 +397,26 @@ func useAction(v *providerTabView) tea.Cmd {
 	return nil
 }
 
+// applyBrowserMapping writes the browser cmd/label keys for browserFor.
+func (v *providerTabView) applyBrowserMapping(cmdVal, labelVal string) {
+	cmdKey, labelKey := browserpick.Keys(v.prov.Name())
+	s := v.prov.Scheme()
+	dir := v.prov.ProfilesDir()
+	if err := s.SetKey(v.browserFor, dir, cmdKey, cmdVal); err != nil {
+		v.status = failureStyle.Render(err.Error())
+		return
+	}
+	if err := s.SetKey(v.browserFor, dir, labelKey, labelVal); err != nil {
+		v.status = failureStyle.Render(err.Error())
+		return
+	}
+	disp := labelVal
+	if disp == "" {
+		disp = cmdVal
+	}
+	v.status = successStyle.Render(fmt.Sprintf("%q opens with %s", v.browserFor, disp))
+}
+
 // removeAction deletes the selected profile and reloads the list. Shared by all
 // providers.
 func removeAction(v *providerTabView) tea.Cmd {
@@ -408,13 +480,23 @@ func (v providerTabView) View() string {
 		if st.Drifted {
 			note = "shell uses " + orNoSession(v.ambIdent)
 		}
-		info = profileInfoBlock(pr, st, note, rightW)
+		cmdKey, labelKey := browserpick.Keys(v.prov.Name())
+		browser := v.prov.Scheme().GetKey(pr.Name, v.prov.ProfilesDir(), labelKey)
+		if browser == "" {
+			browser = v.prov.Scheme().GetKey(pr.Name, v.prov.ProfilesDir(), cmdKey)
+		}
+		info = profileInfoBlock(pr, st, browser, note, rightW)
 	}
 	actionsBody := r.view(rightW)
 	if v.naming {
 		actionsBody = mutedStyle.Render("Name for the new profile:") + "\n\n" +
 			v.nameInput.View() + "\n\n" +
 			keyHelp("↵", "create + sign in + pin", "esc", "cancel")
+	}
+	if v.browserManual {
+		actionsBody = mutedStyle.Render("Browser command (runs on the local machine):") + "\n\n" +
+			v.browserInput.View() + "\n\n" +
+			keyHelp("↵", "save", "esc", "cancel")
 	}
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(rightW) + "\n" +
@@ -424,7 +506,11 @@ func (v providerTabView) View() string {
 	help := keyHelpFit(contentW,
 		[]string{"↑↓", "select", "↵", "open/run", "esc", "back"},
 		[]string{"q", "quit", "→", "details", "⇥", "tab", "d", "dir", "o", "options"})
-	return renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
+	view := renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
+	if v.browserPick != nil {
+		return overlayCenter(view, v.browserPick.view(), v.width)
+	}
+	return view
 }
 
 // clampAction keeps the action cursor inside the selection's visible set.

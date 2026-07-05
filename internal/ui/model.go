@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/slamb2k/azrl/internal/azure"
+	"github.com/slamb2k/azrl/internal/browserpick"
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -35,6 +36,7 @@ var homeActions = []radioOption{
 	{label: "New profile", key: "i", hint: "sign in + pin here"},
 	{label: "Edit…", key: "x", hint: "open .conf in $EDITOR"},
 	{label: "Rename…", key: "n", hint: "change profile name"},
+	{label: "Browser profile", key: "b", hint: "map to a local browser profile"},
 	{label: "Remove…", key: "delete", hint: "delete profile"},
 }
 
@@ -132,6 +134,11 @@ type Model struct {
 	dirScope      string
 	creating      bool
 	create        textinput.Model
+
+	browserFor    string // profile a browser mapping is being chosen for
+	browserPick   *browserPicker
+	browserManual bool
+	browserInput  textinput.Model
 }
 
 // NewModel builds the home model from the profiles on disk.
@@ -403,6 +410,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			nm.status = successStyle.Render("✓ " + msg.msg)
 		}
 		return nm, nm.identityCmd()
+	case browserProfilesMsg:
+		if msg.forProfile != m.browserFor || m.browserFor == "" {
+			return m, nil
+		}
+		if msg.err != nil || len(msg.profiles) == 0 {
+			ti := textinput.New()
+			ti.Placeholder = "e.g. microsoft-edge --profile-directory=\"Profile 2\""
+			ti.Focus()
+			m.browserInput = ti
+			m.browserManual = true
+			m.status = mutedStyle.Render("discovery unavailable — enter a command")
+			return m, nil
+		}
+		ident := m.statuses[m.browserFor].Identity
+		pk := newBrowserPicker(msg.profiles, ident)
+		m.browserPick = &pk
+		return m, nil
 	case spinner.TickMsg:
 		var c tea.Cmd
 		m.spin, c = m.spin.Update(msg)
@@ -420,6 +444,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.creating {
 			return m.updateCreate(msg)
 		}
+		if m.browserPick != nil {
+			return m.updateBrowserPick(msg)
+		}
+		if m.browserManual {
+			return m.updateBrowserManual(msg)
+		}
 		return m.updateKey(msg)
 	}
 	var cmd tea.Cmd
@@ -429,7 +459,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // capturesInput reports whether the rename text input is active, so the tab
 // container forwards arrow/bracket keys here instead of switching tabs.
-func (m Model) capturesInput() bool { return m.renaming || m.creating }
+func (m Model) capturesInput() bool {
+	return m.renaming || m.creating || m.browserManual || m.browserPick != nil
+}
 
 // updateKey handles the home-screen keymap.
 func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -463,7 +495,7 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.dispatch(m.actions.selected().key)
-	case "l", "u", "c", "i", "x", "n", "delete":
+	case "l", "u", "c", "i", "x", "n", "b", "delete":
 		if !m.actions.selectByKey(msg.String()) {
 			// The action is hidden for this selection (e.g. Use here on the
 			// already-pinned profile).
@@ -577,6 +609,57 @@ func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// updateBrowserPick routes keys to the browser-profile overlay picker.
+func (m Model) updateBrowserPick(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	np, picked, closed := m.browserPick.update(msg)
+	m.browserPick = &np
+	if closed {
+		m.browserPick = nil
+		if picked != nil {
+			m.applyBrowserMapping(picked.Command(), picked.Label())
+		}
+	}
+	return m, nil
+}
+
+// updateBrowserManual handles the manual browser-command fallback prompt.
+func (m Model) updateBrowserManual(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.browserManual = false
+	case "enter":
+		if c := strings.TrimSpace(m.browserInput.Value()); c != "" {
+			m.browserManual = false
+			m.applyBrowserMapping(c, "")
+		}
+	default:
+		var cmd tea.Cmd
+		m.browserInput, cmd = m.browserInput.Update(msg)
+		return m, cmd
+	}
+	return m, nil
+}
+
+// applyBrowserMapping writes the browser cmd/label keys for browserFor.
+func (m *Model) applyBrowserMapping(cmdVal, labelVal string) {
+	cmdKey, labelKey := browserpick.Keys("azure")
+	sch := azure.NewProvider().Scheme()
+	dir := config.ProfilesDir()
+	if err := sch.SetKey(m.browserFor, dir, cmdKey, cmdVal); err != nil {
+		m.status = failureStyle.Render(err.Error())
+		return
+	}
+	if err := sch.SetKey(m.browserFor, dir, labelKey, labelVal); err != nil {
+		m.status = failureStyle.Render(err.Error())
+		return
+	}
+	disp := labelVal
+	if disp == "" {
+		disp = cmdVal
+	}
+	m.status = successStyle.Render(fmt.Sprintf("%q opens with %s", m.browserFor, disp))
+}
+
 func (m Model) doRemove() (tea.Model, tea.Cmd) {
 	name := m.pendingDelete
 	m.confirming = false
@@ -660,6 +743,22 @@ func (m Model) dispatch(key string) (tea.Model, tea.Cmd) {
 		m.busy = true
 		m.status = ""
 		return m, runHandoff(handoffArgs("c", ""))
+	case "b":
+		if sel.name == "" {
+			m.status = failureStyle.Render("✗ select a profile to map a browser to")
+			return m, nil
+		}
+		m.browserFor = sel.name
+		m.status = mutedStyle.Render("looking for browser profiles on the local machine…")
+		name := sel.name
+		return m, func() tea.Msg {
+			g, err := config.LoadGlobal(config.ProfilesDir())
+			if err != nil {
+				return browserProfilesMsg{forProfile: name, err: err}
+			}
+			ps, derr := browserpick.Discover(g)
+			return browserProfilesMsg{forProfile: name, profiles: ps, err: derr}
+		}
 	case "e":
 		if _, err := profile.Resolve("", m.pwd); err != nil {
 			m.status = failureStyle.Render("✗ no profile here to pin")
@@ -689,7 +788,11 @@ func (m Model) View() string {
 	if m.busy {
 		statusLine = m.spin.View() + mutedStyle.Render(" working…")
 	}
-	return renderPaneFrame(m.width, m.height, m.identityStrip(), left, m.rightPane(rightW), scopeLegend(lw), statusLine, m.helpBar())
+	view := renderPaneFrame(m.width, m.height, m.identityStrip(), left, m.rightPane(rightW), scopeLegend(lw), statusLine, m.helpBar())
+	if m.browserPick != nil {
+		return overlayCenter(view, m.browserPick.view(), m.width)
+	}
+	return view
 }
 
 // renderPaneFrame draws the canonical azrl layout that every tab shares so they
@@ -861,6 +964,12 @@ func (m Model) rightPane(w int) string {
 			m.create.View() + "\n\n" +
 			keyHelp("↵", "create + sign in + pin", "esc", "cancel")
 	}
+	if m.browserManual {
+		return paneTitle("BROWSER PROFILE", true) + "\n\n" +
+			mutedStyle.Render("Browser command (runs on the local machine):") + "\n\n" +
+			m.browserInput.View() + "\n\n" +
+			keyHelp("↵", "save", "esc", "cancel")
+	}
 	info := mutedStyle.Render("(no profile selected)")
 	if it, ok := m.list.SelectedItem().(item); ok {
 		pr := profile.Listed{Name: it.name, Label: it.label, Detail: it.tenant}
@@ -869,7 +978,13 @@ func (m Model) rightPane(w int) string {
 		if st.Drifted {
 			note = "shell uses " + orNoSession(m.ambIdent)
 		}
-		info = profileInfoBlock(pr, st, note, w)
+		cmdKey, labelKey := browserpick.Keys("azure")
+		sch := azure.NewProvider().Scheme()
+		browser := sch.GetKey(it.name, config.ProfilesDir(), labelKey)
+		if browser == "" {
+			browser = sch.GetKey(it.name, config.ProfilesDir(), cmdKey)
+		}
+		info = profileInfoBlock(pr, st, browser, note, w)
 	}
 	actionsBody := m.actions.view(w)
 	return paneTitle("DETAILS", m.focus == focusActions) + "\n\n" +
@@ -927,10 +1042,13 @@ func (m Model) helpBar() string {
 	if m.creating {
 		return mutedStyle.Render("type a profile name · ") + keyHelp("↵", "create + sign in + pin", "esc", "cancel")
 	}
+	if m.browserManual {
+		return mutedStyle.Render("type a browser command · ") + keyHelp("↵", "save", "esc", "cancel")
+	}
 	if m.showHelp {
 		lines := []string{
 			keycap("l") + " sign in   " + keycap("u") + " use here   " + keycap("c") + " capture   " + keycap("e") + " write .envrc",
-			keycap("i") + " new profile   " + keycap("x") + " edit   " + keycap("n") + " rename   " + keycap("delete") + " remove",
+			keycap("i") + " new profile   " + keycap("x") + " edit   " + keycap("n") + " rename   " + keycap("b") + " browser   " + keycap("delete") + " remove",
 			keyHelp("↑↓", "select", "↵", "open/run", "esc", "back", "f5", "refresh", "?", "less", "q", "quit"),
 		}
 		return strings.Join(lines, "\n")
