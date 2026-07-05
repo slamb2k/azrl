@@ -29,7 +29,7 @@ func fakeSSH(t *testing.T, tunnelStaysUp bool) string {
 
 func TestRunDeviceRelayPathB(t *testing.T) {
 	log := fakeSSH(t, false)
-	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
 	msg, err := Run("https://github.com/login/device", g, false, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestRunDeviceRelayPathB(t *testing.T) {
 }
 
 func TestRunDeviceRelayPathA(t *testing.T) {
-	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
 	msg, err := Run("https://github.com/login/device", g, true, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestRunDeviceRelayPathA(t *testing.T) {
 }
 
 func TestRunLoopbackPathA(t *testing.T) {
-	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
 	url := "https://h/o?redirect_uri=http://127.0.0.1:52001/"
 	msg, err := Run(url, g, true, 0)
 	if err != nil {
@@ -68,7 +68,7 @@ func TestRunLoopbackPathA(t *testing.T) {
 
 func TestRunLoopbackPathBHoldsTunnel(t *testing.T) {
 	log := fakeSSH(t, true)
-	g := config.Global{LocalHost: "pc", LocalBrowserCmd: "wslview", VMHost: "vm"}
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
 	url := "https://h/o?redirect_uri=http://127.0.0.1:52001/"
 	start := time.Now()
 	msg, err := Run(url, g, false, 150*time.Millisecond)

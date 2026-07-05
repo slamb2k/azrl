@@ -78,7 +78,9 @@ func Login(dir, name, configName string, isolate bool) error {
 		tunnel = t
 		if tunnel != nil {
 			defer func() { _ = tunnel.Process.Kill() }()
-			fmt.Fprintf(os.Stdout, "gcp: browser opened on %s (zero-paste path B)\n", g.LocalHost)
+			fmt.Fprintf(os.Stdout, "gcp: browser opened on %s (zero-paste path B)\n", g.BrowserHost)
+		} else if g.IsLocal() {
+			fmt.Fprintf(os.Stdout, "gcp: browser opened locally (%s)\n", g.BrowserCmd)
 		} else {
 			fmt.Fprintf(os.Stdout, "gcp: paste this on your LOCAL machine:\n\n%s\n\n", paste)
 		}

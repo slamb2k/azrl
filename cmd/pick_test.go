@@ -36,7 +36,17 @@ func seedGhProfiles(t *testing.T, names ...string) string {
 	for _, n := range names {
 		os.WriteFile(filepath.Join(gp, n+".conf"), []byte("GH_HOST=github.com\nGH_USER="+n+"\n"), 0o644)
 	}
+	seedGlobalConf(t, home)
 	return home
+}
+
+// seedGlobalConf writes a minimal valid local-mode azrl.conf under HOME so login
+// commands that route through loadGlobalOrSetup don't trip the setup nudge.
+func seedGlobalConf(t *testing.T, home string) {
+	t.Helper()
+	az := filepath.Join(home, ".azure-profiles")
+	os.MkdirAll(az, 0o755)
+	os.WriteFile(filepath.Join(az, "azrl.conf"), []byte("BROWSER_CMD=wslview\n"), 0o644)
 }
 
 // chdirClean moves into a fresh temp dir (no pointer file anywhere up the tree)

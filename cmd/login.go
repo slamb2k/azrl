@@ -34,11 +34,11 @@ var loginCmd = &cobra.Command{
 	Short: "Sign in via the remote-browser bridge",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		g, err := config.LoadGlobal(config.ProfilesDir())
+		out := cmd.OutOrStdout()
+		g, err := loadGlobalOrSetup(out)
 		if err != nil {
 			return err
 		}
-		out := cmd.OutOrStdout()
 		pwd, _ := os.Getwd()
 		prov := azure.NewProvider()
 		name, profs, newProfile, rErr := resolveLoginTargetWithProfiles(cmd, prov, args, "azrl", validAzureName)
@@ -78,7 +78,7 @@ var loginCmd = &cobra.Command{
 			return runAzureInit(cmd, g, name, pwd, loginPaste)
 		}
 		if conf.BrowserCmd != "" {
-			g.LocalBrowserCmd = conf.BrowserCmd
+			g.BrowserCmd = conf.BrowserCmd
 		}
 		cfgDir := filepath.Join(config.ProfilesDir(), name)
 		os.MkdirAll(cfgDir, 0o755)

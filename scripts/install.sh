@@ -53,17 +53,15 @@ install -m 0755 "$tmp/$BIN" "$bindir/$BIN" 2>/dev/null || { cp "$tmp/$BIN" "$bin
 
 echo "azrl-install: installed $bindir/$BIN ($tag)"
 
-# --- bootstrap the global config from the example if absent ---
-# azrl refuses to run without ~/.azure-profiles/azrl.conf, so seed it here.
+# --- bootstrap the global config if absent ---
+# azrl refuses to run without ~/.azure-profiles/azrl.conf. Environment detection
+# lives once in Go (internal/envdetect); `azrl setup --yes` writes the
+# recommended config non-interactively. Re-run `azrl setup` to review or change it.
 profiles="$HOME/.azure-profiles"
 mkdir -p "$profiles"
 if [ ! -f "$profiles/azrl.conf" ]; then
-  example_url="https://raw.githubusercontent.com/$REPO/$tag/azrl.conf.example"
-  if curl -fsSL "$example_url" -o "$profiles/azrl.conf" 2>/dev/null; then
-    echo "azrl-install: wrote $profiles/azrl.conf — edit LOCAL_HOST/LOCAL_BROWSER_CMD/VM_HOST before first login"
-  else
-    echo "azrl-install: warning — could not fetch azrl.conf.example; create $profiles/azrl.conf manually" >&2
-  fi
+  "$bindir/$BIN" setup --yes || echo "azrl-install: could not seed config; run 'azrl setup' after install" >&2
+  echo "azrl-install: run 'azrl setup' to review or change the detected config"
 fi
 
 # --- globally gitignore .azprofile so it is never committed ---
