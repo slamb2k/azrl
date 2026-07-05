@@ -19,6 +19,7 @@ func TestConfWriteAndLoad(t *testing.T) {
 		ExpectARN:     "AWSReservedSSO_AdminAccess",
 		Label:         "Acme Prod",
 		BrowserCmd:    "chrome-work",
+		BrowserLabel:  "Edge — Work",
 		Isolate:       true,
 	}
 	if err := c.Write(path); err != nil {

@@ -196,6 +196,40 @@ func TestSchemeTouchNoMappingWithoutGoverningPointer(t *testing.T) {
 	}
 }
 
+func TestSetKeyPreservesOrderAndAppends(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "work.conf"),
+		[]byte("AZ_TENANT=contoso.com\nAZ_LABEL=Work\n"), 0o644)
+	s := AzureScheme()
+	if err := s.SetKey("work", dir, "AZ_BROWSER_CMD", "chrome-work"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetKey("work", dir, "AZ_TENANT", "fabrikam.com"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "work.conf"))
+	want := "AZ_TENANT=fabrikam.com\nAZ_LABEL=Work\nAZ_BROWSER_CMD=chrome-work\n"
+	if string(b) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", b, want)
+	}
+}
+
+func TestGetKey(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "work.conf"),
+		[]byte("AZ_TENANT=contoso.com\nAZ_BROWSER_LABEL=Edge — Work\n"), 0o644)
+	s := AzureScheme()
+	if v := s.GetKey("work", dir, "AZ_BROWSER_LABEL"); v != "Edge — Work" {
+		t.Fatalf("got %q", v)
+	}
+	if v := s.GetKey("work", dir, "MISSING"); v != "" {
+		t.Fatalf("missing key must be empty, got %q", v)
+	}
+	if v := s.GetKey("absent", dir, "AZ_TENANT"); v != "" {
+		t.Fatalf("absent conf must be empty, got %q", v)
+	}
+}
+
 func TestSchemeTouchMappingBestEffort(t *testing.T) {
 	confdir := t.TempDir()
 	os.WriteFile(filepath.Join(confdir, "work.conf"), []byte("GH_HOST=github.com\n"), 0o644)

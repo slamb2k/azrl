@@ -24,6 +24,7 @@ type Conf struct {
 	ExpectARN     string
 	Label         string
 	BrowserCmd    string // optional local browser command overriding the global LOCAL_BROWSER_CMD
+	BrowserLabel  string // human label for BrowserCmd, e.g. "Edge — Work" (display-only)
 	Isolate       bool
 }
 
@@ -49,6 +50,7 @@ func LoadConf(name, confdir string) (Conf, error) {
 		ExpectARN:     m["AWS_EXPECT_ARN"],
 		Label:         m["AWS_LABEL"],
 		BrowserCmd:    m["AWS_BROWSER_CMD"],
+		BrowserLabel:  m["AWS_BROWSER_LABEL"],
 		Isolate:       strings.EqualFold(m["AWS_ISOLATE"], "true"),
 	}
 	if c.SSOStartURL == "" {
@@ -66,8 +68,8 @@ func (c Conf) Write(path string) error {
 	if c.Isolate {
 		isolate = "true"
 	}
-	body := fmt.Sprintf("AWS_SSO_START_URL=%s\nAWS_SSO_REGION=%s\nAWS_ACCOUNT_ID=%s\nAWS_ROLE_NAME=%s\nAWS_EXPECT_ACCOUNT=%s\nAWS_EXPECT_ARN=%s\nAWS_LABEL=%s\nAWS_ISOLATE=%s\nAWS_BROWSER_CMD=%s\n",
-		c.SSOStartURL, c.SSORegion, c.AccountID, c.RoleName, c.ExpectAccount, c.ExpectARN, c.Label, isolate, c.BrowserCmd)
+	body := fmt.Sprintf("AWS_SSO_START_URL=%s\nAWS_SSO_REGION=%s\nAWS_ACCOUNT_ID=%s\nAWS_ROLE_NAME=%s\nAWS_EXPECT_ACCOUNT=%s\nAWS_EXPECT_ARN=%s\nAWS_LABEL=%s\nAWS_ISOLATE=%s\nAWS_BROWSER_CMD=%s\nAWS_BROWSER_LABEL=%s\n",
+		c.SSOStartURL, c.SSORegion, c.AccountID, c.RoleName, c.ExpectAccount, c.ExpectARN, c.Label, isolate, c.BrowserCmd, c.BrowserLabel)
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
 	if err != nil {
 		return err

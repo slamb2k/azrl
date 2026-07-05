@@ -169,23 +169,39 @@ func (s Scheme) List(confdir string) ([]Listed, error) {
 	return out, nil
 }
 
-// SetLabel updates only LabelKey in profile name's conf, preserving every other
-// key and their order. An empty label reverts the display name to the slug.
+// SetLabel updates only the label key of profile name, preserving its other
+// fields. An empty label reverts the display name to the slug.
 func (s Scheme) SetLabel(name, confdir, label string) error {
+	return s.SetKey(name, confdir, s.LabelKey, label)
+}
+
+// SetKey updates a single key of profile name's conf, preserving the other
+// keys and their order (the key is appended when absent).
+func (s Scheme) SetKey(name, confdir, key, value string) error {
 	path := filepath.Join(confdir, name+".conf")
 	m, order, err := readOrderedKV(path)
 	if err != nil {
 		return err
 	}
-	if _, ok := m[s.LabelKey]; !ok {
-		order = append(order, s.LabelKey)
+	if _, ok := m[key]; !ok {
+		order = append(order, key)
 	}
-	m[s.LabelKey] = label
+	m[key] = value
 	var b strings.Builder
 	for _, k := range order {
 		fmt.Fprintf(&b, "%s=%s\n", k, m[k])
 	}
 	return writeAtomic(path, b.String())
+}
+
+// GetKey returns one key's value from the conf; "" when the key or the conf
+// is missing (best-effort, display-only callers).
+func (s Scheme) GetKey(name, confdir, key string) string {
+	m, _, err := readOrderedKV(filepath.Join(confdir, name+".conf"))
+	if err != nil {
+		return ""
+	}
+	return m[key]
 }
 
 // readOrderedKV parses a KEY=value conf into a map plus the key order as first
