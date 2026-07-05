@@ -83,6 +83,8 @@ func newGcpLoginCmd() *cobra.Command {
 			configName := conf.ResolvedConfigName(name)
 			cmd.Printf("gcp: signing in to project %q as profile %q\n", conf.Project, name)
 			if conf.BrowserCmd != "" {
+				// gcp.Login loads config.Global itself; the env hook in
+				// LoadGlobal picks this up (same pattern as AZURE_CONFIG_DIR).
 				os.Setenv("AZRL_BROWSER_CMD", conf.BrowserCmd)
 			}
 			if err := gcp.Login(dir, name, configName, conf.Isolate); err != nil {

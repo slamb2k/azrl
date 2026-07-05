@@ -11,6 +11,7 @@ import (
 func TestBrowserShimDeviceRelayPrintsLocalLine(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("AZRL_BROWSER_CMD", "")
 	confdir := filepath.Join(home, ".azure-profiles")
 	if err := os.MkdirAll(confdir, 0o755); err != nil {
 		t.Fatal(err)
