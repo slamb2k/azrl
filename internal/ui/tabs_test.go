@@ -420,7 +420,7 @@ func TestHelpOverlayTogglesFromAnyTab(t *testing.T) {
 	if !tm.help {
 		t.Fatal("'?' did not open the help overlay")
 	}
-	if v := tm.View(); !strings.Contains(v, "KEYS") || !strings.Contains(v, "link here") {
+	if v := tm.View(); !strings.Contains(v, "KEYS") || !strings.Contains(v, "link here") || !strings.Contains(v, "shell as profile") {
 		t.Fatalf("help overlay content missing:\n%s", v)
 	}
 	// Any key closes it without leaking to the tab.

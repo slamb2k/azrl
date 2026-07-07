@@ -126,6 +126,44 @@ func shellNeedsLogin(providerName, name string) bool {
 	return true
 }
 
+// shellOwnedKeys are the vars a provider's subshell owns outright: any value
+// inherited from an outer azrl shell would silently outrank the inner
+// profile (innermost wins), so runShell scrubs them before applying its own.
+func shellOwnedKeys(providerName string) []string {
+	keys := []string{"AZRL_BROWSER_CMD", "AZRL_PROFILE"}
+	switch providerName {
+	case "azure":
+		keys = append(keys, "AZURE_CONFIG_DIR")
+	case "github":
+		keys = append(keys, "GH_CONFIG_DIR")
+	case "aws":
+		keys = append(keys, "AWS_PROFILE", "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE")
+	case "gcp":
+		keys = append(keys, "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME")
+	}
+	return keys
+}
+
+// scrubEnv drops any entries in base whose key matches one of keys, so the
+// caller's own values (appended after) can't be shadowed by a stale
+// inherited one of the same key that survives Go's last-wins de-dup.
+func scrubEnv(base []string, keys []string) []string {
+	out := base[:0:0]
+	for _, kv := range base {
+		drop := false
+		for _, k := range keys {
+			if strings.HasPrefix(kv, k+"=") {
+				drop = true
+				break
+			}
+		}
+		if !drop {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 // runShell drops the user into $SHELL acting as the profile: sign in first if
 // the session is dead, then exec the shell with the profile's env map. No
 // directory link is read or written.
@@ -149,7 +187,7 @@ func runShell(providerName, name string, out io.Writer) error {
 		sh = "/bin/sh"
 	}
 	c := exec.Command(sh)
-	c.Env = append(os.Environ(), env...)
+	c.Env = append(scrubEnv(os.Environ(), shellOwnedKeys(providerName)), env...)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := c.Run(); err != nil {
 		var ee *exec.ExitError

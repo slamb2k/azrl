@@ -270,3 +270,14 @@ func TestStatusOmitsShellOverrideWhenUnset(t *testing.T) {
 		t.Fatalf("omitempty field leaked into JSON:\n%s", out)
 	}
 }
+
+func TestStatusShellOverrideMalformedMarkerFallsBackToRawValue(t *testing.T) {
+	seedStatusHome(t)
+	t.Setenv("AZRL_PROFILE", "garbled")
+
+	statusJSON = false
+	out := runRoot(t, "status")
+	if !strings.Contains(out, "shell override: garbled — this terminal acts as garbled") {
+		t.Fatalf("malformed marker should fall back to the raw value, not an empty name:\n%s", out)
+	}
+}

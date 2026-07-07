@@ -179,7 +179,8 @@ note about any *live* `az login` it finds, without killing it.
 
 Bare `azrl` opens the tabbed TUI (below). `azrl status` prints the same
 three-section overview on the CLI; `--json` emits
-`{"mappings":[…],"ambient":[…],"unmapped":[…]}`.
+`{"mappings":[…],"ambient":[…],"unmapped":[…]}`, plus a `shell_override` field
+when the terminal is inside an `azrl shell`.
 
 ### Shell as a profile
 
@@ -187,8 +188,10 @@ three-section overview on the CLI; `--json` emits
 your `$SHELL` acting as that profile — no directory link is touched, and `exit`
 returns you to your normal identity. If the session is dead it signs you in
 first. Inside the subshell `AZRL_PROFILE` is set (e.g. `azure:work`) and the
-profile's browser mapping is exported as `AZRL_BROWSER_CMD`, so `git push` and
-`az login` inside the subshell open the right browser profile.
+profile's browser mapping is exported as `AZRL_BROWSER_CMD`, which steers
+azrl-run logins and Git Credential Manager (via the documented shim) to the
+right browser profile — a bare `az login` run outside of `azrl` still opens
+whatever browser the OS considers default.
 
 Show it in your prompt:
 

@@ -102,7 +102,10 @@ var statusCmd = &cobra.Command{
 // no colour, no interactive elements.
 func printStatusSections(w io.Writer, ov ui.Overview, rep statusReport) {
 	if rep.ShellOverride != "" {
-		_, prof, _ := strings.Cut(rep.ShellOverride, ":")
+		_, prof, ok := strings.Cut(rep.ShellOverride, ":")
+		if !ok {
+			prof = rep.ShellOverride
+		}
 		fmt.Fprintf(w, "shell override: %s — this terminal acts as %s\n\n", rep.ShellOverride, prof)
 	}
 	fmt.Fprintln(w, "MAPPINGS")

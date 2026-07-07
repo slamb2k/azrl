@@ -119,7 +119,8 @@ func fakeShell(t *testing.T, exitCode int) string {
 	log := filepath.Join(bin, "shell.log")
 	script := "#!/bin/sh\n" +
 		"{ echo \"AZRL_PROFILE=$AZRL_PROFILE\"; echo \"AZURE_CONFIG_DIR=$AZURE_CONFIG_DIR\"; " +
-		"echo \"AWS_PROFILE=$AWS_PROFILE\"; echo \"AZRL_BROWSER_CMD=$AZRL_BROWSER_CMD\"; } >> \"" + log + "\"\n" +
+		"echo \"AWS_PROFILE=$AWS_PROFILE\"; echo \"AZRL_BROWSER_CMD=$AZRL_BROWSER_CMD\"; " +
+		"echo \"AWS_CONFIG_FILE=$AWS_CONFIG_FILE\"; } >> \"" + log + "\"\n" +
 		fmt.Sprintf("exit %d\n", exitCode)
 	sh := filepath.Join(bin, "fakeshell")
 	if err := os.WriteFile(sh, []byte(script), 0o755); err != nil {
@@ -239,6 +240,51 @@ func TestRunShellPassesExitStatusThrough(t *testing.T) {
 	}
 	if code != 3 {
 		t.Fatalf("exit status not passed through: got %d, want 3", code)
+	}
+}
+
+// TestRunShellScrubsStaleEnvFromOuterAzrlShell guards the "innermost wins"
+// contract: a key an outer azrl shell set but the inner profile does not set
+// must not survive into the inner subshell (append-only os.Environ dedup
+// otherwise lets the outer value win).
+func TestRunShellScrubsStaleEnvFromOuterAzrlShell(t *testing.T) {
+	seedShellHome(t)
+	log := fakeShell(t, 0)
+	t.Setenv("AZRL_PROFILE", "")
+
+	orig := shellLoginRunner
+	shellLoginRunner = func(string, string) error { return nil }
+	defer func() { shellLoginRunner = orig }()
+
+	// (a) outer aws isolate profile leaves AWS_CONFIG_FILE behind; entering a
+	// non-isolate aws profile must not inherit it.
+	t.Setenv("AWS_CONFIG_FILE", "/outer/sealed/config")
+	var out strings.Builder
+	if err := runShell("aws", "prod", &out); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(log)
+	got := string(b)
+	if !strings.Contains(got, "AWS_CONFIG_FILE=\n") {
+		t.Fatalf("stale AWS_CONFIG_FILE leaked into aws:prod subshell:\n%s", got)
+	}
+	if !strings.Contains(got, "AWS_PROFILE=prod\n") {
+		t.Fatalf("expected AWS_PROFILE=prod, got:\n%s", got)
+	}
+
+	// (b) outer profile with a browser mapping leaves AZRL_BROWSER_CMD
+	// behind; entering a github profile with no mapping must not inherit it.
+	os.Remove(log)
+	t.Setenv("AWS_CONFIG_FILE", "")
+	t.Setenv("AZRL_BROWSER_CMD", "outer-browser")
+	var out2 strings.Builder
+	if err := runShell("github", "oss", &out2); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(log)
+	got = string(b)
+	if !strings.Contains(got, "AZRL_BROWSER_CMD=\n") {
+		t.Fatalf("stale AZRL_BROWSER_CMD leaked into github:oss subshell:\n%s", got)
 	}
 }
 
