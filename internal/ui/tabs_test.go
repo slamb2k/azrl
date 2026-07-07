@@ -286,6 +286,35 @@ func TestTabsTabKeyForwardedWhileNaming(t *testing.T) {
 	}
 }
 
+// TestDashboardNamingForwardedInContainer proves the container routes keys to
+// the dashboard's adopt name prompt instead of its own global keymap (d/o/?/
+// tab) while the dashboard is naming — regression for the adopt prompt losing
+// keystrokes to the tab container.
+func TestDashboardNamingForwardedInContainer(t *testing.T) {
+	m := seedTabs(t)
+	dm := m.tabs[0].model.(dashboardModel)
+	dm.items = []dashItem{{provider: "github", adopt: true, adoptDir: "/w/foo"}}
+	dm.cursor = 0
+	m.tabs[0].model = dm
+
+	// 'a' on the adoptable row arms the name prompt.
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	tm := nm.(tabsModel)
+	if !tm.tabs[0].model.(dashboardModel).naming {
+		t.Fatal("'a' on an adoptable row did not arm the dashboard name prompt")
+	}
+
+	// While naming, 'd' must reach the text input, not the container's dir picker.
+	nm2, _ := tm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	tm2 := nm2.(tabsModel)
+	if tm2.picker != nil {
+		t.Fatal("'d' opened the dir picker while the dashboard adopt prompt was naming")
+	}
+	if v := tm2.tabs[0].model.(dashboardModel).nameInput.Value(); v != "d" {
+		t.Fatalf("'d' did not land in the dashboard name input, got %q", v)
+	}
+}
+
 func TestUpAtTopFocusesTabBar(t *testing.T) {
 	m := seedTabs(t)
 	// Dashboard cursor starts at 0; ↑ emits focusTabsMsg.

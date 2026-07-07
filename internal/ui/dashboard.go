@@ -173,6 +173,10 @@ func (m dashboardModel) Close() error {
 	return nil
 }
 
+// capturesInput reports whether the dashboard is in a text-entry state, so
+// the tab container routes runes here instead of its global keymap.
+func (m dashboardModel) capturesInput() bool { return m.naming }
+
 // captureArgs maps a provider to the azrl subcommand that captures the
 // current session into profile <name> (Azure's capture is top-level; the
 // other providers sit under their command group).

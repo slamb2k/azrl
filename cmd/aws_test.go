@@ -100,6 +100,84 @@ func TestAwsCapturePreservesExistingKeys(t *testing.T) {
 	}
 }
 
+// seedAmbientAwsConfig writes a ~/.aws/config [default] SSO section so
+// aws.CaptureDefaults() has something to derive from.
+func seedAmbientAwsConfig(t *testing.T, home string) {
+	t.Helper()
+	dir := filepath.Join(home, ".aws")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "config"), []byte(
+		"[default]\nsso_start_url = https://ambient.awsapps.com/start\nsso_region = us-west-2\n"+
+			"sso_account_id = 999999999999\nsso_role_name = AmbientRole\n"), 0o644)
+}
+
+// resetAwsCaptureFlags clears the `aws capture` command's SSO flags. RootCmd
+// is a package-level singleton built once via init(), so its flag variables
+// persist across every test's Execute() call in this binary — a flag value
+// left over from an earlier test would otherwise leak into a test that
+// expects it unset.
+func resetAwsCaptureFlags(t *testing.T) {
+	t.Helper()
+	c, _, err := RootCmd.Find([]string{"aws", "capture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"sso-start-url", "sso-region", "account-id", "role-name"} {
+		if err := c.Flags().Set(f, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestAwsCaptureDerivesAllFieldsWhenNoneGiven proves capture with no SSO
+// flags at all derives every field from the ambient config (existing
+// behavior).
+func TestAwsCaptureDerivesAllFieldsWhenNoneGiven(t *testing.T) {
+	resetAwsCaptureFlags(t)
+	home := seedAwsHome(t)
+	seedAmbientAwsConfig(t, home)
+
+	out := runRoot(t, "aws", "capture", "derived")
+
+	b, err := os.ReadFile(filepath.Join(home, ".aws-profiles", "derived.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := string(b)
+	if !strings.Contains(conf, "AWS_SSO_START_URL=https://ambient.awsapps.com/start") ||
+		!strings.Contains(conf, "AWS_SSO_REGION=us-west-2") ||
+		!strings.Contains(conf, "AWS_ACCOUNT_ID=999999999999") ||
+		!strings.Contains(conf, "AWS_ROLE_NAME=AmbientRole") {
+		t.Fatalf("expected all four fields derived from ambient config:\n%s", conf)
+	}
+	if !strings.Contains(out, "captured https://ambient.awsapps.com/start into profile") {
+		t.Fatalf("confirmation should name the derived URL:\n%s", out)
+	}
+}
+
+// TestAwsCaptureExplicitFlagDoesNotMixWithAmbient proves that giving even one
+// SSO flag stops all derivation — regression for a partial flag welding an
+// explicit value from one org to ambient defaults from a different org.
+func TestAwsCaptureExplicitFlagDoesNotMixWithAmbient(t *testing.T) {
+	resetAwsCaptureFlags(t)
+	home := seedAwsHome(t)
+	seedAmbientAwsConfig(t, home)
+
+	runRoot(t, "aws", "capture", "explicit", "--sso-start-url", "https://other-org.awsapps.com/start")
+
+	b, err := os.ReadFile(filepath.Join(home, ".aws-profiles", "explicit.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := string(b)
+	if !strings.Contains(conf, "AWS_SSO_START_URL=https://other-org.awsapps.com/start") {
+		t.Fatalf("explicit URL missing:\n%s", conf)
+	}
+	if strings.Contains(conf, "us-west-2") || strings.Contains(conf, "999999999999") || strings.Contains(conf, "AmbientRole") {
+		t.Fatalf("ambient fields must not be mixed in when any flag was explicit:\n%s", conf)
+	}
+}
+
 // seedAwsLoginEnv wires a full login environment for `aws login`: a global
 // azrl.conf, an aws-profiles conf carrying expect values, and aws/ssh/cap shims
 // on PATH. The aws shim answers `sso login` by driving the BROWSER bridge and

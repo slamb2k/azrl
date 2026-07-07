@@ -227,6 +227,76 @@ func fakeGhWhoAmI(t *testing.T, login string) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
+// fakeGhIsolatedFailsAmbientSucceeds installs a gh shim that fails whoami
+// when GH_CONFIG_DIR is set (simulating an isolated profile dir with no
+// session yet) and succeeds with the given login when it's unset (the
+// ambient/global gh session) — for exercising capture's fallback narrowing.
+func fakeGhIsolatedFailsAmbientSucceeds(t *testing.T, ambientLogin string) {
+	t.Helper()
+	bin := t.TempDir()
+	script := "#!/usr/bin/env bash\n" +
+		"if [ -n \"$GH_CONFIG_DIR\" ]; then echo no session >&2; exit 1; fi\n" +
+		"printf '{\"login\":\"" + ambientLogin + "\"}'\n"
+	os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestGhCaptureFallsBackToAmbientWhenNoSession proves a fresh adopt (isolated
+// GH_CONFIG_DIR has no hosts.yml yet) still falls back to the ambient
+// identity when WhoAmI fails — the pre-existing "adopt" behavior.
+func TestGhCaptureFallsBackToAmbientWhenNoSession(t *testing.T) {
+	home := seedGhHome(t)
+	fakeGhIsolatedFailsAmbientSucceeds(t, "ambient-alice")
+
+	runRoot(t, "gh", "capture", "work")
+
+	gp := filepath.Join(home, ".github-profiles")
+	b, err := os.ReadFile(filepath.Join(gp, "work.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "GH_USER=ambient-alice") {
+		t.Fatalf("fresh adopt should record the ambient identity:\n%s", string(b))
+	}
+}
+
+// TestGhCaptureDoesNotFallBackWhenSessionExists proves a profile whose
+// isolated GH_CONFIG_DIR already holds a session (hosts.yml present) does
+// NOT fall back to the ambient identity on a WhoAmI error — regression for
+// the fallback silently overwriting GH_USER from an unrelated ambient
+// account on a transient failure.
+func TestGhCaptureDoesNotFallBackWhenSessionExists(t *testing.T) {
+	home := seedGhHome(t)
+	fakeGhIsolatedFailsAmbientSucceeds(t, "ambient-mallory")
+
+	gp := filepath.Join(home, ".github-profiles")
+	os.MkdirAll(filepath.Join(gp, "work"), 0o755)
+	os.WriteFile(filepath.Join(gp, "work", "hosts.yml"), []byte("github.com:\n"), 0o644)
+
+	buf := new(bytes.Buffer)
+	RootCmd.SetOut(buf)
+	RootCmd.SetErr(buf)
+	RootCmd.SetArgs([]string{"gh", "capture", "work"})
+	err := RootCmd.Execute()
+	if err == nil {
+		t.Fatal("capture should surface the WhoAmI error when a session already exists, not fall back")
+	}
+	if !strings.Contains(err.Error(), "gh api user failed") {
+		t.Fatalf("wrong error: %v", err)
+	}
+
+	b, readErr := os.ReadFile(filepath.Join(gp, "work.conf"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if strings.Contains(string(b), "ambient-mallory") {
+		t.Fatalf("conf must not be overwritten with the ambient identity:\n%s", string(b))
+	}
+	if !strings.Contains(string(b), "GH_USER=octocat") {
+		t.Fatalf("conf's original GH_USER must be untouched:\n%s", string(b))
+	}
+}
+
 func TestGhCapturePreservesExistingKeys(t *testing.T) {
 	home := seedGhHome(t)
 	gp := filepath.Join(home, ".github-profiles")

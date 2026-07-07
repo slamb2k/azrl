@@ -5,14 +5,26 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
+// WhoAmI returns the login the profile's isolated GH_CONFIG_DIR is signed in
+// as, via gh api user.
 func WhoAmI(profilesDir, name, host string) (string, error) {
 	login, err := whoAmI(host, ConfigDir(profilesDir, name))
 	if err != nil {
 		return "", fmt.Errorf("ghrl: gh api user failed for %q: %w", name, err)
 	}
 	return login, nil
+}
+
+// HasSession reports whether the profile's isolated GH_CONFIG_DIR already
+// holds a gh session (hosts.yml exists) — used by capture to decide whether a
+// WhoAmI failure means "no session yet" (fall back to ambient) or a real
+// error against a live session (surface it).
+func HasSession(profilesDir, name string) bool {
+	_, err := os.Stat(filepath.Join(ConfigDir(profilesDir, name), "hosts.yml"))
+	return err == nil
 }
 
 // AmbientWhoAmI returns the login gh's own ambient config is signed in as —
