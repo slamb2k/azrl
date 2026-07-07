@@ -274,12 +274,25 @@ func leftRelease(msg tea.MouseMsg) bool {
 	return msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft
 }
 
-// handleMouse routes mouse input: overlays swallow everything (later task makes
-// them mouse-aware), tab cells switch tabs, everything else is the active tab's
-// business.
+// handleMouse routes mouse input: the help overlay closes on any left
+// release; the options and change-directory overlays route clicks to their
+// own rows (a row hit selects, click-again is the overlay's enter, a click
+// outside the box is the overlay's esc) and the wheel to their cursor.
+// Otherwise tab cells switch tabs and everything else is the active tab's
+// business — including its own overlays (e.g. the browser picker), which
+// simply flow through forwardMouse like any other mouse event.
 func (m tabsModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.help || m.options != nil || m.picker != nil {
+	if m.help {
+		if leftRelease(msg) {
+			m.help = false
+		}
 		return m, nil
+	}
+	if m.options != nil {
+		return m.handleOptionsMouse(msg)
+	}
+	if m.picker != nil {
+		return m.handleDirPickerMouse(msg)
 	}
 	if leftRelease(msg) {
 		for i := range m.tabs {
@@ -290,8 +303,95 @@ func (m tabsModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	// Forward to the active tab (wheel + row clicks handled there in later tasks).
 	return m.forwardMouse(msg)
+}
+
+// handleOptionsMouse resolves a mouse event against the options overlay:
+// wheel moves its cursor; a left release inside a row selects it (click
+// again runs the overlay's enter, applying the checked set exactly like
+// pressing ↵); a left release outside the box is the overlay's esc
+// (dismiss without saving).
+func (m tabsModel) handleOptionsMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		if m.options.cursor < len(m.options.provs)-1 {
+			m.options.cursor++
+		}
+		return m, nil
+	case tea.MouseButtonWheelUp:
+		if m.options.cursor > 0 {
+			m.options.cursor--
+		}
+		return m, nil
+	}
+	if !leftRelease(msg) {
+		return m, nil
+	}
+	if z := zone.Get("box:options"); z == nil || !z.InBounds(msg) {
+		no, _, closed := m.options.update(tea.KeyMsg{Type: tea.KeyEscape})
+		m.options = &no
+		if closed {
+			m.options = nil
+		}
+		return m, nil
+	}
+	for i := range m.options.provs {
+		if z := zone.Get(fmt.Sprintf("opt:%d", i)); z != nil && z.InBounds(msg) {
+			no, saved, closed := m.options.clickRow(i)
+			m.options = &no
+			if closed {
+				m.options = nil
+				if len(saved) > 0 {
+					return m.applyProviderSelection(saved)
+				}
+			}
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+// handleDirPickerMouse mirrors handleOptionsMouse for the change-directory
+// overlay: wheel moves its cursor, a row click selects/confirms, a click
+// outside the box dismisses without changing directory.
+func (m tabsModel) handleDirPickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		if m.picker.cursor < len(m.picker.matches)-1 {
+			m.picker.cursor++
+		}
+		return m, nil
+	case tea.MouseButtonWheelUp:
+		if m.picker.cursor > 0 {
+			m.picker.cursor--
+		}
+		return m, nil
+	}
+	if !leftRelease(msg) {
+		return m, nil
+	}
+	if z := zone.Get("box:dir"); z == nil || !z.InBounds(msg) {
+		np, _, closed := m.picker.update(tea.KeyMsg{Type: tea.KeyEscape})
+		m.picker = &np
+		if closed {
+			m.picker = nil
+		}
+		return m, nil
+	}
+	for i := range m.picker.matches {
+		if z := zone.Get(fmt.Sprintf("dir:%d", i)); z != nil && z.InBounds(msg) {
+			np, picked, closed := m.picker.clickRow(i)
+			m.picker = &np
+			if closed {
+				m.picker = nil
+				if picked != "" && os.Chdir(picked) == nil {
+					return m.broadcast(cwdChangedMsg{dir: picked})
+				}
+			}
+			return m, nil
+		}
+	}
+	return m, nil
 }
 
 // forwardMouse hands the event to the active tab's model, mirroring how key
@@ -445,6 +545,8 @@ func helpOverlay() string {
 		keyHelp("e", "write .envrc (azure)", "d", "change dir", "o", "options"),
 		keyHelp("r f5", "refresh", "w", "recheck drift (dashboard)", "?", "close help"),
 		keyHelp("q", "quit"),
+		"",
+		mutedStyle.Render("hold shift to select/copy terminal text while azrl is open"),
 	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

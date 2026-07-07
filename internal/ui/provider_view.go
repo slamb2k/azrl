@@ -392,16 +392,7 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 		default:
 			// An accelerator key selects its action and runs it; a disabled
 			// action's key explains itself in the status line instead.
-			for i, a := range v.enabledActions() {
-				if a.key == msg.String() {
-					v.actionCur = i
-					if !a.enabled {
-						v.status = mutedStyle.Render(a.hint)
-						return v, nil
-					}
-					return v.dispatch(a.key)
-				}
-			}
+			return v.selectAndRun(msg.String())
 		}
 	case barFocusMsg:
 		v.suspended = msg.focused
@@ -451,10 +442,14 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 // handleMouse resolves a mouse event against the view's own zones: wheel
 // scrolls the profile cursor (clamped, never handing focus to the tab bar —
 // unlike ↑ at the top row), left-release hit-tests the profile and action row
-// zones marked in renderProfilePane/radio.view. While a sub-state owns input
-// (naming prompt, confirm dialog, browser picker) every mouse event is a
-// no-op — those overlays get their own zone handling separately.
+// zones marked in renderProfilePane/radio.view. The browser picker overlay
+// gets its own routing (handleBrowserPickMouse) since it owns input while
+// open; every other sub-state (naming prompt, confirm dialog, manual browser
+// entry) makes mouse events a no-op.
 func (v providerTabView) handleMouse(msg tea.MouseMsg) (providerTabView, tea.Cmd) {
+	if v.browserPick != nil {
+		return v.handleBrowserPickMouse(msg)
+	}
 	if v.capturesInput() {
 		return v, nil
 	}
@@ -511,6 +506,14 @@ func (v providerTabView) clickProfile(name string) (providerTabView, tea.Cmd) {
 // loop exactly: select the row, then run it if enabled, else surface its
 // disabled reason in the status line.
 func (v providerTabView) clickAction(key string) (providerTabView, tea.Cmd) {
+	return v.selectAndRun(key)
+}
+
+// selectAndRun selects the action row matching key and runs it if enabled,
+// else surfaces its disabled reason in the status line — the accelerator-key
+// default case and clickAction are both thin wrappers over this so they stay
+// byte-for-byte in sync.
+func (v providerTabView) selectAndRun(key string) (providerTabView, tea.Cmd) {
 	for i, a := range v.enabledActions() {
 		if a.key == key {
 			v.actionCur = i
