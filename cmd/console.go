@@ -22,6 +22,8 @@ func consoleURL(providerName, name string) (string, string, error) {
 			return "", "", fmt.Errorf("azrl: unknown azure profile %q: %w", name, err)
 		}
 		tenant := c.Tenant
+		// Defense-in-depth: LoadConf guarantees Tenant is set, and BuildConf falls
+		// back to the tenant GUID at capture time.
 		if tenant == "" {
 			tenant = c.TenantID
 		}

@@ -20,7 +20,7 @@ func seedConsoleHome(t *testing.T) string {
 		}
 	}
 	write(".azure-profiles/work.conf", "AZ_TENANT=acme.com\nAZ_BROWSER_CMD=chrome --profile-directory=Work\n")
-	write(".azure-profiles/guest.conf", "AZ_TENANT=\nAZ_TENANT_ID=11111111-2222-3333-4444-555555555555\n")
+	write(".azure-profiles/guest.conf", "AZ_TENANT=11111111-2222-3333-4444-555555555555\n")
 	write(".github-profiles/oss.conf", "GH_HOST=github.com\n")
 	write(".aws-profiles/prod.conf", "AWS_SSO_START_URL=https://acme.awsapps.com/start\n")
 	write(".aws-profiles/hollow.conf", "AWS_SSO_REGION=us-east-1\n")

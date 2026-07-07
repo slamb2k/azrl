@@ -73,7 +73,7 @@ func LocateAzprofile(dir string) (string, bool) {
 	return azureScheme.Locate(dir)
 }
 
-// LoadConf reads <confdir>/<name>.conf and requires AZ_TENANT or AZ_TENANT_ID.
+// LoadConf reads <confdir>/<name>.conf and requires AZ_TENANT.
 func LoadConf(name, confdir string) (Conf, error) {
 	var c Conf
 	path := filepath.Join(confdir, name+".conf")
@@ -87,8 +87,8 @@ func LoadConf(name, confdir string) (Conf, error) {
 		return c, err
 	}
 	c = Conf{Tenant: m["AZ_TENANT"], TenantID: m["AZ_TENANT_ID"], DefaultSub: m["AZ_DEFAULT_SUB"], ExpectUser: m["AZ_EXPECT_USER"], Label: m["AZ_LABEL"], BrowserCmd: m["AZ_BROWSER_CMD"], BrowserLabel: m["AZ_BROWSER_LABEL"]}
-	if c.Tenant == "" && c.TenantID == "" {
-		return c, fmt.Errorf("azrl: AZ_TENANT or AZ_TENANT_ID not set in %s", path)
+	if c.Tenant == "" {
+		return c, fmt.Errorf("azrl: AZ_TENANT not set in %s", path)
 	}
 	return c, nil
 }
