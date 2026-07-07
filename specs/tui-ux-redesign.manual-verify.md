@@ -1,7 +1,7 @@
 # TUI UX redesign — manual verification (real laptop + VM)
 
-Items only a real environment can exercise; extend this file as later
-redesign plans (console, mouse) ship.
+Items only a real environment can exercise; all redesign plans (shell,
+console, mouse) have shipped.
 
 ## azrl shell (Plan 3)
 
