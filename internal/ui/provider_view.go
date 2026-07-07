@@ -614,7 +614,14 @@ func (v providerTabView) View() string {
 		if browser == "" {
 			browser = v.prov.Scheme().GetKey(pr.Name, v.prov.ProfilesDir(), cmdKey)
 		}
-		info = profileInfoBlock(pr, st, browser, note, rightW)
+		linked := ""
+		if dirs := v.mappingDirs[pr.Name]; len(dirs) > 0 {
+			linked = displayDir(dirs[0])
+			if len(dirs) > 1 {
+				linked += fmt.Sprintf(" + %d more", len(dirs)-1)
+			}
+		}
+		info = profileInfoBlock(pr, st, browser, linked, note, rightW)
 	}
 	actionsBody := r.view(rightW)
 	if v.namingVerb != "" {

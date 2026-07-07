@@ -372,3 +372,26 @@ func TestRefreshKeysReload(t *testing.T) {
 		t.Fatal("'r' did not reload the profile list")
 	}
 }
+
+func TestDetailsShowsLinkedDirs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+	// Two linked dirs, each with a live pointer so ReadMappings keeps them.
+	d1, d2 := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(d1, ".awsprofile"), []byte("work\n"), 0o644)
+	os.WriteFile(filepath.Join(d2, ".awsprofile"), []byte("work\n"), 0o644)
+	os.WriteFile(filepath.Join(ap, "mappings"),
+		[]byte(d1+"\twork\tpointer\n"+d2+"\twork\tpointer\n"), 0o644)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 160, Height: 34})
+	out := nm.(awsView).View()
+	if !strings.Contains(out, "Linked") || !strings.Contains(out, "+ 1 more") {
+		t.Fatalf("DETAILS should list the linked dirs:\n%s", out)
+	}
+}
