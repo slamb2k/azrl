@@ -18,8 +18,7 @@ import (
 )
 
 // dashItem is one selectable row of the landing view, in render order across
-// the three sections. adoptDir is set on unmanaged mapping rows so [a] can
-// launch the provider's capture flow for that directory.
+// the three sections. [a] opens the adopt name prompt.
 type dashItem struct {
 	provider string
 	profile  string
@@ -100,7 +99,13 @@ func overviewItems(ov Overview) []dashItem {
 		items = append(items, it)
 	}
 	for _, r := range ov.Ambient {
-		items = append(items, dashItem{provider: r.Provider, profile: r.Profile})
+		it := dashItem{provider: r.Provider, profile: r.Profile}
+		// An unmanaged native default is adoptable; the prompt prefills from
+		// the cwd (capture links the cwd, so its basename is the natural name).
+		if r.Profile == "" {
+			it.adopt = true
+		}
+		items = append(items, it)
 	}
 	for _, r := range ov.Unmapped {
 		items = append(items, dashItem{provider: r.Provider, profile: r.Status.ProfileName})
@@ -444,7 +449,7 @@ func ambientLine(r AmbientRow, titleW, idW, srcW int) string {
 		// target — just whether azrl manages this identity.
 		return line + successStyle.Render("managed")
 	}
-	return line + accentStyle.Render("unmanaged")
+	return line + accentStyle.Render("unmanaged") + mutedStyle.Render(" · [a]dopt")
 }
 
 // unmappedLine renders one muted UNMAPPED PROFILES row: provider:name ·

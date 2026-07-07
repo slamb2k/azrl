@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 )
 
@@ -419,5 +420,40 @@ func TestDashboardHintIgnoresExpiredNonGoverningMapping(t *testing.T) {
 	}}
 	if short, _ := dashboardHints(ov); strings.Contains(short, "expired") {
 		t.Fatalf("a pin that does not govern the cwd should not raise the expired hint: %q", short)
+	}
+}
+
+func TestOverviewItemsMarksUnmanagedAmbientAdoptable(t *testing.T) {
+	ov := Overview{Ambient: []AmbientRow{
+		{Provider: "aws", Identity: "111122223333/Dev"},            // unmanaged
+		{Provider: "azure", Identity: "me@x.com", Profile: "acme"}, // managed
+	}}
+	items := overviewItems(ov)
+	if !items[0].adopt || items[0].adoptDir != "" {
+		t.Fatalf("unmanaged ambient row should be adoptable with cwd prefill: %+v", items[0])
+	}
+	if items[1].adopt {
+		t.Fatalf("managed ambient row must not be adoptable: %+v", items[1])
+	}
+}
+
+func TestAmbientLineOffersAdoptOnUnmanaged(t *testing.T) {
+	line := ambientLine(AmbientRow{Provider: "aws", Title: "AWS", Identity: "1111/Dev", Source: "file:~/.aws/config"}, 10, 20, 20)
+	if !strings.Contains(line, "[a]dopt") {
+		t.Fatalf("unmanaged ambient line missing [a]dopt: %q", line)
+	}
+	managed := ambientLine(AmbientRow{Provider: "aws", Title: "AWS", Identity: "1111/Dev", Source: "s", Profile: "prod"}, 10, 20, 20)
+	if strings.Contains(managed, "[a]dopt") {
+		t.Fatalf("managed ambient line must not offer adopt: %q", managed)
+	}
+}
+
+func TestDashboardAdoptAmbientPrefillsCwdBasename(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", adopt: true}}}
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = mod.(dashboardModel)
+	cwd, _ := os.Getwd()
+	if !m.naming || m.nameInput.Placeholder != profile.DefaultName("", cwd) {
+		t.Fatalf("ambient adopt should prefill from cwd: naming=%v placeholder=%q", m.naming, m.nameInput.Placeholder)
 	}
 }
