@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -118,5 +119,48 @@ func TestFormatAge(t *testing.T) {
 		if got := formatAge(c.d); got != c.want {
 			t.Errorf("formatAge(%s) = %q, want %q", c.d, got, c.want)
 		}
+	}
+}
+
+func TestSweepOrphanedLogins(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "uptime"), []byte("5000.00 9000.00\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	uid := os.Getuid()
+	writeProcEntry(t, root, 101, []string{"az", "login", "--tenant", "x"}, uid, 1, "380000")               // orphan, age 20m
+	writeProcEntry(t, root, 102, []string{"/usr/bin/python3", "/usr/bin/az", "login"}, uid, 500, "460000") // live, age 6m
+
+	oldFS, oldKill := procFS, killProc
+	var killed []int
+	procFS = root
+	killProc = func(pid int) error { killed = append(killed, pid); return nil }
+	t.Cleanup(func() { procFS, killProc = oldFS, oldKill })
+
+	var buf bytes.Buffer
+	SweepOrphanedLogins(&buf)
+
+	if len(killed) != 1 || killed[0] != 101 {
+		t.Fatalf("killed = %v, want exactly [101]", killed)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "azrl: reaped orphaned az login (pid 101)") {
+		t.Errorf("missing reap line, got: %s", out)
+	}
+	if !strings.Contains(out, "azrl: note: another az login is running (pid 102, 6m)") {
+		t.Errorf("missing live-login note, got: %s", out)
+	}
+}
+
+func TestSweepOrphanedLoginsNoProc(t *testing.T) {
+	oldFS, oldKill := procFS, killProc
+	procFS = filepath.Join(t.TempDir(), "nope")
+	killProc = func(pid int) error { t.Fatalf("kill(%d) called with no proc root", pid); return nil }
+	t.Cleanup(func() { procFS, killProc = oldFS, oldKill })
+
+	var buf bytes.Buffer
+	SweepOrphanedLogins(&buf)
+	if buf.Len() != 0 {
+		t.Fatalf("expected silence without /proc, got: %s", buf.String())
 	}
 }

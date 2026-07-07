@@ -37,7 +37,7 @@ func runAzureInit(cmd *cobra.Command, g config.Global, name, pwd string, forcePa
 	os.Setenv("AZURE_CONFIG_DIR", cfgDir)
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "azrl: init profile=%s (tenant-less sign-in)\n", name)
-	azure.CleanSlate(cfgDir)
+	azure.CleanSlate(cfgDir, out)
 	if err := runLogin("", g, forcePaste, out); err != nil {
 		return err
 	}

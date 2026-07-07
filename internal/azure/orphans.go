@@ -2,10 +2,12 @@ package azure
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -151,5 +153,37 @@ func formatAge(d time.Duration) string {
 		return fmt.Sprintf("%dm", int(d.Minutes()))
 	default:
 		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+}
+
+// procFS and killProc are package seams so tests can redirect the sweep away
+// from the real /proc and real signals. killProc uses os.Process.Signal (NOT
+// syscall.Kill) so the package still compiles for windows/darwin release
+// builds; on hosts without /proc it is never reached.
+var (
+	procFS   = "/proc"
+	killProc = func(pid int) error {
+		p, err := os.FindProcess(pid)
+		if err != nil {
+			return err
+		}
+		return p.Signal(syscall.SIGTERM)
+	}
+)
+
+// SweepOrphanedLogins reaps the current user's orphaned az-login processes —
+// parent dead, reparented to PID 1, typically leftovers of manual `az login`
+// runs whose terminal died — and warns about live ones, which can steal the
+// next login's browser callback. Best-effort: without /proc (macOS, Windows)
+// and on any read or kill error it is a silent no-op, never blocking a login.
+func SweepOrphanedLogins(out io.Writer) {
+	orphans, live := classifyAzLogins(procFS, os.Getuid())
+	for _, p := range orphans {
+		if killProc(p.PID) == nil {
+			fmt.Fprintf(out, "azrl: reaped orphaned az login (pid %d)\n", p.PID)
+		}
+	}
+	for _, p := range live {
+		fmt.Fprintf(out, "azrl: note: another az login is running (pid %d, %s) — it may steal the browser callback\n", p.PID, formatAge(p.Age))
 	}
 }

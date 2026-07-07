@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,11 +11,13 @@ func runAz(args ...string) ([]byte, error) {
 	return exec.Command("az", args...).Output()
 }
 
-// CleanSlate logs out, clears accounts, and removes the scoped MSAL caches in
-// cfgDir. The az errors are intentionally ignored (a fresh box has nothing to
-// clear); only filesystem errors surface — and those are ignored too since the
-// files may legitimately be absent.
-func CleanSlate(cfgDir string) error {
+// CleanSlate reaps orphaned az-login processes (warning about live ones),
+// logs out, clears accounts, and removes the scoped MSAL caches in cfgDir.
+// The az errors are intentionally ignored (a fresh box has nothing to
+// clear); only filesystem errors surface — and those are ignored too since
+// the files may legitimately be absent.
+func CleanSlate(cfgDir string, out io.Writer) error {
+	SweepOrphanedLogins(out)
 	_ = exec.Command("az", "logout").Run()
 	_ = exec.Command("az", "account", "clear").Run()
 	os.Remove(filepath.Join(cfgDir, "msal_token_cache.json"))

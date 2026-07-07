@@ -172,6 +172,11 @@ azrl --help                # usage; azrl --version prints the version
 `capture` and `login` both **offer to write an `.envrc`** (and run
 `direnv allow`) so plain `az` in that directory follows the profile from then on.
 
+`login` also starts from a clean slate: it reaps orphaned `az login`
+processes (same user, parent process dead) left behind by earlier attempts —
+zombies that would otherwise steal the OAuth browser callback — and prints a
+note about any *live* `az login` it finds, without killing it.
+
 Bare `azrl` opens the tabbed TUI (below). `azrl status` prints the same
 three-section overview on the CLI; `--json` emits
 `{"mappings":[…],"ambient":[…],"unmapped":[…]}`.
