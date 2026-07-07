@@ -3,6 +3,7 @@ package github
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,24 @@ func TestWhoAmIReturnsLogin(t *testing.T) {
 	login, err := WhoAmI(t.TempDir(), "work", "github.com")
 	if err != nil || login != "octocat" {
 		t.Fatalf("WhoAmI=%q err=%v", login, err)
+	}
+}
+
+func TestAmbientWhoAmIDoesNotOverrideConfigDir(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "env.log")
+	script := "#!/bin/sh\nenv | grep '^GH_CONFIG_DIR=' > " + log + "\necho '{\"login\":\"octocat\"}'\n"
+	os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755)
+	t.Setenv("PATH", dir)
+	t.Setenv("GH_CONFIG_DIR", "")
+
+	login, err := AmbientWhoAmI("github.com")
+	if err != nil || login != "octocat" {
+		t.Fatalf("AmbientWhoAmI = %q, %v", login, err)
+	}
+	b, _ := os.ReadFile(log)
+	if strings.Contains(string(b), "GH_CONFIG_DIR=/") {
+		t.Fatalf("ambient whoami must not point GH_CONFIG_DIR at an isolated dir: %s", b)
 	}
 }
 

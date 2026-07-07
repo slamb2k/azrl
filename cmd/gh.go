@@ -185,6 +185,12 @@ func newGhCaptureCmd() *cobra.Command {
 			prov := github.NewProvider()
 			dir := prov.ProfilesDir()
 			login, err := github.WhoAmI(dir, name, hostname)
+			if err != nil && !github.HasSession(dir, name) {
+				// Fresh adopt: the isolated dir has no session yet — record the
+				// ambient identity instead (capture is metadata-only; sign-in
+				// into the isolated dir happens later via `s`).
+				login, err = github.AmbientWhoAmI(hostname)
+			}
 			if err != nil {
 				return err
 			}

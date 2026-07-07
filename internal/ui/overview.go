@@ -48,6 +48,7 @@ type AmbientRow struct {
 	Identity string
 	Source   string
 	Profile  string
+	Expiry   *time.Time // the matched managed profile's expiry; nil = unmanaged/none
 }
 
 // UnmappedRow is a saved profile appearing in no mapping, kept visible so its
@@ -65,6 +66,13 @@ type Overview struct {
 	Ambient  []AmbientRow
 	Unmapped []UnmappedRow
 }
+
+// ExpiryActionable reports whether a provider's tracked expiry is guidance
+// the user must act on. Only AWS qualifies: its SSO session genuinely dies
+// and `aws sso login` is required. Azure and GCP track the access token,
+// which az/gcloud refresh silently on next use, and GitHub has no expiry —
+// their rows never show expiry (the DETAILS pane tells the truth on demand).
+func ExpiryActionable(provider string) bool { return provider == "aws" }
 
 // hasProfiles reports whether any saved profile exists anywhere in the
 // overview (mapped or not), so empty states can distinguish "fresh machine"
@@ -108,10 +116,14 @@ func BuildOverview(provs []provider.Provider, cwd string) Overview {
 		ov.Mappings = append(ov.Mappings, rows...)
 
 		if amb, err := p.Ambient(); err == nil && amb.Identity != "" {
-			ov.Ambient = append(ov.Ambient, AmbientRow{
+			row := AmbientRow{
 				Provider: p.Name(), Title: p.Title(), Identity: amb.Identity,
 				Source: amb.Source, Profile: provider.MatchProfile(listed, amb.Identity),
-			})
+			}
+			if st, ok := statuses[row.Profile]; ok {
+				row.Expiry = st.Expiry
+			}
+			ov.Ambient = append(ov.Ambient, row)
 		}
 
 		mapped := map[string]bool{}

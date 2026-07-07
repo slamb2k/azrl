@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 )
 
@@ -167,34 +168,66 @@ func TestDashboardEnterEmitsSwitchTab(t *testing.T) {
 	}
 }
 
-func TestDashboardAdoptKeyDispatch(t *testing.T) {
-	// An unmanaged mapping row hands [a] off to the provider's capture flow;
-	// any other row ignores the key.
-	m := dashboardModel{items: []dashItem{
-		{provider: "github", adoptDir: "/home/u/oss/foo"},
+func TestDashboardAdoptOpensNamePrompt(t *testing.T) {
+	// [a] on an adoptable row opens the name prompt prefilled from the row's
+	// dir; enter hands off to capture; any other row ignores the key.
+	m := dashboardModel{width: 100, items: []dashItem{
+		{provider: "github", adopt: true, adoptDir: "/home/u/oss/foo"},
 		{provider: "azure", profile: "acme"},
 	}}
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	if cmd == nil {
-		t.Fatal("[a] on an unmanaged row produced no command")
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = mod.(dashboardModel)
+	if cmd != nil {
+		t.Fatal("[a] should open the prompt, not exec immediately")
 	}
-	m.cursor = 1
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}); cmd != nil {
+	if !m.naming || m.nameInput.Placeholder != "foo" {
+		t.Fatalf("naming=%v placeholder=%q, want prompt prefilled with dir basename", m.naming, m.nameInput.Placeholder)
+	}
+	if v := m.View(); !strings.Contains(v, "Name for the adopted profile:") {
+		t.Fatalf("prompt missing from view:\n%s", v)
+	}
+	// Enter with the empty input falls back to the placeholder and execs.
+	mod, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mod.(dashboardModel)
+	if cmd == nil || m.naming {
+		t.Fatalf("enter should exec the capture handoff and close the prompt (cmd=%v naming=%v)", cmd, m.naming)
+	}
+}
+
+func TestDashboardAdoptPromptEscCancels(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "github", adopt: true, adoptDir: "/w/foo"}}}
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = mod.(dashboardModel)
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mod.(dashboardModel)
+	if m.naming || cmd != nil {
+		t.Fatal("esc should close the prompt without running anything")
+	}
+}
+
+func TestDashboardAdoptIgnoredOnManagedRow(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "azure", profile: "acme"}}}
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = mod.(dashboardModel)
+	if cmd != nil || m.naming {
 		t.Fatal("[a] on a managed row should be a no-op")
 	}
 }
 
-func TestAdoptArgsDefaultToDirName(t *testing.T) {
-	cases := map[string][]string{
-		"azure":  {"capture", "foo"},
-		"github": {"gh", "capture", "foo"},
-		"aws":    {"aws", "capture", "foo"},
-		"gcp":    {"gcp", "capture", "foo"},
+func TestCaptureArgsPerProvider(t *testing.T) {
+	cases := []struct {
+		provider string
+		want     []string
+	}{
+		{"azure", []string{"capture", "foo"}},
+		{"github", []string{"gh", "capture", "foo"}},
+		{"aws", []string{"aws", "capture", "foo"}},
+		{"gcp", []string{"gcp", "capture", "foo"}},
 	}
-	for prov, want := range cases {
-		got := adoptArgs(prov, "/home/u/oss/Foo")
-		if strings.Join(got, " ") != strings.Join(want, " ") {
-			t.Fatalf("adoptArgs(%s) = %v, want %v", prov, got, want)
+	for _, c := range cases {
+		got := captureArgs(c.provider, "foo")
+		if strings.Join(got, " ") != strings.Join(c.want, " ") {
+			t.Fatalf("captureArgs(%s) = %v, want %v", c.provider, got, c.want)
 		}
 	}
 }
@@ -267,27 +300,31 @@ func TestDashboardNarrowWidthNoOverflow(t *testing.T) {
 }
 
 func TestDashboardDriftAndExpiryRendering(t *testing.T) {
-	future := time.Now().Add(42 * time.Minute)
+	future := time.Now().Add(10 * time.Minute)
 	m := dashboardModel{width: 120, ov: Overview{
-		Mappings: []MappingRow{{
-			Provider: "azure", Title: "Azure", Dir: "/work/acme", Profile: "acme",
-			Source: "pointer", Scope: ScopeNone, Drifted: true, Pointer: ".azprofile",
-		}},
-		Unmapped: []UnmappedRow{{Provider: "azure", Title: "Azure", Status: provider.Status{
-			ProfileName: "fiig", Identity: "u@acme.com", Expiry: &future, LastUsed: time.Now(),
-		}}},
+		Mappings: []MappingRow{
+			{
+				Provider: "azure", Title: "Azure", Dir: "/work/acme", Profile: "acme",
+				Source: "pointer", Scope: ScopeNone, Drifted: true, Pointer: ".azprofile",
+			},
+			// AWS is the only provider whose expiry is actionable guidance.
+			{
+				Provider: "aws", Title: "AWS", Dir: "/work/api", Profile: "prod",
+				Source: "pointer", Scope: ScopeNone, Pointer: ".awsprofile", Expiry: &future,
+			},
+		},
 	}}
 	m.items = overviewItems(m.ov)
 	v := m.View()
 	if !strings.Contains(v, "⚠ drift") {
 		t.Fatalf("drift marker missing:\n%s", v)
 	}
-	if !strings.Contains(v, "in ") {
+	if !strings.Contains(v, "⚠ expires in") {
 		t.Fatalf("relative expiry missing:\n%s", v)
 	}
 
 	past := time.Now().Add(-time.Hour)
-	m.ov.Unmapped[0].Status.Expiry = &past
+	m.ov.Mappings[1].Expiry = &past
 	if !strings.Contains(m.View(), "expired") {
 		t.Fatalf("expired expiry missing:\n%s", m.View())
 	}
@@ -339,35 +376,32 @@ func TestDashboardHintNamesBothDriftSides(t *testing.T) {
 
 func TestDashboardMappingRowShowsExpired(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
-	future := time.Now().Add(3 * time.Hour)
 	m := dashboardModel{width: 120, ov: Overview{
 		Mappings: []MappingRow{
+			// Azure's access token refreshes silently on next use — never a row marker.
 			{Provider: "azure", Title: "Azure", Dir: "/work/acme", Profile: "acme",
 				Source: "pointer", Scope: ScopeNone, Pointer: ".azprofile", Expiry: &past},
+			// The AWS SSO session dying is real guidance.
 			{Provider: "aws", Title: "AWS", Dir: "/work/api", Profile: "prod",
-				Source: "pointer", Scope: ScopeNone, Pointer: ".awsprofile", Expiry: &future},
+				Source: "pointer", Scope: ScopeNone, Pointer: ".awsprofile", Expiry: &past},
 		},
 	}}
 	m.items = overviewItems(m.ov)
 	v := m.View()
-	if !strings.Contains(v, "⚠ expired") {
-		t.Fatalf("expired mapping row missing ⚠ expired:\n%s", v)
-	}
-	// The still-valid mapping row carries no expiry text at all.
-	if strings.Count(v, "expired") != 1 {
-		t.Fatalf("expected exactly one expired marker:\n%s", v)
+	if strings.Count(v, "⚠ expired") != 1 {
+		t.Fatalf("expected exactly one expired marker (aws only):\n%s", v)
 	}
 }
 
 func TestDashboardHintExpiredGoverningPin(t *testing.T) {
 	past := time.Now().Add(-time.Minute)
 	ov := Overview{Mappings: []MappingRow{
-		{Provider: "azure", Dir: "/w/x", Profile: "acme", Scope: ScopeCwd, Expiry: &past},
+		{Provider: "aws", Dir: "/w/x", Profile: "acme", Scope: ScopeCwd, Expiry: &past},
 		{Dir: "/w/y", Unmanaged: "who@github.com"},
 	}}
 	// An expired governing pin outranks an unmanaged identity.
 	short, notice := dashboardHints(ov)
-	if !strings.Contains(short, "expired") || !strings.Contains(short, "azure:acme") {
+	if !strings.Contains(short, "expired") || !strings.Contains(short, "aws:acme") {
 		t.Fatalf("expired pin chip = %q", short)
 	}
 	if !strings.Contains(notice, "sign in") {
@@ -387,5 +421,104 @@ func TestDashboardHintIgnoresExpiredNonGoverningMapping(t *testing.T) {
 	}}
 	if short, _ := dashboardHints(ov); strings.Contains(short, "expired") {
 		t.Fatalf("a pin that does not govern the cwd should not raise the expired hint: %q", short)
+	}
+}
+
+func TestOverviewItemsMarksUnmanagedAmbientAdoptable(t *testing.T) {
+	ov := Overview{Ambient: []AmbientRow{
+		{Provider: "aws", Identity: "111122223333/Dev"},            // unmanaged
+		{Provider: "azure", Identity: "me@x.com", Profile: "acme"}, // managed
+	}}
+	items := overviewItems(ov)
+	if !items[0].adopt || items[0].adoptDir != "" {
+		t.Fatalf("unmanaged ambient row should be adoptable with cwd prefill: %+v", items[0])
+	}
+	if items[1].adopt {
+		t.Fatalf("managed ambient row must not be adoptable: %+v", items[1])
+	}
+}
+
+func TestAmbientLineOffersAdoptOnUnmanaged(t *testing.T) {
+	line := ambientLine(AmbientRow{Provider: "aws", Title: "AWS", Identity: "1111/Dev", Source: "file:~/.aws/config"}, 10, 20, 20)
+	if !strings.Contains(line, "[a]dopt") {
+		t.Fatalf("unmanaged ambient line missing [a]dopt: %q", line)
+	}
+	managed := ambientLine(AmbientRow{Provider: "aws", Title: "AWS", Identity: "1111/Dev", Source: "s", Profile: "prod"}, 10, 20, 20)
+	if strings.Contains(managed, "[a]dopt") {
+		t.Fatalf("managed ambient line must not offer adopt: %q", managed)
+	}
+}
+
+func TestDashboardAdoptAmbientPrefillsCwdBasename(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", adopt: true}}}
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = mod.(dashboardModel)
+	cwd, _ := os.Getwd()
+	if !m.naming || m.nameInput.Placeholder != profile.DefaultName("", cwd) {
+		t.Fatalf("ambient adopt should prefill from cwd: naming=%v placeholder=%q", m.naming, m.nameInput.Placeholder)
+	}
+}
+
+func TestMappingRowExpiringSoonAmberAwsOnly(t *testing.T) {
+	soon := time.Now().Add(10 * time.Minute)
+	awsLine := mappingLine(MappingRow{Provider: "aws", Dir: "/w/a", Profile: "prod",
+		Source: "pointer", Scope: ScopeCwd, Expiry: &soon}, 20, 20)
+	if !strings.Contains(awsLine, "⚠ expires in") {
+		t.Fatalf("aws row expiring soon missing amber marker: %q", awsLine)
+	}
+	azLine := mappingLine(MappingRow{Provider: "azure", Dir: "/w/a", Profile: "acme",
+		Source: "pointer", Scope: ScopeCwd, Expiry: &soon}, 20, 20)
+	if strings.Contains(azLine, "expires") || strings.Contains(azLine, "expired") {
+		t.Fatalf("azure row must never show expiry: %q", azLine)
+	}
+	farAws := time.Now().Add(3 * time.Hour)
+	quiet := mappingLine(MappingRow{Provider: "aws", Dir: "/w/a", Profile: "prod",
+		Source: "pointer", Scope: ScopeCwd, Expiry: &farAws}, 20, 20)
+	if strings.Contains(quiet, "expires") {
+		t.Fatalf("healthy aws row must show nothing: %q", quiet)
+	}
+}
+
+func TestUnmappedRowShowsNoExpiry(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	line := unmappedLine(UnmappedRow{Provider: "aws",
+		Status: provider.Status{ProfileName: "stale", Identity: "1111/Dev", Expiry: &past}})
+	if strings.Contains(line, "expired") || strings.Contains(line, "in ") {
+		t.Fatalf("unmapped rows are not in play — no expiry display: %q", line)
+	}
+}
+
+func TestExpiredHintGatedToAws(t *testing.T) {
+	past := time.Now().Add(-time.Minute)
+	ov := Overview{Mappings: []MappingRow{
+		{Provider: "azure", Dir: "/w/x", Profile: "acme", Scope: ScopeCwd, Expiry: &past},
+	}}
+	if short, _ := dashboardHints(ov); strings.Contains(short, "expired") {
+		t.Fatalf("azure expiry must not drive the hint: %q", short)
+	}
+	ov.Unmapped = []UnmappedRow{{Provider: "gcp",
+		Status: provider.Status{ProfileName: "old", Expiry: &past}}}
+	if short, _ := dashboardHints(ov); strings.Contains(short, "expired") {
+		t.Fatalf("gcp unmapped expiry must not drive the hint: %q", short)
+	}
+}
+
+func TestAmbientLineExpiryTagsAwsOnly(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	soon := time.Now().Add(5 * time.Minute)
+	expiredAws := ambientLine(AmbientRow{Provider: "aws", Title: "AWS", Identity: "1/Dev",
+		Source: "s", Profile: "prod", Expiry: &past}, 10, 20, 20)
+	if !strings.Contains(expiredAws, "⚠ expired") {
+		t.Fatalf("expired aws default missing tag: %q", expiredAws)
+	}
+	soonAws := ambientLine(AmbientRow{Provider: "aws", Title: "AWS", Identity: "1/Dev",
+		Source: "s", Profile: "prod", Expiry: &soon}, 10, 20, 20)
+	if !strings.Contains(soonAws, "⚠ expires in") {
+		t.Fatalf("soon-expiring aws default missing amber tag: %q", soonAws)
+	}
+	azure := ambientLine(AmbientRow{Provider: "azure", Title: "Azure", Identity: "me@x",
+		Source: "s", Profile: "acme", Expiry: &past}, 10, 20, 20)
+	if strings.Contains(azure, "expire") {
+		t.Fatalf("azure default must never show expiry: %q", azure)
 	}
 }

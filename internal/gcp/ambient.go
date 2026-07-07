@@ -42,3 +42,35 @@ func (Provider) Ambient() (provider.Ambient, error) {
 	}
 	return provider.Ambient{Identity: account, Source: source}, nil
 }
+
+// CaptureDefaults returns the ambient gcloud configuration's name, project and
+// region — the configuration Ambient() resolves. It backs flag-less
+// `azrl gcp capture`, so adopting the ambient identity binds the profile to
+// the live configuration instead of an empty, not-yet-created one.
+// Best-effort and disk-only: missing or unparseable state yields zero values.
+func CaptureDefaults() Conf {
+	dir, _, ok := provider.EnvOrHome("CLOUDSDK_CONFIG", ".config", "gcloud")
+	if !ok {
+		return Conf{}
+	}
+	name := os.Getenv("CLOUDSDK_ACTIVE_CONFIG_NAME")
+	if name == "" {
+		b, err := os.ReadFile(filepath.Join(dir, "active_config"))
+		if err != nil {
+			return Conf{}
+		}
+		name = strings.TrimSpace(string(b))
+	}
+	if name == "" {
+		return Conf{}
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "configurations", "config_"+name))
+	if err != nil {
+		return Conf{}
+	}
+	return Conf{
+		ConfigName: name,
+		Project:    iniValue(string(b), "core", "project"),
+		Region:     iniValue(string(b), "compute", "region"),
+	}
+}

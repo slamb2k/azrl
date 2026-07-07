@@ -126,7 +126,7 @@ func printStatusSections(w io.Writer, ov ui.Overview, rep statusReport) {
 		if m.Drifted {
 			note += "  drift"
 		}
-		if m.Expiry != nil && time.Until(*m.Expiry) <= 0 {
+		if ui.ExpiryActionable(m.Provider) && m.Expiry != nil && time.Until(*m.Expiry) <= 0 {
 			note += "  expired"
 		}
 		fmt.Fprintf(w, "  %s %s → %s  %s%s\n", mark, m.Dir, target, src, note)

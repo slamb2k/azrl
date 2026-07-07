@@ -72,3 +72,38 @@ func configSection(path, section string) map[string]string {
 	}
 	return out
 }
+
+// CaptureDefaults returns the SSO fields behind the ambient aws identity —
+// the stanza AWS_PROFILE names, else [default] — resolving an sso_session
+// indirection when present. It backs flag-less `azrl aws capture`, so adopting
+// the ambient identity records a profile that can actually sign in.
+// Best-effort and disk-only: missing or unparseable state yields zero values.
+func CaptureDefaults() Conf {
+	path, _, ok := provider.EnvOrHome("AWS_CONFIG_FILE", ".aws", "config")
+	if !ok {
+		return Conf{}
+	}
+	section := "default"
+	if p := os.Getenv("AWS_PROFILE"); p != "" {
+		section = "profile " + p
+	}
+	sec := configSection(path, section)
+	if sec == nil {
+		return Conf{}
+	}
+	c := Conf{
+		SSOStartURL: sec["sso_start_url"], SSORegion: sec["sso_region"],
+		AccountID: sec["sso_account_id"], RoleName: sec["sso_role_name"],
+	}
+	if s := sec["sso_session"]; s != "" {
+		if ses := configSection(path, "sso-session "+s); ses != nil {
+			if c.SSOStartURL == "" {
+				c.SSOStartURL = ses["sso_start_url"]
+			}
+			if c.SSORegion == "" {
+				c.SSORegion = ses["sso_region"]
+			}
+		}
+	}
+	return c
+}

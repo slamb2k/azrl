@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -17,12 +18,12 @@ import (
 )
 
 // dashItem is one selectable row of the landing view, in render order across
-// the three sections. adoptDir is set on unmanaged mapping rows so [a] can
-// launch the provider's capture flow for that directory.
+// the three sections. [a] opens the adopt name prompt.
 type dashItem struct {
 	provider string
 	profile  string
-	adoptDir string
+	adopt    bool   // [a] opens the adopt name prompt for this row
+	adoptDir string // prefill dir for the prompt; "" = cwd at prompt time
 }
 
 // dashboardTickMsg drives the periodic disk re-read (the fallback poll).
@@ -52,6 +53,9 @@ type dashboardModel struct {
 	height    int
 	interval  time.Duration
 	watcher   *fsnotify.Watcher
+	naming    bool
+	nameInput textinput.Model
+	adoptItem dashItem
 }
 
 // newDashboard builds the dashboard over provs, reading the poll interval from
@@ -90,12 +94,18 @@ func overviewItems(ov Overview) []dashItem {
 	for _, r := range ov.Mappings {
 		it := dashItem{provider: r.Provider, profile: r.Profile}
 		if r.Unmanaged != "" {
-			it.adoptDir = r.Dir
+			it.adopt, it.adoptDir = true, r.Dir
 		}
 		items = append(items, it)
 	}
 	for _, r := range ov.Ambient {
-		items = append(items, dashItem{provider: r.Provider, profile: r.Profile})
+		it := dashItem{provider: r.Provider, profile: r.Profile}
+		// An unmanaged native default is adoptable; the prompt prefills from
+		// the cwd (capture links the cwd, so its basename is the natural name).
+		if r.Profile == "" {
+			it.adopt = true
+		}
+		items = append(items, it)
 	}
 	for _, r := range ov.Unmapped {
 		items = append(items, dashItem{provider: r.Provider, profile: r.Status.ProfileName})
@@ -163,11 +173,14 @@ func (m dashboardModel) Close() error {
 	return nil
 }
 
-// adoptArgs maps an unmanaged mapping row to the azrl subcommand that captures
-// the current session into a new profile named after the directory (Azure's
-// capture is top-level; the other providers sit under their command group).
-func adoptArgs(providerName, dir string) []string {
-	name := profile.DefaultName("", dir)
+// capturesInput reports whether the dashboard is in a text-entry state, so
+// the tab container routes runes here instead of its global keymap.
+func (m dashboardModel) capturesInput() bool { return m.naming }
+
+// captureArgs maps a provider to the azrl subcommand that captures the
+// current session into profile <name> (Azure's capture is top-level; the
+// other providers sit under their command group).
+func captureArgs(providerName, name string) []string {
 	switch providerName {
 	case "azure":
 		return []string{"capture", name}
@@ -199,6 +212,28 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reload()
 		return m, nil
 	case tea.KeyMsg:
+		if m.naming {
+			switch msg.String() {
+			case "esc":
+				m.naming = false
+			case "enter":
+				name := strings.TrimSpace(m.nameInput.Value())
+				if name == "" {
+					name = m.nameInput.Placeholder
+				}
+				name = profile.SanitizeName(name)
+				if name == "" {
+					return m, nil
+				}
+				m.naming = false
+				return m, runHandoff(captureArgs(m.adoptItem.provider, name))
+			default:
+				var cmd tea.Cmd
+				m.nameInput, cmd = m.nameInput.Update(msg)
+				_ = cmd
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -219,8 +254,17 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "a":
 			if m.cursor >= 0 && m.cursor < len(m.items) {
-				if it := m.items[m.cursor]; it.adoptDir != "" {
-					return m, runHandoff(adoptArgs(it.provider, it.adoptDir))
+				if it := m.items[m.cursor]; it.adopt {
+					dir := it.adoptDir
+					if dir == "" {
+						dir, _ = os.Getwd()
+					}
+					ti := textinput.New()
+					ti.Placeholder = profile.DefaultName("", dir)
+					ti.Focus()
+					m.nameInput = ti
+					m.adoptItem = it
+					m.naming = true
 				}
 			}
 			return m, nil
@@ -245,6 +289,10 @@ func (m dashboardModel) View() string {
 		contentW = 1
 	}
 	short, notice := dashboardHints(m.ov)
+	if m.naming {
+		short = accentStyle.Render("adopt " + m.adoptItem.provider)
+		notice = ""
+	}
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
 		"📁 "+displayDir(cwd), short)
 	help := keyHelpFit(m.width-4,
@@ -252,6 +300,15 @@ func (m dashboardModel) View() string {
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
 
 	var body []string
+	if m.naming {
+		body = append(body,
+			mutedStyle.Render("Name for the adopted profile:"),
+			"",
+			m.nameInput.View(),
+			"",
+			keyHelp("↵", "adopt session + link", "esc", "cancel"),
+			"")
+	}
 	if notice != "" {
 		// The full explanation wraps beneath the header — the right zone only
 		// carries the compact chip.
@@ -360,8 +417,13 @@ func mappingLine(r MappingRow, dirW, tgtW int) string {
 	if r.Drifted {
 		line += "  " + failureStyle.Render("⚠ drift")
 	}
-	if expired(r.Expiry) {
-		line += "  " + failureStyle.Render("⚠ expired")
+	if ExpiryActionable(r.Provider) {
+		switch {
+		case expired(r.Expiry):
+			line += "  " + failureStyle.Render("⚠ expired")
+		case expiringSoon(r.Expiry):
+			line += "  " + accentStyle.Render("⚠ expires in "+shortDur(time.Until(*r.Expiry)))
+		}
 	}
 	if r.Unmanaged != "" {
 		line += "  " + accentStyle.Render("unmanaged") + mutedStyle.Render(" · [a]dopt")
@@ -394,18 +456,28 @@ func ambientLine(r AmbientRow, titleW, idW, srcW int) string {
 	if r.Profile != "" {
 		// The default isn't associated with any folder, so no profile/dir
 		// target — just whether azrl manages this identity.
-		return line + successStyle.Render("managed")
+		line += successStyle.Render("managed")
+		if ExpiryActionable(r.Provider) {
+			switch {
+			case expired(r.Expiry):
+				line += "  " + failureStyle.Render("⚠ expired")
+			case expiringSoon(r.Expiry):
+				line += "  " + accentStyle.Render("⚠ expires in "+shortDur(time.Until(*r.Expiry)))
+			}
+		}
+		return line
 	}
-	return line + accentStyle.Render("unmanaged")
+	return line + accentStyle.Render("unmanaged") + mutedStyle.Render(" · [a]dopt")
 }
 
 // unmappedLine renders one muted UNMAPPED PROFILES row: provider:name ·
-// identity · expiry (the expiry keeps its warning styling).
+// identity. Unmapped profiles aren't in play (no directory governs them), so
+// no expiry display regardless of provider.
 func unmappedLine(r UnmappedRow) string {
 	st := r.Status
 	// The deep-grey ● matches the profile tabs' mapped-nowhere tier.
 	return lipgloss.NewStyle().Foreground(grayDeep).Render("●") + " " +
-		mutedStyle.Render(r.Provider+":"+st.ProfileName+" · "+orDash(st.Identity)+" · ") + expiryText(st.Expiry)
+		mutedStyle.Render(r.Provider+":"+st.ProfileName+" · "+orDash(st.Identity))
 }
 
 // frame assembles the dashboard content and fills it to the full terminal width
@@ -450,21 +522,16 @@ func shortDir(dir string) string {
 	return dir
 }
 
-// expiryText renders a relative expiry ("in 42m" / "expired") with no network.
-func expiryText(exp *time.Time) string {
-	if exp == nil {
-		return "—"
-	}
-	if expired(exp) {
-		return failureStyle.Render("expired")
-	}
-	return "in " + shortDur(time.Until(*exp))
-}
-
 // expired reports whether a cached expiry timestamp is in the past; a nil
 // (none/unknown) expiry is never expired.
 func expired(exp *time.Time) bool {
 	return exp != nil && time.Until(*exp) <= 0
+}
+
+// expiringSoon reports whether a live expiry is inside the amber window —
+// close enough that the next longish task would hit the wall.
+func expiringSoon(exp *time.Time) bool {
+	return exp != nil && !expired(exp) && time.Until(*exp) < 15*time.Minute
 }
 
 func shortDur(d time.Duration) string {
@@ -514,7 +581,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 	// An expired link that governs the cwd means the next CLI command here will
 	// hit a wall — more urgent than adoptable identities, less than conflict/drift.
 	for _, r := range ov.Mappings {
-		if r.Scope != ScopeNone && expired(r.Expiry) {
+		if ExpiryActionable(r.Provider) && r.Scope != ScopeNone && expired(r.Expiry) {
 			return failureStyle.Render("⚠ " + r.Provider + ":" + r.Profile + " expired"),
 				accentStyle.Render(r.Provider+":"+r.Profile) + mutedStyle.Render(" is linked here but its session has expired — ") +
 					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
@@ -528,7 +595,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 		}
 	}
 	for _, u := range ov.Unmapped {
-		if expired(u.Status.Expiry) {
+		if ExpiryActionable(u.Provider) && expired(u.Status.Expiry) {
 			return failureStyle.Render("⚠ " + u.Provider + ":" + u.Status.ProfileName + " expired"),
 				accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" has expired — ") +
 					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")

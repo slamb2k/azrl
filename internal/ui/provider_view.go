@@ -627,7 +627,7 @@ func (v providerTabView) View() string {
 				linked += fmt.Sprintf(" + %d more", len(dirs)-1)
 			}
 		}
-		info = profileInfoBlock(pr, st, browser, linked, note, rightW)
+		info = profileInfoBlock(v.prov.Name(), pr, st, browser, linked, note, rightW)
 	}
 	actionsBody := r.view(rightW)
 	if v.namingVerb != "" {

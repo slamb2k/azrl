@@ -220,6 +220,16 @@ func newAwsCaptureCmd() *cobra.Command {
 				SSOStartURL: startURL, SSORegion: region, AccountID: accountID,
 				RoleName: roleName, ExpectAccount: expectAccount, ExpectARN: expectARN,
 			}
+			// Derive from the ambient SSO session only when the caller gave none of
+			// the four fields — otherwise partial flags could weld an explicit
+			// value from one org to derived values from a different ambient org.
+			if startURL == "" && region == "" && accountID == "" && roleName == "" {
+				def := aws.CaptureDefaults()
+				conf.SSOStartURL = def.SSOStartURL
+				conf.SSORegion = def.SSORegion
+				conf.AccountID = def.AccountID
+				conf.RoleName = def.RoleName
+			}
 			if existing, err := aws.LoadConf(name, dir); err == nil {
 				conf.Label = existing.Label
 				conf.Isolate = existing.Isolate
@@ -233,7 +243,11 @@ func newAwsCaptureCmd() *cobra.Command {
 			if err := aws.Scheme().Touch(name, dir, pwd); err != nil {
 				return err
 			}
-			cmd.Printf("aws: captured %s into profile %q\n", startURL, name)
+			if conf.SSOStartURL == "" {
+				cmd.Printf("aws: captured profile %q\n", name)
+			} else {
+				cmd.Printf("aws: captured %s into profile %q\n", conf.SSOStartURL, name)
+			}
 			return nil
 		},
 	}

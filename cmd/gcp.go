@@ -224,12 +224,22 @@ func newGcpCaptureCmd() *cobra.Command {
 			}
 			prov := gcp.NewProvider()
 			dir := prov.ProfilesDir()
+			def := gcp.CaptureDefaults()
 			cn := configName
+			if cn == "" {
+				cn = def.ConfigName
+			}
 			if cn == "" {
 				cn = name
 			}
 			conf := gcp.Conf{
 				ConfigName: cn, Project: project, Region: region, ExpectAccount: expectAccount,
+			}
+			if conf.Project == "" {
+				conf.Project = def.Project
+			}
+			if conf.Region == "" {
+				conf.Region = def.Region
 			}
 			if existing, err := gcp.LoadConf(name, dir); err == nil {
 				conf.Label = existing.Label
