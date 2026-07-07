@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -223,7 +222,7 @@ func cliGroup(name string) string {
 // sessionLive reports whether a profile's disk-only status shows a usable
 // session — identity present and not expired.
 func sessionLive(st provider.Status) bool {
-	return st.Identity != "" && (st.Expiry == nil || st.Expiry.After(time.Now()))
+	return provider.SessionLive(st)
 }
 
 // update runs the shared list/pane navigation and action dispatch, returning the
