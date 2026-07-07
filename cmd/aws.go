@@ -220,6 +220,19 @@ func newAwsCaptureCmd() *cobra.Command {
 				SSOStartURL: startURL, SSORegion: region, AccountID: accountID,
 				RoleName: roleName, ExpectAccount: expectAccount, ExpectARN: expectARN,
 			}
+			def := aws.CaptureDefaults()
+			if conf.SSOStartURL == "" {
+				conf.SSOStartURL = def.SSOStartURL
+			}
+			if conf.SSORegion == "" {
+				conf.SSORegion = def.SSORegion
+			}
+			if conf.AccountID == "" {
+				conf.AccountID = def.AccountID
+			}
+			if conf.RoleName == "" {
+				conf.RoleName = def.RoleName
+			}
 			if existing, err := aws.LoadConf(name, dir); err == nil {
 				conf.Label = existing.Label
 				conf.Isolate = existing.Isolate
@@ -233,7 +246,7 @@ func newAwsCaptureCmd() *cobra.Command {
 			if err := aws.Scheme().Touch(name, dir, pwd); err != nil {
 				return err
 			}
-			cmd.Printf("aws: captured %s into profile %q\n", startURL, name)
+			cmd.Printf("aws: captured %s into profile %q\n", conf.SSOStartURL, name)
 			return nil
 		},
 	}

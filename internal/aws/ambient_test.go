@@ -139,3 +139,53 @@ func TestAmbientZeroWithoutEnvOrDefault(t *testing.T) {
 		t.Fatalf("no [default] stanza: got %+v, want zero", a)
 	}
 }
+
+func TestCaptureDefaultsResolvesSsoSession(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config")
+	os.WriteFile(cfg, []byte(`[default]
+sso_session = corp
+sso_account_id = 111122223333
+sso_role_name = Dev
+
+[sso-session corp]
+sso_start_url = https://corp.awsapps.com/start
+sso_region = us-east-1
+`), 0o644)
+	t.Setenv("AWS_CONFIG_FILE", cfg)
+	t.Setenv("AWS_PROFILE", "")
+
+	c := aws.CaptureDefaults()
+	if c.SSOStartURL != "https://corp.awsapps.com/start" || c.SSORegion != "us-east-1" {
+		t.Fatalf("sso-session indirection not resolved: %+v", c)
+	}
+	if c.AccountID != "111122223333" || c.RoleName != "Dev" {
+		t.Fatalf("stanza fields missing: %+v", c)
+	}
+}
+
+func TestCaptureDefaultsLegacyInlineAndAwsProfile(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config")
+	os.WriteFile(cfg, []byte(`[profile prod]
+sso_start_url = https://legacy.awsapps.com/start
+sso_region = eu-west-1
+sso_account_id = 999988887777
+sso_role_name = Admin
+`), 0o644)
+	t.Setenv("AWS_CONFIG_FILE", cfg)
+	t.Setenv("AWS_PROFILE", "prod")
+
+	c := aws.CaptureDefaults()
+	if c.SSOStartURL != "https://legacy.awsapps.com/start" || c.AccountID != "999988887777" {
+		t.Fatalf("AWS_PROFILE stanza not read: %+v", c)
+	}
+}
+
+func TestCaptureDefaultsZeroOnMissingState(t *testing.T) {
+	t.Setenv("AWS_CONFIG_FILE", filepath.Join(t.TempDir(), "nope"))
+	t.Setenv("AWS_PROFILE", "")
+	if c := aws.CaptureDefaults(); c != (aws.Conf{}) {
+		t.Fatalf("expected zero Conf, got %+v", c)
+	}
+}
