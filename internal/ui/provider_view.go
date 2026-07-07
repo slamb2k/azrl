@@ -22,18 +22,25 @@ type providerAction struct {
 	key, label string
 	hint       string // short muted description shown beside the label when it fits
 	run        func(v *providerTabView) tea.Cmd
+	bootstrap  bool // offered in the empty state (onboarding verbs)
+}
+
+// actionState is one action resolved against the current selection: always
+// listed; disabled (with the reason swapped into the hint) when it can't apply.
+type actionState struct {
+	providerAction
+	enabled bool
 }
 
 // providerTabView is the shared provider-tab component: a profile-list pane plus
 // an action pane, with cursor/selection, active-pane focus, WindowSize handling,
 // and responsive truncation. AWS, GCP, and GitHub embed it and differ only in
-// their provider, pre-rendered header, and action set. Sign-in and new-profile
-// actions are interactive and point the user at the CLI; use/remove act on the
-// profile store directly.
+// their provider and CLI command group. Sign-in and new-profile actions are
+// interactive and point the user at the CLI; use/remove act on the profile
+// store directly.
 type providerTabView struct {
 	prov       provider.Provider
 	actions    []providerAction
-	header     string
 	profiles   []profile.Listed
 	statuses   map[string]provider.Status
 	ambIdent   string
@@ -58,10 +65,23 @@ type providerTabView struct {
 	browserInput  textinput.Model
 }
 
-// newProviderTabView builds the shared view for prov with the given pre-rendered
-// header and action set, loading the profile list up front.
-func newProviderTabView(prov provider.Provider, header string, actions []providerAction) providerTabView {
-	v := providerTabView{prov: prov, header: header, actions: actions}
+// providerActions is the shared verb set every tab offers. group is the azrl
+// CLI command group the interactive verbs exec ("gh" for GitHub, "" for
+// Azure's top-level verbs).
+func providerActions(group string) []providerAction {
+	return []providerAction{
+		{key: "s", label: "Sign in", hint: "session only — no link", run: loginAction(group)},
+		{key: "u", label: "Link here", hint: "link this dir — no login", run: useAction},
+		{key: "n", label: "New profile", hint: "sign in + link this dir", run: newProfileAction, bootstrap: true},
+		{key: "b", label: "Browser profile", hint: "map to a local browser profile", run: browserAction},
+		{key: "delete", label: "Remove…", hint: "delete profile", run: removeAction},
+	}
+}
+
+// newProviderTabView builds the shared view for prov with the given action set,
+// loading the profile list up front.
+func newProviderTabView(prov provider.Provider, actions []providerAction) providerTabView {
+	v := providerTabView{prov: prov, actions: actions}
 	v.reload()
 	return v
 }
@@ -110,30 +130,37 @@ func (v *providerTabView) reload() {
 	}
 }
 
-// visibleActions filters the action set for the current selection: actions
-// that cannot apply are hidden (Use here when the selected profile already
-// pins this directory).
-func (v providerTabView) visibleActions() []providerAction {
+// enabledActions resolves the action set against the current selection.
+// Nothing is ever hidden: a verb that can't apply is listed disabled with its
+// reason as the hint. The empty state is the one exception — only the
+// bootstrap (onboarding) verbs show.
+func (v providerTabView) enabledActions() []actionState {
 	if len(v.profiles) == 0 {
-		// Nothing to select: only the bootstrap action applies.
+		var out []actionState
 		for _, a := range v.actions {
-			if a.key == "a" {
-				return []providerAction{a}
+			if a.bootstrap {
+				out = append(out, actionState{providerAction: a, enabled: true})
 			}
 		}
-		return nil
+		return out
 	}
 	sel := v.selected()
-	out := make([]providerAction, 0, len(v.actions))
+	out := make([]actionState, 0, len(v.actions))
 	for _, a := range v.actions {
-		if a.key == "u" && sel != "" && sel == v.dirProfile && v.dirScope == ScopeCwd {
-			continue
+		st := actionState{providerAction: a, enabled: true}
+		switch a.key {
+		case "u":
+			if sel != "" && sel == v.dirProfile && v.dirScope == ScopeCwd {
+				st.enabled = false
+				st.hint = "already linked here"
+			}
+		case "s":
+			if sel != "" && sessionLive(v.statuses[sel]) {
+				// Still runnable — re-auth is idempotent — but say why it's optional.
+				st.hint = "session live · re-auth anyway"
+			}
 		}
-		if a.key == "s" && sel != "" && sessionLive(v.statuses[sel]) {
-			// Sign in is the recovery verb; a live session has nothing to recover.
-			continue
-		}
-		out = append(out, a)
+		out = append(out, st)
 	}
 	return out
 }
@@ -274,7 +301,7 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			}
 		case "down", "j":
 			if v.focus == focusActions {
-				if v.actionCur < len(v.visibleActions())-1 {
+				if v.actionCur < len(v.enabledActions())-1 {
 					v.actionCur++
 				}
 			} else if v.cursor < len(v.profiles)-1 {
@@ -285,16 +312,26 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			// Selecting a profile opens the action pane; enter there runs the action.
 			if v.focus == focusProfiles {
 				v.focus = focusActions
-			} else if acts := v.visibleActions(); v.actionCur < len(acts) {
-				return v.dispatch(acts[v.actionCur].key)
+			} else if acts := v.enabledActions(); v.actionCur < len(acts) {
+				a := acts[v.actionCur]
+				if !a.enabled {
+					v.status = mutedStyle.Render(a.hint)
+					return v, nil
+				}
+				return v.dispatch(a.key)
 			}
+		case "f5", "r":
+			v.reload()
 		default:
-			// An accelerator key selects its action and runs it; any other key is a
-			// no-op (arrows/tab/enter are handled above). Hidden actions' keys are
-			// inert for the current selection.
-			for i, a := range v.visibleActions() {
+			// An accelerator key selects its action and runs it; a disabled
+			// action's key explains itself in the status line instead.
+			for i, a := range v.enabledActions() {
 				if a.key == msg.String() {
 					v.actionCur = i
+					if !a.enabled {
+						v.status = mutedStyle.Render(a.hint)
+						return v, nil
+					}
 					return v.dispatch(a.key)
 				}
 			}
@@ -470,12 +507,12 @@ func (v providerTabView) View() string {
 	}
 	left := renderProfilePane(v.profiles, v.cursor, profMode, v.touched, leftW, scopes)
 
-	// DETAILS: the selected profile's info block, then its visible actions as
+	// DETAILS: the selected profile's info block, then its enabled actions as
 	// the shared radio group (keycaps left; selection block only when focused).
-	acts := v.visibleActions()
+	acts := v.enabledActions()
 	opts := make([]radioOption, len(acts))
 	for i, a := range acts {
-		opts[i] = radioOption{label: a.label, key: a.key, hint: a.hint}
+		opts[i] = radioOption{label: a.label, key: a.key, hint: a.hint, disabled: !a.enabled}
 	}
 	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions && !v.suspended}
 	info := mutedStyle.Render("(no profile selected)")
@@ -519,9 +556,9 @@ func (v providerTabView) View() string {
 	return view
 }
 
-// clampAction keeps the action cursor inside the selection's visible set.
+// clampAction keeps the action cursor inside the selection's enabled set.
 func (v *providerTabView) clampAction() {
-	if n := len(v.visibleActions()); v.actionCur >= n && n > 0 {
+	if n := len(v.enabledActions()); v.actionCur >= n && n > 0 {
 		v.actionCur = n - 1
 	}
 }

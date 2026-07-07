@@ -25,7 +25,7 @@ func TestAwsViewRendersProfilesAndActions(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	out := nm.(awsView).View()
 
-	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Sign in", "Use here", "New profile", "Remove"} {
+	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Sign in", "Link here", "New profile", "Remove"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("AWS view missing %q:\n%s", want, out)
 		}
@@ -158,35 +158,6 @@ func TestGroupArgs(t *testing.T) {
 	}
 }
 
-func TestUseHereHiddenWhenSelectedProfilePinsCwd(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	clearAmbientEnv(t)
-	ap := filepath.Join(home, ".aws-profiles")
-	os.MkdirAll(ap, 0o755)
-	os.WriteFile(filepath.Join(ap, "work.conf"),
-		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
-	pinned := t.TempDir()
-	os.WriteFile(filepath.Join(pinned, ".awsprofile"), []byte("work\n"), 0o644)
-	t.Chdir(pinned)
-
-	v := newAwsView()
-	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
-	av := nm.(awsView)
-	out := av.View()
-	if strings.Contains(out, "Use here") {
-		t.Fatalf("Use here should be hidden for the cwd-pinned selection:\n%s", out)
-	}
-	if !strings.Contains(out, "ACTIONS (4)") {
-		t.Fatalf("action count should drop to 4:\n%s", out)
-	}
-	// The 'u' accelerator is inert for this selection.
-	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
-	if cmd != nil || nm.(awsView).status != "" {
-		t.Fatalf("hidden accelerator must be inert (status=%q)", nm.(awsView).status)
-	}
-}
-
 func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -197,10 +168,10 @@ func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
 	v := newAwsView()
-	nm, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	nm, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	av := nm.(awsView)
 	if !av.naming || cmd != nil {
-		t.Fatalf("'a' should open the name prompt (naming=%v)", av.naming)
+		t.Fatalf("'n' should open the name prompt (naming=%v)", av.naming)
 	}
 	for _, r := range "fresh" {
 		nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
@@ -212,33 +183,10 @@ func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
 		t.Fatalf("enter should close the prompt and exec the create login (naming=%v cmd=%v)", av.naming, cmd)
 	}
 	// esc cancels a fresh prompt without exec.
-	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	nm, cmd = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if nm.(awsView).naming || cmd != nil {
 		t.Fatal("esc should cancel the prompt without exec")
-	}
-}
-
-func TestSignInHiddenWhenSessionLive(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	clearAmbientEnv(t)
-	ap := filepath.Join(home, ".aws-profiles")
-	os.MkdirAll(ap, 0o755)
-	os.WriteFile(filepath.Join(ap, "work.conf"),
-		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
-
-	v := newAwsView()
-	// Inject a live session for the selected profile (disk-only fixtures for
-	// the SSO cache are heavyweight; the predicate is what matters here).
-	v.statuses["work"] = provider.Status{ProfileName: "work", Identity: "123/Admin"}
-	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
-	out := nm.(awsView).View()
-	if strings.Contains(out, "Sign in") {
-		t.Fatalf("Sign in should hide for a live session:\n%s", out)
-	}
-	if !strings.Contains(out, "ACTIONS (4)") {
-		t.Fatalf("action count should drop to 4:\n%s", out)
 	}
 }
 
@@ -254,14 +202,87 @@ func TestEmptyProviderShowsOnlyBootstrapAction(t *testing.T) {
 	if !strings.Contains(out, "ACTIONS (1)") || !strings.Contains(out, "New profile") {
 		t.Fatalf("empty provider should offer exactly New profile:\n%s", out)
 	}
-	for _, hidden := range []string{"Sign in", "Use here", "Remove"} {
+	for _, hidden := range []string{"Sign in", "Link here", "Remove"} {
 		if strings.Contains(out, hidden) {
 			t.Fatalf("%q should hide with zero profiles:\n%s", hidden, out)
 		}
 	}
-	// The bootstrap action works: 'a' opens the name prompt.
-	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	// The bootstrap action works: 'n' opens the name prompt.
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	if !nm.(awsView).naming {
-		t.Fatal("'a' should open the new-profile prompt on an empty provider")
+		t.Fatal("'n' should open the new-profile prompt on an empty provider")
+	}
+}
+
+func TestLinkHereDisabledWhenAlreadyLinked(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+	linked := t.TempDir()
+	os.WriteFile(filepath.Join(linked, ".awsprofile"), []byte("work\n"), 0o644)
+	t.Chdir(linked)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	av := nm.(awsView)
+	out := av.View()
+	// Never hidden: the verb stays listed, disabled, with its reason.
+	if !strings.Contains(out, "Link here") || !strings.Contains(out, "already linked here") {
+		t.Fatalf("Link here should render disabled with its reason:\n%s", out)
+	}
+	if !strings.Contains(out, "ACTIONS (5)") {
+		t.Fatalf("action count must not drop when a verb is disabled:\n%s", out)
+	}
+	// The accelerator explains instead of running.
+	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if cmd != nil {
+		t.Fatal("disabled accelerator must not run")
+	}
+	if !strings.Contains(nm.(awsView).status, "already linked here") {
+		t.Fatalf("disabled accelerator should surface the reason, got %q", nm.(awsView).status)
+	}
+}
+
+func TestSignInVisibleWithLiveSessionHint(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+
+	v := newAwsView()
+	v.statuses["work"] = provider.Status{ProfileName: "work", Identity: "123/Admin"}
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 120, Height: 34})
+	av := nm.(awsView)
+	out := av.View()
+	if !strings.Contains(out, "Sign in") || !strings.Contains(out, "re-auth anyway") {
+		t.Fatalf("Sign in must stay visible for a live session, with the swapped hint:\n%s", out)
+	}
+	// Still runnable — re-auth is idempotent.
+	_, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if cmd == nil {
+		t.Fatal("Sign in on a live session must still return the handoff command")
+	}
+}
+
+func TestRefreshKeysReload(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+
+	v := newAwsView()
+	os.WriteFile(filepath.Join(ap, "late.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if len(nm.(awsView).profiles) != 1 {
+		t.Fatal("'r' did not reload the profile list")
 	}
 }
