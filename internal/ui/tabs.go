@@ -278,9 +278,11 @@ func leftRelease(msg tea.MouseMsg) bool {
 // release; the options and change-directory overlays route clicks to their
 // own rows (a row hit selects, click-again is the overlay's enter, a click
 // outside the box is the overlay's esc) and the wheel to their cursor.
-// Otherwise tab cells switch tabs and everything else is the active tab's
-// business — including its own overlays (e.g. the browser picker), which
-// simply flow through forwardMouse like any other mouse event.
+// Otherwise tab cells switch tabs — unless the active tab is in a text-entry
+// state (activeCapturesInput), mirroring the keyboard tab-switch keys, which
+// forward to the active tab instead of switching — and everything else is
+// the active tab's business — including its own overlays (e.g. the browser
+// picker), which simply flow through forwardMouse like any other mouse event.
 func (m tabsModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.help {
 		if leftRelease(msg) {
@@ -294,7 +296,7 @@ func (m tabsModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.picker != nil {
 		return m.handleDirPickerMouse(msg)
 	}
-	if leftRelease(msg) {
+	if leftRelease(msg) && !m.activeCapturesInput() {
 		for i := range m.tabs {
 			if z := zone.Get(fmt.Sprintf("tab:%d", i)); z != nil && z.InBounds(msg) {
 				m.active = i

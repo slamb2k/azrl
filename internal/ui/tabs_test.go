@@ -403,6 +403,35 @@ func TestMouseClickOnTabCellSwitchesTab(t *testing.T) {
 	}
 }
 
+// TestMouseClickOnTabCellIgnoredWhileNaming proves a tab-cell click is
+// ignored while the active tab is in a text-entry state, mirroring the
+// keyboard tab-switch keys (which forward to the input instead of
+// switching) — regression for a click silently stealing focus mid-prompt.
+func TestMouseClickOnTabCellIgnoredWhileNaming(t *testing.T) {
+	m := seedTabs(t)
+	// Move to the Azure tab and arm the new-profile text input ('n').
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	tm := nm.(tabsModel)
+	if tm.tabs[1].model.(azureView).namingVerb == "" {
+		t.Fatal("'n' did not arm the name input")
+	}
+	// Render through the root View so bubblezone records the tab-cell bounds.
+	_ = tm.View()
+	time.Sleep(120 * time.Millisecond) // bubblezone records zones asynchronously
+	z := zone.Get("tab:2")
+	if z == nil || z.IsZero() {
+		t.Fatal("tab cell 2 has no zone — Mark/Scan not wired")
+	}
+	nm2, _ := tm.Update(tea.MouseMsg{
+		X: z.StartX, Y: z.StartY,
+		Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft,
+	})
+	if got := nm2.(tabsModel).active; got != 1 {
+		t.Fatalf("click on tab cell 2 while naming should be ignored, active = %d, want 1", got)
+	}
+}
+
 func TestOptionsOverlayEnablesProviderTabs(t *testing.T) {
 	m := seedTabs(t)
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
