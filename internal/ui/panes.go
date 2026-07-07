@@ -79,7 +79,7 @@ func effectiveIdentity(dirProfile, dirIdentity, ambient string) string {
 // profileInfoBlock renders the top of the DETAILS pane for one profile: a
 // key/value sheet with a fixed key column — the conf detail plus the
 // disk-only status (identity, linked dirs, expiry, last-used).
-func profileInfoBlock(pr profile.Listed, st provider.Status, browser, linked, driftNote string, w int) string {
+func profileInfoBlock(prov string, pr profile.Listed, st provider.Status, browser, linked, driftNote string, w int) string {
 	row := func(k, v string) string {
 		if v == "" {
 			v = mutedStyle.Render("—")
@@ -92,7 +92,7 @@ func profileInfoBlock(pr profile.Listed, st provider.Status, browser, linked, dr
 		row("Detail", pr.Detail),
 		row("Browser", browser),
 		row("Linked", linked),
-		row("Expiry", expiryWord(st.Expiry)),
+		row("Expiry", expiryWord(prov, st.Expiry)),
 		row("Last used", lastUsedWord(st.LastUsed)),
 	}
 	if driftNote != "" {
@@ -101,12 +101,19 @@ func profileInfoBlock(pr profile.Listed, st provider.Status, browser, linked, dr
 	return strings.Join(rows, "\n")
 }
 
-func expiryWord(t *time.Time) string {
+// expiryWord renders the DETAILS expiry truthfully per provider: AWS expiry
+// is actionable ("expired" = sign in again), while a stale Azure/GCP access
+// token is refreshed silently by az/gcloud on next use — say so instead of
+// crying wolf. nil (GitHub / nothing tracked) renders empty.
+func expiryWord(prov string, t *time.Time) string {
 	if t == nil {
 		return ""
 	}
 	d := time.Until(*t)
 	if d <= 0 {
+		if !ExpiryActionable(prov) {
+			return mutedStyle.Render("token stale · refreshes on next use")
+		}
 		return failureStyle.Render("expired")
 	}
 	if d < 2*time.Hour {
