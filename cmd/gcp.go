@@ -315,6 +315,7 @@ func gcpSubcommands() []*cobra.Command {
 		newGcpLoginCmd(), newGcpListCmd(), newGcpUseCmd(),
 		newGcpRmCmd(), newGcpCaptureCmd(), newGcpStatusCmd(), newGcpBrowserCmd(),
 		newShellCmd("gcp", "Open a subshell acting as a GCP profile (no link)"),
+		newConsoleCmd("gcp", "Open the GCP console for a profile's project"),
 	}
 }
 

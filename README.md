@@ -209,6 +209,16 @@ format = "[$env_value]($style) "
 style = "bold yellow"
 ```
 
+### Open the web console
+
+`azrl console work` (also `azrl gh|aws|gcp console <name>`, `ghrl console <name>`)
+opens the provider's web console as that profile — the Azure portal scoped to the
+profile's tenant, the AWS access portal, the GCP console pinned to the profile's
+project and signed-in account, or the GitHub host — in the profile's mapped
+browser (falling back to the global `BROWSER_CMD`; remote setups launch it on
+`BROWSER_HOST` over SSH). If no browser is configured or the launch fails, the
+URL is printed instead.
+
 ## Mapping a local browser profile
 
 `browser <name>` is available on every provider (`azrl browser`, `azrl gh

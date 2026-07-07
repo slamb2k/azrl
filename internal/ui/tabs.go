@@ -399,7 +399,7 @@ func helpOverlay() string {
 		keyHelp("↑↓", "select", "↵", "open/run", "esc", "back"),
 		keyHelp("⇥ ]", "next tab", "⇧⇥ [", "prev tab"),
 		keyHelp("s", "sign in", "u", "link here", "n", "new profile", "t", "shell as profile"),
-		keyHelp("a", "capture (empty state) · adopt (dashboard)", "b", "browser profile", "delete", "remove"),
+		keyHelp("c", "open console", "a", "capture (empty state) · adopt (dashboard)", "b", "browser profile", "delete", "remove"),
 		keyHelp("e", "write .envrc (azure)", "d", "change dir", "o", "options"),
 		keyHelp("r f5", "refresh", "w", "recheck drift (dashboard)", "?", "close help"),
 		keyHelp("q", "quit"),

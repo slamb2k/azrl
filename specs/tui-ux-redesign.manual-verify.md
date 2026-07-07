@@ -17,3 +17,12 @@ redesign plans (console, mouse) ship.
 - [ ] TUI `t` suspends into the subshell and reloads cleanly on exit; the
       header chip `⌁ shell: <name>` shows inside a subshell-launched TUI and
       the Azure drift warning stays quiet.
+
+## azrl console (Plan 4)
+
+- [ ] `azrl console <azure-profile>` on a remote VM opens the tenant-scoped
+      portal in the mapped browser profile on the laptop.
+- [ ] `azrl gcp console <name>` lands on the right project AND the right
+      Google account (authuser honored with multiple signed-in accounts).
+- [ ] No-browser config and unreachable-host paths print the URL cleanly.
+- [ ] TUI `c` opens the console and returns without disturbing the TUI.

@@ -310,6 +310,7 @@ func awsSubcommands() []*cobra.Command {
 		newAwsLoginCmd(), newAwsListCmd(), newAwsUseCmd(),
 		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(), newAwsBrowserCmd(),
 		newShellCmd("aws", "Open a subshell acting as an AWS profile (no link)"),
+		newConsoleCmd("aws", "Open the AWS access portal for a profile"),
 	}
 }
 
