@@ -56,6 +56,7 @@ type dashboardModel struct {
 	naming    bool
 	nameInput textinput.Model
 	adoptItem dashItem
+	status    string
 }
 
 // newDashboard builds the dashboard over provs, reading the poll interval from
@@ -69,8 +70,21 @@ func newDashboard(provs []provider.Provider) dashboardModel {
 		interval:  time.Duration(config.DashboardPollSecs(config.ProfilesDir())) * time.Second,
 	}
 	m.reload()
+	m.cursor = governingIndex(m.ov)
 	m.watcher = newDashboardWatcher(provs)
 	return m
+}
+
+// governingIndex returns the flat item index of the first mapping row that
+// governs the cwd — where the cursor should wake up (spec: the dashboard is
+// the command center; you land on the row that answers "what am I here?").
+func governingIndex(ov Overview) int {
+	for i, r := range ov.Mappings {
+		if r.Scope == ScopeCwd {
+			return i // mappings occupy the head of the flat item list
+		}
+	}
+	return 0
 }
 
 // reload re-aggregates the three sections from disk and rebuilds the flat
@@ -210,6 +224,11 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case opDoneMsg:
 		// A handed-off flow (e.g. adopt → capture) finished: pick up its writes.
 		m.reload()
+		if msg.err != nil {
+			m.status = failureStyle.Render("✗ " + msg.err.Error())
+		} else if msg.msg != "" {
+			m.status = successStyle.Render("✓ " + msg.msg)
+		}
 		return m, nil
 	case tea.KeyMsg:
 		if m.naming {
@@ -234,6 +253,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		m.status = ""
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -268,6 +288,38 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case "s", "t", "c", "u":
+			if m.cursor < 0 || m.cursor >= len(m.items) {
+				return m, nil
+			}
+			it := m.items[m.cursor]
+			if it.profile == "" {
+				m.status = mutedStyle.Render("no managed profile on this row — a adopts it first")
+				return m, nil
+			}
+			switch msg.String() {
+			case "s":
+				return m, runHandoff(append(groupArgs(cliGroup(it.provider), "login"), it.profile))
+			case "t":
+				return m, runShellHandoff(append(groupArgs(cliGroup(it.provider), "shell"), it.profile))
+			case "c":
+				return m, runHandoff(append(groupArgs(cliGroup(it.provider), "console"), it.profile))
+			case "u":
+				pwd, _ := os.Getwd()
+				for _, p := range m.providers {
+					if p.Name() != it.provider {
+						continue
+					}
+					if err := p.Use(it.profile, p.ProfilesDir(), pwd); err != nil {
+						m.status = failureStyle.Render("✗ " + err.Error())
+					} else {
+						m.status = successStyle.Render("✓ linked " + displayDir(pwd) + " → " + it.profile)
+						m.reload()
+					}
+					return m, nil
+				}
+				return m, nil
+			}
 		case "enter":
 			if m.cursor >= 0 && m.cursor < len(m.items) {
 				it := m.items[m.cursor]
@@ -292,11 +344,13 @@ func (m dashboardModel) View() string {
 	if m.naming {
 		short = accentStyle.Render("adopt " + m.adoptItem.provider)
 		notice = ""
+	} else if m.status != "" {
+		short = m.status
 	}
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
 		"📁 "+displayDir(cwd), short)
 	help := keyHelpFit(m.width-4,
-		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt"},
+		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/u", "act on row"},
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
 
 	var body []string
