@@ -703,7 +703,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 		if ExpiryActionable(r.Provider) && r.Scope != ScopeNone && expired(r.Expiry) {
 			return failureStyle.Render("⚠ " + r.Provider + ":" + r.Profile + " expired"),
 				accentStyle.Render(r.Provider+":"+r.Profile) + mutedStyle.Render(" is linked here but its session has expired — ") +
-					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
+					keycap("↵") + mutedStyle.Render(" opens its tab to renew")
 		}
 	}
 	for _, r := range ov.Mappings {
@@ -717,7 +717,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 		if ExpiryActionable(u.Provider) && expired(u.Status.Expiry) {
 			return failureStyle.Render("⚠ " + u.Provider + ":" + u.Status.ProfileName + " expired"),
 				accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" has expired — ") +
-					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
+					keycap("↵") + mutedStyle.Render(" opens its tab to renew")
 		}
 	}
 	if len(ov.Mappings) == 0 {

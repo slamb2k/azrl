@@ -88,7 +88,7 @@ type providerTabView struct {
 // Azure's top-level verbs).
 func providerActions(group string) []providerAction {
 	return []providerAction{
-		{key: "s", label: "Sign in", hint: "session only — no link", run: loginAction(group)},
+		{key: "s", label: "Renew", hint: "sign in again — links unchanged", run: loginAction(group)},
 		{key: "t", label: "Shell as…", hint: "subshell as this profile — no link", run: shellAction},
 		{key: "u", label: "Link here", hint: "link this dir — no login", run: useAction},
 		{key: "n", label: "New profile", hint: "sign in + link this dir", run: newProfileAction, bootstrap: true},
