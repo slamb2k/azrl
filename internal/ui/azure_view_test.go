@@ -144,6 +144,29 @@ func TestAzureBrowserActionOpensPickerAndWritesKeys(t *testing.T) {
 	}
 }
 
+func TestAzureRefreshKeysRecheckIdentity(t *testing.T) {
+	v := seedAzure(t)
+	nm, _ := v.Update(identityMsg{
+		who:        "u@fiig.com.au · fiig.com.au",
+		ambientWho: "u@fiig.com.au · velrada.com",
+		drift:      true,
+	})
+	av := nm.(azureView)
+	if !strings.Contains(av.identityStrip(), ".envrc") {
+		t.Fatal("setup: expected drift notice before refresh")
+	}
+	// 'r' and 'f5' must re-check the identity, not just reload the profile
+	// list, or an explicit refresh leaves a stale drift notice on screen.
+	_, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if cmd == nil {
+		t.Fatal("'r' should batch identityCmd()")
+	}
+	_, cmd = av.Update(tea.KeyMsg{Type: tea.KeyF5})
+	if cmd == nil {
+		t.Fatal("'f5' should batch identityCmd()")
+	}
+}
+
 func TestGroupArgsTopLevel(t *testing.T) {
 	if got := strings.Join(groupArgs("", "login", "acme"), " "); got != "login acme" {
 		t.Fatalf("groupArgs(\"\") = %q", got)

@@ -107,6 +107,12 @@ func TestProviderViewRemoveConfirms(t *testing.T) {
 	if !strings.Contains(av.status, "removed") || len(av.profiles) != 0 {
 		t.Fatalf("'y' should remove (status=%q, %d profiles)", av.status, len(av.profiles))
 	}
+	// Removing the last profile shrinks 5 actions down to the 2 bootstrap
+	// verbs; actionCur (left at 4, Remove's index) must clamp into range or
+	// enter goes inert on the empty state.
+	if n := len(av.enabledActions()); av.actionCur >= n {
+		t.Fatalf("actionCur=%d not clamped to the %d empty-state actions", av.actionCur, n)
+	}
 }
 
 func TestProviderViewBrowserEscClearsStatus(t *testing.T) {
@@ -144,6 +150,48 @@ func TestProviderViewBrowserEscClearsStatus(t *testing.T) {
 	av3 = nm3.(awsView)
 	if av3.status != "" {
 		t.Fatalf("esc from picker left a stale status: %q", av3.status)
+	}
+}
+
+func TestBrowserDiscoveryDroppedWhenConfirmArmedMeanwhile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+
+	v := newAwsView()
+	// Kick off browser discovery, then — before it resolves — arm the confirm
+	// dialog (e.g. the user pressed delete during the SSH round-trip).
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	av := nm.(awsView)
+	if av.browserFor != "work" {
+		t.Fatalf("expected browser discovery armed for work, got %q", av.browserFor)
+	}
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyDelete})
+	av = nm.(awsView)
+	if !av.confirming || av.pendingDelete != "work" {
+		t.Fatalf("delete should arm the confirm while discovery is in flight (confirming=%v pending=%q)", av.confirming, av.pendingDelete)
+	}
+
+	// The stale discovery result now lands.
+	nm, _ = av.Update(browserProfilesMsg{forProfile: "work", profiles: []browserpick.Profile{
+		{Browser: "edge", OS: "linux", Dir: "Profile 2", Name: "Work", Email: "simon@acme.com"},
+	}})
+	av = nm.(awsView)
+	if av.browserPick != nil || av.browserManual {
+		t.Fatalf("late browser discovery must not open the picker over an armed confirm (pick=%v manual=%v)", av.browserPick != nil, av.browserManual)
+	}
+	if !av.confirming || av.pendingDelete != "work" {
+		t.Fatalf("the confirm dialog must survive the late discovery message (confirming=%v pending=%q)", av.confirming, av.pendingDelete)
+	}
+	// 'y' still removes — the confirm state wasn't corrupted.
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	av = nm.(awsView)
+	if !strings.Contains(av.status, "removed") || len(av.profiles) != 0 {
+		t.Fatalf("'y' should still remove work (status=%q, %d profiles)", av.status, len(av.profiles))
 	}
 }
 

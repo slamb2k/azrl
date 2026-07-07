@@ -395,6 +395,12 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 		if msg.forProfile != v.browserFor || v.browserFor == "" {
 			return v, nil
 		}
+		if v.confirming || v.namingVerb != "" {
+			// The user armed another sub-state while discovery was in flight;
+			// don't stack the picker/manual-entry prompt on top of it.
+			v.browserFor = ""
+			return v, nil
+		}
 		if msg.err != nil || len(msg.profiles) == 0 {
 			ti := textinput.New()
 			ti.Placeholder = "e.g. microsoft-edge --profile-directory=\"Profile 2\""
@@ -553,6 +559,7 @@ func (v providerTabView) doRemove() (providerTabView, tea.Cmd) {
 	} else {
 		v.status = successStyle.Render(fmt.Sprintf("removed %q", name))
 		v.reload()
+		v.clampAction()
 	}
 	return v, nil
 }

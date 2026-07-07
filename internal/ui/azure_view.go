@@ -123,10 +123,15 @@ func (v azureView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	nv, cmd := v.providerTabView.update(msg)
 	v.providerTabView = nv
-	switch msg.(type) {
+	switch m := msg.(type) {
 	case cwdChangedMsg, opDoneMsg:
 		// Disk state changed under us; re-check the live identity + drift.
 		return v, tea.Batch(cmd, identityCmd())
+	case tea.KeyMsg:
+		if (m.String() == "r" || m.String() == "f5") && !v.capturesInput() {
+			// Explicit refresh should also clear a stale drift notice.
+			return v, tea.Batch(cmd, identityCmd())
+		}
 	}
 	return v, cmd
 }
