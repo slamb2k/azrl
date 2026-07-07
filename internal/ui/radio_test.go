@@ -66,3 +66,24 @@ func TestRadioView(t *testing.T) {
 		}
 	}
 }
+
+func TestRadioViewRendersDisabledRows(t *testing.T) {
+	r := newRadio([]radioOption{
+		{label: "Sign in", key: "s"},
+		{label: "Link here", key: "u", hint: "already linked here", disabled: true},
+	})
+	r.focused = true
+	v := r.view(60)
+	// Disabled rows still render — never hidden — with their reason hint.
+	if !strings.Contains(v, "Link here") || !strings.Contains(v, "already linked here") {
+		t.Fatalf("disabled row or its reason missing:\n%s", v)
+	}
+	// Cursor can land on a disabled row and the view still renders both rows.
+	r.cursor = 1
+	v2 := r.view(60)
+	for _, label := range []string{"Sign in", "Link here"} {
+		if !strings.Contains(v2, label) {
+			t.Fatalf("view with cursor on disabled row missing %q:\n%s", label, v2)
+		}
+	}
+}
