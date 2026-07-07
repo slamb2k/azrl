@@ -5,9 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/provider"
 )
@@ -354,6 +356,26 @@ func TestTabsDefaultToAzureAndGitHub(t *testing.T) {
 	}
 	if len(m.tabs) != 3 || m.tabs[1].name != "azure" || m.tabs[2].name != "github" {
 		t.Fatalf("default tabs = %v", names)
+	}
+}
+
+// TestMouseClickOnTabCellSwitchesTab proves bubblezone marks each tab cell in
+// View and the container hit-tests a left-click release against those zones.
+func TestMouseClickOnTabCellSwitchesTab(t *testing.T) {
+	m := seedTabs(t)
+	// Render through the root View so zone.Scan records tab-cell bounds.
+	_ = m.View()
+	time.Sleep(120 * time.Millisecond) // bubblezone records zones asynchronously
+	z := zone.Get("tab:2")
+	if z == nil || z.IsZero() {
+		t.Fatal("tab cell 2 has no zone — Mark/Scan not wired")
+	}
+	nm, _ := m.Update(tea.MouseMsg{
+		X: z.StartX, Y: z.StartY,
+		Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft,
+	})
+	if got := nm.(tabsModel).active; got != 2 {
+		t.Fatalf("click on tab cell 2 should activate it, active = %d", got)
 	}
 }
 

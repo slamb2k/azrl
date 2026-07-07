@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -35,7 +37,10 @@ type tabsModel struct {
 }
 
 // NewTabs builds the tabbed container on the dashboard (the default landing view).
-func NewTabs() tabsModel { return NewTabsOn(0) }
+func NewTabs() tabsModel {
+	zone.NewGlobal() // idempotent — defensive so tests that skip runTabs still have a manager.
+	return NewTabsOn(0)
+}
 
 // NewTabsOn builds the tabbed container preselected on tab index active. Tab 0 is
 // the cross-provider dashboard; Azure leads the provider tabs (the flagship
@@ -144,6 +149,8 @@ func (m tabsModel) activeCapturesInput() bool {
 
 func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		// Reserve the banner rows, the gap under it, and the tab-bar line so each
@@ -262,6 +269,39 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
+// leftRelease reports a completed left click (bubblezone's canonical event).
+func leftRelease(msg tea.MouseMsg) bool {
+	return msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft
+}
+
+// handleMouse routes mouse input: overlays swallow everything (later task makes
+// them mouse-aware), tab cells switch tabs, everything else is the active tab's
+// business.
+func (m tabsModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.help || m.options != nil || m.picker != nil {
+		return m, nil
+	}
+	if leftRelease(msg) {
+		for i := range m.tabs {
+			if z := zone.Get(fmt.Sprintf("tab:%d", i)); z != nil && z.InBounds(msg) {
+				m.active = i
+				m.barFocus = false
+				return m, nil
+			}
+		}
+	}
+	// Forward to the active tab (wheel + row clicks handled there in later tasks).
+	return m.forwardMouse(msg)
+}
+
+// forwardMouse hands the event to the active tab's model, mirroring how key
+// messages already reach it.
+func (m tabsModel) forwardMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	nm, c := m.tabs[m.active].model.Update(msg)
+	m.tabs[m.active].model = nm
+	return m, c
+}
+
 // Close tears down any tab model that owns OS resources by calling its Close if
 // it implements one (e.g. the dashboard's fsnotify watcher). It is best-effort:
 // per-tab errors are ignored. run.go calls it once after the program loop ends,
@@ -294,16 +334,18 @@ func (m tabsModel) View() string {
 	var cells []string
 	for i, t := range m.tabs {
 		label := " " + t.title + " "
+		var styled string
 		switch {
 		case i == m.active && m.barFocus:
 			// The bar holds focus: bright selection block.
-			cells = append(cells, selBlockActive.Render(label))
+			styled = selBlockActive.Render(label)
 		case i == m.active:
 			// Focus lives below: the tab retains its selection, dimmed.
-			cells = append(cells, selBlockParent.Render(label))
+			styled = selBlockParent.Render(label)
 		default:
-			cells = append(cells, inactiveTabStyle.Render(label))
+			styled = inactiveTabStyle.Render(label)
 		}
+		cells = append(cells, zone.Mark(fmt.Sprintf("tab:%d", i), styled))
 	}
 	bar := strings.Join(cells, tabSepStyle.Render("│"))
 	// Center the banner block within the full terminal width (each line kept ≤
@@ -333,7 +375,7 @@ func (m tabsModel) View() string {
 		}
 		out = strings.Join(lines, "\n")
 	}
-	return out
+	return zone.Scan(out)
 }
 
 var (
