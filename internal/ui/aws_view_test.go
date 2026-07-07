@@ -26,7 +26,7 @@ func TestAwsViewRendersProfilesAndActions(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	out := nm.(awsView).View()
 
-	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Sign in", "Link here", "New profile", "Remove"} {
+	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Renew", "Link here", "New profile", "Remove"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("AWS view missing %q:\n%s", want, out)
 		}
@@ -307,7 +307,7 @@ func TestEmptyProviderOffersOnboardingPair(t *testing.T) {
 		!strings.Contains(out, "New profile") || !strings.Contains(out, "Capture session") {
 		t.Fatalf("empty provider should offer New profile + Capture session:\n%s", out)
 	}
-	for _, hidden := range []string{"Sign in", "Link here", "Remove"} {
+	for _, hidden := range []string{"Renew", "Link here", "Remove"} {
 		if strings.Contains(out, hidden) {
 			t.Fatalf("%q should not show with zero profiles:\n%s", hidden, out)
 		}
@@ -395,7 +395,7 @@ func TestSignInVisibleWithLiveSessionHint(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 120, Height: 34})
 	av := nm.(awsView)
 	out := av.View()
-	if !strings.Contains(out, "Sign in") || !strings.Contains(out, "re-auth anyway") {
+	if !strings.Contains(out, "Renew") || !strings.Contains(out, "re-auth anyway") {
 		t.Fatalf("Sign in must stay visible for a live session, with the swapped hint:\n%s", out)
 	}
 	// Still runnable — re-auth is idempotent.

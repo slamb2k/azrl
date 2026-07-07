@@ -404,8 +404,8 @@ func TestDashboardHintExpiredGoverningPin(t *testing.T) {
 	if !strings.Contains(short, "expired") || !strings.Contains(short, "aws:acme") {
 		t.Fatalf("expired pin chip = %q", short)
 	}
-	if !strings.Contains(notice, "sign in") {
-		t.Fatalf("expired pin notice should point at sign in: %q", notice)
+	if !strings.Contains(notice, "renew") {
+		t.Fatalf("expired pin notice should point at renew: %q", notice)
 	}
 	// Drift still outranks an expired pin.
 	ov.Mappings = append([]MappingRow{{Dir: "/w/z", Profile: "p", Drifted: true}}, ov.Mappings...)

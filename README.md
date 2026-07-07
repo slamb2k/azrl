@@ -305,7 +305,7 @@ this one), the same green/orange ramp gains two more tiers plus a 🌐 row:
 | `↑`/`↓` | select a profile or action |
 | `↵` | run the selected action |
 | `esc` | back to the profile list |
-| `s` | Sign in (visible even with a live session) |
+| `s` | Renew — sign the profile in again (visible even with a live session) |
 | `u` | Link here |
 | `n` | New profile |
 | `b` | Browser profile (async discovery + fuzzy overlay picker, manual-entry fallback) |
@@ -328,7 +328,7 @@ rows take `s`/`t`/`c`/`u`/`b`/`a` directly, no need to switch tabs first. Hold
 Shift while dragging to select and copy terminal text as usual — azrl won't
 intercept it.
 
-Sign in and New profile run the full interactive flow — browser bridge
+Renew and New profile run the full interactive flow — browser bridge
 included — directly from the TUI; the tab picks up the result when the flow
 finishes.
 
