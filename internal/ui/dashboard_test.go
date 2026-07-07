@@ -590,6 +590,31 @@ func TestDashboardSurfacesOpDone(t *testing.T) {
 	}
 }
 
+func TestDashboardWheelMovesCursor(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "a"}, {provider: "b"}}}
+	mod, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
+	if mod.(dashboardModel).cursor != 1 {
+		t.Fatal("wheel down should move the dashboard cursor")
+	}
+}
+
+func TestDashboardClickAgainDrills(t *testing.T) {
+	// Semantic layer: clickRow(i) — first click selects, second drills.
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "azure", profile: "acme"}, {provider: "aws", profile: "prod"}}}
+	m2, cmd := m.clickRow(1)
+	if m2.cursor != 1 || cmd != nil {
+		t.Fatalf("first click selects only: cursor=%d cmd=%v", m2.cursor, cmd)
+	}
+	m3, cmd := m2.clickRow(1)
+	if cmd == nil {
+		t.Fatal("click-again should drill into the tab")
+	}
+	if sw, ok := cmd().(switchTabMsg); !ok || sw.provider != "aws" {
+		t.Fatalf("drill should emit switchTabMsg: %+v", cmd())
+	}
+	_ = m3
+}
+
 func TestAmbientLineExpiryTagsAwsOnly(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	soon := time.Now().Add(5 * time.Minute)
