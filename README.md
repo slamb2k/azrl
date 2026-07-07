@@ -264,6 +264,7 @@ native config dir via fsnotify, so it updates the moment you sign in — or
 | `delete` | Remove (confirm dialog) |
 | `a` | Capture (empty-state onboarding) |
 | `r` / `f5` | refresh |
+| `w` | recheck drift (dashboard) |
 | `?` | full-keymap overlay |
 | `d` | change directory (fuzzy finder) |
 | `e` | write `.envrc` (Azure) |

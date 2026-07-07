@@ -479,7 +479,7 @@ func shortDur(d time.Duration) string {
 }
 
 // dashboardHints picks the next most useful action by priority (conflict >
-// drift > expired governing pin > unmanaged > expired unmapped > first-pin
+// drift > expired governing link > unmanaged > expired unmapped > first-link
 // nudge > all good) and returns two
 // renderings: a compact chip that fits the header's right zone, and a full
 // explanation for the notice line beneath ("" when nothing needs attention).
@@ -511,7 +511,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 					mutedStyle.Render(" · ") + keycap("↵") + mutedStyle.Render(" opens its tab to fix")
 		}
 	}
-	// An expired pin that governs the cwd means the next CLI command here will
+	// An expired link that governs the cwd means the next CLI command here will
 	// hit a wall — more urgent than adoptable identities, less than conflict/drift.
 	for _, r := range ov.Mappings {
 		if r.Scope != ScopeNone && expired(r.Expiry) {
