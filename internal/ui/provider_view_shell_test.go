@@ -20,7 +20,7 @@ func TestShellActionListedAndDispatches(t *testing.T) {
 
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
-	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; the first profile is already selected
 	av := nm.(awsView)
 	if !strings.Contains(av.View(), "Shell as") {
 		t.Fatalf("t Shell as… missing from actions:\n%s", av.View())

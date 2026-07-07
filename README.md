@@ -309,10 +309,10 @@ this one), the same green/orange ramp gains two more tiers plus a 🌐 row:
 | `⚠ drift` | your shell's ambient session differs from this directory's link |
 | `managed` / `unmanaged` | the ambient identity is / isn't held by any saved profile |
 
-Every provider tab's PROFILES pane opens with a pinned `＋ New profile…` row
-(select it and press `↵`, or press `n` from anywhere on the tab). Creating
-from there signs the new profile in **without linking any directory** — link
-it afterward with `u` on the dashboard, or `azrl use`.
+Every provider tab's PROFILES pane carries a `NEW ＋` button in its title bar
+(click it, or press `n` from anywhere on the tab — the footer chip is a
+reminder). Creating from there signs the new profile in **without linking any
+directory** — link it afterward with `u` on the dashboard, or `azrl use`.
 
 **Keys:**
 
@@ -326,7 +326,7 @@ it afterward with `u` on the dashboard, or `azrl use`.
 | `s` | Renew — sign the profile in again, links unchanged (visible even with a live session) |
 | `t` | Shell as… — subshell as this profile, no link touched |
 | `c` | Open console — web console as this credential, no session mutation |
-| `n` | New profile — opens the naming prompt for the pinned `＋ New profile…` row (creates + signs in, no link) |
+| `n` | New profile — opens the naming prompt (same as clicking the title-bar `NEW ＋`; creates + signs in, no link) |
 | `b` | Assign browser… (async discovery + fuzzy overlay picker, manual-entry fallback) |
 | `delete` | Delete… (confirm dialog; a profile still linked elsewhere offers to unlink every link or repoint them at another profile first) |
 | `a` | Capture (empty-state onboarding) |

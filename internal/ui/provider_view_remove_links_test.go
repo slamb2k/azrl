@@ -26,12 +26,12 @@ func setupAwsWithProfiles(t *testing.T, names ...string) string {
 	return ap
 }
 
-// downTo moves the profile cursor from row 0 (+ New profile) onto the named
-// profile row and returns the updated view.
+// downTo moves the profile cursor from the first row onto the named profile
+// row and returns the updated view.
 func downTo(v awsView, name string) awsView {
 	for i, p := range v.profiles {
 		if p.Name == name {
-			for j := 0; j <= i; j++ {
+			for j := 0; j < i; j++ {
 				nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown})
 				v = nm.(awsView)
 			}

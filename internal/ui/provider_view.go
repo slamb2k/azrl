@@ -150,9 +150,9 @@ func (v *providerTabView) reload() {
 			v.dirScope = ScopeCwd
 		}
 	}
-	// v.cursor ranges over [0..len(profiles)]: row 0 is the pinned "＋ New
-	// profile…" row, rows 1..n map to v.profiles[cursor-1].
-	if v.cursor > len(v.profiles) {
+	// v.cursor indexes v.profiles directly; the NEW ＋ affordance lives in the
+	// pane title, not the list.
+	if v.cursor >= len(v.profiles) {
 		v.cursor = 0
 	}
 	v.shellName = ""
@@ -172,8 +172,8 @@ func (v providerTabView) enabledActions() []actionState {
 		var out []actionState
 		for _, a := range v.actions {
 			if a.key == "n" {
-				// New profile is the PROFILES pane's pinned first row now, not a
-				// listed verb — even in the empty state.
+				// New profile is the PROFILES pane's title-bar NEW ＋ affordance,
+				// not a listed verb — even in the empty state.
 				continue
 			}
 			if a.bootstrap {
@@ -187,16 +187,11 @@ func (v providerTabView) enabledActions() []actionState {
 	for _, a := range v.actions {
 		if a.key == "a" || a.key == "n" {
 			// Capture is onboarding-contextual (empty state + dashboard adopt
-			// only); New profile lives as the pinned first PROFILES row.
+			// only); New profile lives as the PROFILES title-bar NEW ＋ affordance.
 			continue
 		}
 		st := actionState{providerAction: a, enabled: true}
-		switch {
-		case sel == "":
-			// Row 0 (＋ New profile…) is selected — nothing to act on.
-			st.enabled = false
-			st.hint = "select a profile first"
-		case a.key == "s" && sessionLive(v.statuses[sel]):
+		if a.key == "s" && sessionLive(v.statuses[sel]) {
 			// Still runnable — re-auth is idempotent — but say why it's optional.
 			st.hint = "session live · re-auth anyway"
 		}
@@ -258,7 +253,7 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 		// onto it so it's pre-selected. No-op when the profile isn't listed here.
 		for i, p := range v.profiles {
 			if p.Name == msg.profile {
-				v.cursor = i + 1
+				v.cursor = i
 				break
 			}
 		}
@@ -396,17 +391,13 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				if v.actionCur < len(v.enabledActions())-1 {
 					v.actionCur++
 				}
-			} else if v.cursor < len(v.profiles) {
+			} else if v.cursor < len(v.profiles)-1 {
 				v.cursor++
 				v.clampAction()
 			}
 		case "enter":
-			// Row 0 (＋ New profile…) opens the naming prompt directly; selecting a
-			// real profile opens the action pane instead, where enter runs the action.
+			// Enter on a profile opens the action pane, where enter runs the action.
 			if v.focus == focusProfiles {
-				if v.cursor == 0 {
-					return v.dispatch("n")
-				}
 				v.focus = focusActions
 			} else if acts := v.enabledActions(); v.actionCur < len(acts) {
 				a := acts[v.actionCur]
@@ -418,7 +409,7 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			}
 		case "n":
 			// New profile always opens the naming prompt, from any row or focus —
-			// it no longer has a listed ACTIONS entry (row 0 is its permanent home).
+			// it has no listed ACTIONS entry (the title-bar NEW ＋ is its home).
 			return v.dispatch("n")
 		case "f5", "r":
 			v.reload()
@@ -488,7 +479,7 @@ func (v providerTabView) handleMouse(msg tea.MouseMsg) (providerTabView, tea.Cmd
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelDown:
-		if v.cursor < len(v.profiles) {
+		if v.cursor < len(v.profiles)-1 {
 			v.cursor++
 			v.clampAction()
 		}
@@ -504,7 +495,9 @@ func (v providerTabView) handleMouse(msg tea.MouseMsg) (providerTabView, tea.Cmd
 		return v, nil
 	}
 	if z := zone.Get("prof:+new"); z != nil && z.InBounds(msg) {
-		return v.clickNewRow()
+		// The title-bar NEW ＋ affordance is a button, not a row: one click
+		// opens the naming prompt directly.
+		return v.dispatch("n")
 	}
 	for _, p := range v.profiles {
 		if z := zone.Get("prof:" + p.Name); z != nil && z.InBounds(msg) {
@@ -529,25 +522,12 @@ func (v providerTabView) clickProfile(name string) (providerTabView, tea.Cmd) {
 	}
 	for i, p := range v.profiles {
 		if p.Name == name {
-			v.cursor = i + 1
+			v.cursor = i
 			v.focus = focusProfiles
 			v.clampAction()
 			break
 		}
 	}
-	return v, nil
-}
-
-// clickNewRow handles a click on the synthetic "＋ New profile…" row: it has
-// no action pane to focus, so — unlike clickProfile — a second click on the
-// already-selected row opens the naming prompt directly instead.
-func (v providerTabView) clickNewRow() (providerTabView, tea.Cmd) {
-	if v.cursor == 0 {
-		return v.dispatch("n")
-	}
-	v.cursor = 0
-	v.focus = focusProfiles
-	v.clampAction()
 	return v, nil
 }
 
@@ -576,13 +556,13 @@ func (v providerTabView) selectAndRun(key string) (providerTabView, tea.Cmd) {
 	return v, nil
 }
 
-// selected returns the highlighted profile slug, or "" on row 0 (＋ New
-// profile…) or an out-of-range cursor.
+// selected returns the highlighted profile slug, or "" on an empty list or
+// an out-of-range cursor.
 func (v providerTabView) selected() string {
-	if v.cursor <= 0 || v.cursor > len(v.profiles) {
+	if v.cursor < 0 || v.cursor >= len(v.profiles) {
 		return ""
 	}
-	return v.profiles[v.cursor-1].Name
+	return v.profiles[v.cursor].Name
 }
 
 // dispatch runs the action bound to key against the selected profile.
@@ -886,11 +866,8 @@ func (v providerTabView) View() string {
 	}
 	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions && !v.suspended}
 	info := mutedStyle.Render("(no profile selected)")
-	if v.cursor == 0 {
-		info = mutedStyle.Render(ansi.Wordwrap("A profile is a container for tokens and intention — sign in once, link it to any number of directories.", rightW, ""))
-	}
-	if v.cursor > 0 && v.cursor <= len(v.profiles) {
-		pr := v.profiles[v.cursor-1]
+	if v.cursor >= 0 && v.cursor < len(v.profiles) {
+		pr := v.profiles[v.cursor]
 		st := v.statuses[pr.Name]
 		note := ""
 		if st.Drifted {
@@ -913,10 +890,14 @@ func (v providerTabView) View() string {
 	actionsBody := r.view(rightW)
 	if v.namingVerb != "" {
 		prompt, confirmHint := "Name for the new profile:", "token container + sign-in — link it later"
+		// The create prompt carries the entity blurb — the education moment now
+		// that NEW ＋ is a title-bar button with no selectable row of its own.
+		intro := mutedStyle.Render(ansi.Wordwrap("A profile is a container for tokens and intention — sign in once, link it to any number of directories.", rightW, "")) + "\n\n"
 		if v.namingVerb == "capture" {
 			prompt, confirmHint = "Name for the captured profile:", "adopt session + link"
+			intro = ""
 		}
-		actionsBody = mutedStyle.Render(prompt) + "\n\n" +
+		actionsBody = intro + mutedStyle.Render(prompt) + "\n\n" +
 			v.nameInput.View() + "\n\n" +
 			keyHelp("↵", confirmHint, "esc", "cancel")
 	}
@@ -945,7 +926,7 @@ func (v providerTabView) View() string {
 
 	contentW, _, _ := paneDims(v.width)
 	help := keyHelpFit(contentW,
-		[]string{"↑↓", "select", "↵", "open/run", "esc", "back"},
+		[]string{"↑↓", "select", "↵", "open/run", "n", "new profile", "esc", "back"},
 		[]string{"q", "quit", "→", "details", "⇥", "tab", "d", "dir", "o", "options"})
 	switch {
 	case v.replacePicking:
