@@ -321,6 +321,13 @@ this one), the same green/orange ramp gains two more tiers plus a 🌐 row:
 
 Every verb is always visible: an action that doesn't apply (e.g. *Link here* on the already-linked profile) renders dimmed with the reason, instead of disappearing.
 
+The TUI is also mouse-aware: click a row to select it, click again to run it
+(or open its actions); the scroll wheel moves the cursor; clicking outside an
+open popup (options, change-directory, browser picker) closes it. Dashboard
+rows take `s`/`t`/`c`/`u`/`b`/`a` directly, no need to switch tabs first. Hold
+Shift while dragging to select and copy terminal text as usual — azrl won't
+intercept it.
+
 Sign in and New profile run the full interactive flow — browser bridge
 included — directly from the TUI; the tab picks up the result when the flow
 finishes.
