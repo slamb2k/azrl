@@ -167,34 +167,66 @@ func TestDashboardEnterEmitsSwitchTab(t *testing.T) {
 	}
 }
 
-func TestDashboardAdoptKeyDispatch(t *testing.T) {
-	// An unmanaged mapping row hands [a] off to the provider's capture flow;
-	// any other row ignores the key.
-	m := dashboardModel{items: []dashItem{
-		{provider: "github", adoptDir: "/home/u/oss/foo"},
+func TestDashboardAdoptOpensNamePrompt(t *testing.T) {
+	// [a] on an adoptable row opens the name prompt prefilled from the row's
+	// dir; enter hands off to capture; any other row ignores the key.
+	m := dashboardModel{width: 100, items: []dashItem{
+		{provider: "github", adopt: true, adoptDir: "/home/u/oss/foo"},
 		{provider: "azure", profile: "acme"},
 	}}
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	if cmd == nil {
-		t.Fatal("[a] on an unmanaged row produced no command")
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = mod.(dashboardModel)
+	if cmd != nil {
+		t.Fatal("[a] should open the prompt, not exec immediately")
 	}
-	m.cursor = 1
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}); cmd != nil {
+	if !m.naming || m.nameInput.Placeholder != "foo" {
+		t.Fatalf("naming=%v placeholder=%q, want prompt prefilled with dir basename", m.naming, m.nameInput.Placeholder)
+	}
+	if v := m.View(); !strings.Contains(v, "Name for the adopted profile:") {
+		t.Fatalf("prompt missing from view:\n%s", v)
+	}
+	// Enter with the empty input falls back to the placeholder and execs.
+	mod, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mod.(dashboardModel)
+	if cmd == nil || m.naming {
+		t.Fatalf("enter should exec the capture handoff and close the prompt (cmd=%v naming=%v)", cmd, m.naming)
+	}
+}
+
+func TestDashboardAdoptPromptEscCancels(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "github", adopt: true, adoptDir: "/w/foo"}}}
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = mod.(dashboardModel)
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mod.(dashboardModel)
+	if m.naming || cmd != nil {
+		t.Fatal("esc should close the prompt without running anything")
+	}
+}
+
+func TestDashboardAdoptIgnoredOnManagedRow(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "azure", profile: "acme"}}}
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = mod.(dashboardModel)
+	if cmd != nil || m.naming {
 		t.Fatal("[a] on a managed row should be a no-op")
 	}
 }
 
-func TestAdoptArgsDefaultToDirName(t *testing.T) {
-	cases := map[string][]string{
-		"azure":  {"capture", "foo"},
-		"github": {"gh", "capture", "foo"},
-		"aws":    {"aws", "capture", "foo"},
-		"gcp":    {"gcp", "capture", "foo"},
+func TestCaptureArgsPerProvider(t *testing.T) {
+	cases := []struct {
+		provider string
+		want     []string
+	}{
+		{"azure", []string{"capture", "foo"}},
+		{"github", []string{"gh", "capture", "foo"}},
+		{"aws", []string{"aws", "capture", "foo"}},
+		{"gcp", []string{"gcp", "capture", "foo"}},
 	}
-	for prov, want := range cases {
-		got := adoptArgs(prov, "/home/u/oss/Foo")
-		if strings.Join(got, " ") != strings.Join(want, " ") {
-			t.Fatalf("adoptArgs(%s) = %v, want %v", prov, got, want)
+	for _, c := range cases {
+		got := captureArgs(c.provider, "foo")
+		if strings.Join(got, " ") != strings.Join(c.want, " ") {
+			t.Fatalf("captureArgs(%s) = %v, want %v", c.provider, got, c.want)
 		}
 	}
 }

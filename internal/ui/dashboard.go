@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -22,7 +23,8 @@ import (
 type dashItem struct {
 	provider string
 	profile  string
-	adoptDir string
+	adopt    bool   // [a] opens the adopt name prompt for this row
+	adoptDir string // prefill dir for the prompt; "" = cwd at prompt time
 }
 
 // dashboardTickMsg drives the periodic disk re-read (the fallback poll).
@@ -52,6 +54,9 @@ type dashboardModel struct {
 	height    int
 	interval  time.Duration
 	watcher   *fsnotify.Watcher
+	naming    bool
+	nameInput textinput.Model
+	adoptItem dashItem
 }
 
 // newDashboard builds the dashboard over provs, reading the poll interval from
@@ -90,7 +95,7 @@ func overviewItems(ov Overview) []dashItem {
 	for _, r := range ov.Mappings {
 		it := dashItem{provider: r.Provider, profile: r.Profile}
 		if r.Unmanaged != "" {
-			it.adoptDir = r.Dir
+			it.adopt, it.adoptDir = true, r.Dir
 		}
 		items = append(items, it)
 	}
@@ -163,11 +168,10 @@ func (m dashboardModel) Close() error {
 	return nil
 }
 
-// adoptArgs maps an unmanaged mapping row to the azrl subcommand that captures
-// the current session into a new profile named after the directory (Azure's
-// capture is top-level; the other providers sit under their command group).
-func adoptArgs(providerName, dir string) []string {
-	name := profile.DefaultName("", dir)
+// captureArgs maps a provider to the azrl subcommand that captures the
+// current session into profile <name> (Azure's capture is top-level; the
+// other providers sit under their command group).
+func captureArgs(providerName, name string) []string {
 	switch providerName {
 	case "azure":
 		return []string{"capture", name}
@@ -199,6 +203,28 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reload()
 		return m, nil
 	case tea.KeyMsg:
+		if m.naming {
+			switch msg.String() {
+			case "esc":
+				m.naming = false
+			case "enter":
+				name := strings.TrimSpace(m.nameInput.Value())
+				if name == "" {
+					name = m.nameInput.Placeholder
+				}
+				name = profile.SanitizeName(name)
+				if name == "" {
+					return m, nil
+				}
+				m.naming = false
+				return m, runHandoff(captureArgs(m.adoptItem.provider, name))
+			default:
+				var cmd tea.Cmd
+				m.nameInput, cmd = m.nameInput.Update(msg)
+				_ = cmd
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -219,8 +245,17 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "a":
 			if m.cursor >= 0 && m.cursor < len(m.items) {
-				if it := m.items[m.cursor]; it.adoptDir != "" {
-					return m, runHandoff(adoptArgs(it.provider, it.adoptDir))
+				if it := m.items[m.cursor]; it.adopt {
+					dir := it.adoptDir
+					if dir == "" {
+						dir, _ = os.Getwd()
+					}
+					ti := textinput.New()
+					ti.Placeholder = profile.DefaultName("", dir)
+					ti.Focus()
+					m.nameInput = ti
+					m.adoptItem = it
+					m.naming = true
 				}
 			}
 			return m, nil
@@ -245,6 +280,10 @@ func (m dashboardModel) View() string {
 		contentW = 1
 	}
 	short, notice := dashboardHints(m.ov)
+	if m.naming {
+		short = accentStyle.Render("adopt " + m.adoptItem.provider)
+		notice = ""
+	}
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
 		"📁 "+displayDir(cwd), short)
 	help := keyHelpFit(m.width-4,
@@ -252,6 +291,15 @@ func (m dashboardModel) View() string {
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
 
 	var body []string
+	if m.naming {
+		body = append(body,
+			mutedStyle.Render("Name for the adopted profile:"),
+			"",
+			m.nameInput.View(),
+			"",
+			keyHelp("↵", "adopt session + link", "esc", "cancel"),
+			"")
+	}
 	if notice != "" {
 		// The full explanation wraps beneath the header — the right zone only
 		// carries the compact chip.
