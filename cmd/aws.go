@@ -309,6 +309,7 @@ func awsSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newAwsLoginCmd(), newAwsListCmd(), newAwsUseCmd(),
 		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(), newAwsBrowserCmd(),
+		newShellCmd("aws", "Open a subshell acting as an AWS profile (no link)"),
 	}
 }
 

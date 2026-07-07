@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // seedShellHome creates a temp HOME with one conf per provider, exercising
@@ -105,5 +108,159 @@ func TestShellEnvUnknownProfileErrors(t *testing.T) {
 	}
 	if _, err := shellEnv("aws", "nope"); err == nil {
 		t.Fatal("unknown aws profile should error")
+	}
+}
+
+// fakeShell installs a fake $SHELL that logs selected env vars, and returns
+// the log path. exitCode is the fake shell's exit status.
+func fakeShell(t *testing.T, exitCode int) string {
+	t.Helper()
+	bin := t.TempDir()
+	log := filepath.Join(bin, "shell.log")
+	script := "#!/bin/sh\n" +
+		"{ echo \"AZRL_PROFILE=$AZRL_PROFILE\"; echo \"AZURE_CONFIG_DIR=$AZURE_CONFIG_DIR\"; " +
+		"echo \"AWS_PROFILE=$AWS_PROFILE\"; echo \"AZRL_BROWSER_CMD=$AZRL_BROWSER_CMD\"; } >> \"" + log + "\"\n" +
+		fmt.Sprintf("exit %d\n", exitCode)
+	sh := filepath.Join(bin, "fakeshell")
+	if err := os.WriteFile(sh, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", sh)
+	return log
+}
+
+// liveAzureSession marks the azure profile's isolated dir as signed in so
+// runShell skips the login-first path (azure Status reads azureProfile.json).
+func liveAzureSession(t *testing.T, home, name string) {
+	t.Helper()
+	p := filepath.Join(home, ".azure-profiles", name, "azureProfile.json")
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	if err := os.WriteFile(p,
+		[]byte(`{"subscriptions":[{"user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"g1"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunShellExecsShellWithEnvAndBanner(t *testing.T) {
+	home := seedShellHome(t)
+	liveAzureSession(t, home, "work")
+	log := fakeShell(t, 0)
+	t.Setenv("AZRL_PROFILE", "")
+
+	var out strings.Builder
+	if err := runShell("azure", "work", &out); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(log)
+	got := string(b)
+	for _, want := range []string{
+		"AZRL_PROFILE=azure:work",
+		"AZURE_CONFIG_DIR=" + filepath.Join(home, ".azure-profiles", "work"),
+		"AZRL_BROWSER_CMD=chrome --profile-directory=Work",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("subshell env missing %q; got:\n%s", want, got)
+		}
+	}
+	if !strings.Contains(out.String(), "azrl: shell as work (azure) — 'exit' returns") {
+		t.Fatalf("banner missing: %q", out.String())
+	}
+}
+
+func TestRunShellSignsInFirstWhenSessionDead(t *testing.T) {
+	seedShellHome(t) // no azureProfile.json → session dead
+	fakeShell(t, 0)
+	t.Setenv("AZRL_PROFILE", "")
+
+	var calls [][]string
+	orig := shellLoginRunner
+	shellLoginRunner = func(providerName, name string) error {
+		calls = append(calls, []string{providerName, name})
+		return nil
+	}
+	defer func() { shellLoginRunner = orig }()
+
+	var out strings.Builder
+	if err := runShell("azure", "work", &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0][0] != "azure" || calls[0][1] != "work" {
+		t.Fatalf("expected one login call for azure:work, got %v", calls)
+	}
+}
+
+func TestRunShellAbortsWhenLoginFails(t *testing.T) {
+	seedShellHome(t)
+	log := fakeShell(t, 0)
+	t.Setenv("AZRL_PROFILE", "")
+
+	orig := shellLoginRunner
+	shellLoginRunner = func(string, string) error { return fmt.Errorf("boom") }
+	defer func() { shellLoginRunner = orig }()
+
+	var out strings.Builder
+	if err := runShell("azure", "work", &out); err == nil {
+		t.Fatal("login failure must abort the shell")
+	}
+	if b, _ := os.ReadFile(log); len(b) != 0 {
+		t.Fatalf("no subshell may start after a failed login; log: %s", b)
+	}
+}
+
+func TestRunShellWarnsOnNesting(t *testing.T) {
+	home := seedShellHome(t)
+	liveAzureSession(t, home, "work")
+	fakeShell(t, 0)
+	t.Setenv("AZRL_PROFILE", "gcp:lab")
+
+	var out strings.Builder
+	if err := runShell("azure", "work", &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "already inside an azrl shell (gcp:lab)") {
+		t.Fatalf("nesting warning missing: %q", out.String())
+	}
+}
+
+func TestRunShellPassesExitStatusThrough(t *testing.T) {
+	home := seedShellHome(t)
+	liveAzureSession(t, home, "work")
+	fakeShell(t, 3)
+	t.Setenv("AZRL_PROFILE", "")
+
+	code := -1
+	orig := shellExit
+	shellExit = func(c int) { code = c }
+	defer func() { shellExit = orig }()
+
+	var out strings.Builder
+	if err := runShell("azure", "work", &out); err != nil {
+		t.Fatal(err)
+	}
+	if code != 3 {
+		t.Fatalf("exit status not passed through: got %d, want 3", code)
+	}
+}
+
+func TestShellVerbRegisteredOnAllSurfaces(t *testing.T) {
+	find := func(cmds []*cobra.Command) bool {
+		for _, c := range cmds {
+			if strings.HasPrefix(c.Use, "shell") {
+				return true
+			}
+		}
+		return false
+	}
+	if !find(RootCmd.Commands()) {
+		t.Fatal("azrl shell not registered")
+	}
+	if !find(githubSubcommands()) {
+		t.Fatal("gh shell not registered")
+	}
+	if !find(awsSubcommands()) {
+		t.Fatal("aws shell not registered")
+	}
+	if !find(gcpSubcommands()) {
+		t.Fatal("gcp shell not registered")
 	}
 }
