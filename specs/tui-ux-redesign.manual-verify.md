@@ -34,4 +34,30 @@ console, mouse) have shipped.
 - [ ] Wheel scrolls the focused list; no runaway scrolling in tmux passthrough.
 - [ ] Click outside options/dirpicker/browserpicker dismisses; help closes on any click.
 - [ ] Shift+drag selects terminal text while azrl runs (per the help note).
-- [ ] Dashboard s/t/c/u/b on a real profile row round-trip correctly (t suspends, c opens browser).
+- [ ] Dashboard s/t/c/u/b/U on a real profile row round-trip correctly (t suspends, c opens browser).
+
+## Entity model — personas on tabs, edges on the dashboard (entity-model-cleanup)
+
+- [ ] **Delete-with-links round-trip:** link a profile to two real
+      directories, then `delete` it from its tab. Confirm both dirs are
+      listed and the three-option radio appears. Pick `Unlink N dir(s) +
+      delete`: both `.azprofile`/`.ghprofile`/etc pointers are gone, the
+      profile's conf and token dir are gone, and `azrl status` no longer
+      lists either directory. Repeat picking `Replace links with…` against a
+      second profile instead: both directories now point at the replacement
+      (`cat .azprofile` in each) and the original profile is gone.
+- [ ] **Unlink refusal on a parent-governed dir:** `cd` into a subdirectory
+      of a directory that's linked (no pointer of its own), run `azrl
+      unlink` (or `gh`/`aws`/`gcp unlink`). It refuses, naming the parent
+      directory and profile exactly ("run unlink there"); the parent's
+      pointer is untouched. Now `cd` to the parent itself and `azrl unlink`
+      — the link is removed, the profile is untouched.
+- [ ] **No-link create then dashboard link:** from an unlinked directory,
+      use the TUI's `＋ New profile…` row (or `azrl login <name>
+      --no-link`) to create and sign in. Confirm no `.azprofile` was written
+      here and the profile doesn't show as linked on this tab. Open the
+      Dashboard, find the new profile's UNMAPPED row, press `u` to link it
+      to the cwd — the row moves to MAPPINGS and `azrl status` now shows the
+      directory mapped to it. Press `U` on that same row afterward and
+      confirm it unlinks cleanly (profile kept, dashboard status line
+      confirms).
