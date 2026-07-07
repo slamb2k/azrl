@@ -2,13 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 
 	"github.com/slamb2k/azrl/internal/aws"
+	"github.com/slamb2k/azrl/internal/bridge"
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/gcp"
 	"github.com/slamb2k/azrl/internal/github"
 	"github.com/slamb2k/azrl/internal/profile"
+	"github.com/spf13/cobra"
 )
 
 // consoleURL builds the provider's web-console deep link for a profile from
@@ -66,4 +69,52 @@ func consoleURL(providerName, name string) (string, string, error) {
 	default:
 		return "", "", fmt.Errorf("azrl: unknown provider %q", providerName)
 	}
+}
+
+// consoleOpen is a test seam over the bridge launch.
+var consoleOpen = bridge.OpenURL
+
+// runConsole opens the provider's web console as the profile's credential.
+// Failures to launch are never errors — the URL is the useful artifact, so
+// every degraded path prints it and succeeds (spec: "never an error state").
+// Only profile-data problems (no tenant/start URL/project) surface as errors.
+func runConsole(providerName, name string, out io.Writer) error {
+	u, profileBrowser, err := consoleURL(providerName, name)
+	if err != nil {
+		return err
+	}
+	g, err := config.LoadGlobal(config.ProfilesDir())
+	if err != nil {
+		fmt.Fprintf(out, "azrl: no browser configured — open it yourself:\n%s\n", u)
+		return nil
+	}
+	if profileBrowser != "" {
+		g.BrowserCmd = profileBrowser
+	}
+	if g.BrowserCmd == "" {
+		fmt.Fprintf(out, "azrl: no browser configured — open it yourself:\n%s\n", u)
+		return nil
+	}
+	if err := consoleOpen(g, u); err != nil {
+		fmt.Fprintf(out, "azrl: browser launch failed (%v) — open it yourself:\n%s\n", err, u)
+		return nil
+	}
+	fmt.Fprintf(out, "azrl: opening %s console — %s\n", providerName, u)
+	return nil
+}
+
+func newConsoleCmd(providerName, short string) *cobra.Command {
+	return &cobra.Command{
+		Use:          "console <name>",
+		Short:        short,
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runConsole(providerName, args[0], cmd.OutOrStdout())
+		},
+	}
+}
+
+func init() {
+	RootCmd.AddCommand(newConsoleCmd("azure", "Open the Azure portal as a profile's tenant"))
 }

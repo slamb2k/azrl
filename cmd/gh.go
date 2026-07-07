@@ -239,6 +239,7 @@ func githubSubcommands() []*cobra.Command {
 		newGhLoginCmd(), newGhListCmd(), newGhUseCmd(), newGhSwitchStubCmd(),
 		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(), newGhBrowserCmd(),
 		newShellCmd("github", "Open a subshell acting as a GitHub profile (no link)"),
+		newConsoleCmd("github", "Open GitHub as a profile's account"),
 	}
 }
 
