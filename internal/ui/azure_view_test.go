@@ -167,6 +167,24 @@ func TestAzureRefreshKeysRecheckIdentity(t *testing.T) {
 	}
 }
 
+func TestAzureDriftNoticeSuppressedUnderShellOverride(t *testing.T) {
+	v := seedAzure(t)
+	t.Setenv("AZRL_PROFILE", "azure:work")
+	v.reload()
+	nm, _ := v.Update(identityMsg{
+		who:        "u@fiig.com.au · fiig.com.au",
+		ambientWho: "u@fiig.com.au · velrada.com",
+		drift:      true,
+	})
+	av := nm.(azureView)
+	if strings.Contains(av.notice, "⚠ shell az") {
+		t.Fatalf("drift notice must be suppressed under a shell override: %q", av.notice)
+	}
+	if !strings.Contains(av.View(), "⌁ shell: work") {
+		t.Fatalf("override chip missing on azure tab:\n%s", av.View())
+	}
+}
+
 func TestGroupArgsTopLevel(t *testing.T) {
 	if got := strings.Join(groupArgs("", "login", "acme"), " "); got != "login acme" {
 		t.Fatalf("groupArgs(\"\") = %q", got)

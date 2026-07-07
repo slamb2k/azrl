@@ -18,7 +18,7 @@ import (
 // fixture files under the temp HOME.
 func clearAmbientEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME"} {
+	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME", "AZRL_PROFILE"} {
 		t.Setenv(k, "")
 	}
 }
