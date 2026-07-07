@@ -109,3 +109,30 @@ func TestUnlinkVerbRegisteredOnAllSurfaces(t *testing.T) {
 		t.Fatal("unlink missing from a surface")
 	}
 }
+
+func TestRmRefusesWhileLinkedThenUnlinkAll(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	chdir(t, work)
+	RootCmd.SetArgs([]string{"use", "acme"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	RootCmd.SetArgs([]string{"rm", "acme", "-y"})
+	if err := RootCmd.Execute(); err == nil {
+		t.Fatal("rm must refuse while directories link to the profile")
+	}
+	RootCmd.SetArgs([]string{"rm", "acme", "-y", "--unlink-all"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(work, ".azprofile")); !os.IsNotExist(err) {
+		t.Fatal("--unlink-all should remove the linked dir's pointer")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".azure-profiles", "acme.conf")); !os.IsNotExist(err) {
+		t.Fatal("profile should be deleted")
+	}
+}

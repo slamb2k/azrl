@@ -149,7 +149,9 @@ func newGhSwitchStubCmd() *cobra.Command {
 }
 
 func newGhRmCmd() *cobra.Command {
-	return &cobra.Command{
+	var unlinkAll bool
+	var replace string
+	c := &cobra.Command{
 		Use:   "rm <name>",
 		Short: "Remove a GitHub profile and its isolated config dir",
 		Args:  cobra.ExactArgs(1),
@@ -159,8 +161,12 @@ func newGhRmCmd() *cobra.Command {
 				return err
 			}
 			prov := github.NewProvider()
+			dir := prov.ProfilesDir()
+			if err := unlinkOrRefuse(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
 			pwd, _ := os.Getwd()
-			removed, err := prov.Remove(name, prov.ProfilesDir(), pwd)
+			removed, err := prov.Remove(name, dir, pwd)
 			if err != nil {
 				return err
 			}
@@ -170,6 +176,9 @@ func newGhRmCmd() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&unlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
+	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
+	return c
 }
 
 func newGhCaptureCmd() *cobra.Command {

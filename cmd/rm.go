@@ -12,6 +12,8 @@ import (
 )
 
 var rmYes bool
+var rmUnlinkAll bool
+var rmReplace string
 
 var rmCmd = &cobra.Command{
 	Use:   "rm <name>",
@@ -24,6 +26,10 @@ var rmCmd = &cobra.Command{
 		}
 		pwd, _ := os.Getwd()
 		confdir := config.ProfilesDir()
+		scheme := profile.AzureScheme()
+		if err := unlinkOrRefuse(cmd, scheme, confdir, name, rmUnlinkAll, rmReplace); err != nil {
+			return err
+		}
 		targets := profile.RemoveTargets(name, confdir, pwd)
 		if len(targets) == 0 {
 			cmd.Printf("azrl: nothing to remove for %q\n", name)
@@ -64,7 +70,36 @@ func validProfileName(name string) error {
 	return nil
 }
 
+// unlinkOrRefuse handles a rm command's link-awareness: with no linked dirs
+// it's a no-op; with links and neither flag it refuses, listing each dir and
+// both flags; --unlinkAll removes every link first; --replace repoints every
+// link at the given profile first (erroring if that profile doesn't exist).
+func unlinkOrRefuse(cmd *cobra.Command, scheme profile.Scheme, confdir, name string, unlinkAll bool, replace string) error {
+	dirs := scheme.LinkedDirs(confdir, name)
+	if len(dirs) == 0 {
+		return nil
+	}
+	switch {
+	case unlinkAll:
+		_, err := scheme.UnlinkAll(confdir, name)
+		return err
+	case replace != "":
+		_, err := scheme.ReplaceLinks(confdir, name, replace)
+		return err
+	default:
+		var b strings.Builder
+		fmt.Fprintf(&b, "%s: profile %q is linked from:\n", scheme.Prefix, name)
+		for _, d := range dirs {
+			fmt.Fprintf(&b, "  %s\n", d)
+		}
+		b.WriteString("use --unlink-all to remove the links, or --replace <profile> to repoint them")
+		return fmt.Errorf("%s", b.String())
+	}
+}
+
 func init() {
 	rmCmd.Flags().BoolVarP(&rmYes, "yes", "y", false, "Skip the confirmation prompt")
+	rmCmd.Flags().BoolVar(&rmUnlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
+	rmCmd.Flags().StringVar(&rmReplace, "replace", "", "Repoint every directory link at this profile before deleting")
 	RootCmd.AddCommand(rmCmd)
 }

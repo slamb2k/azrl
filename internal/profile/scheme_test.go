@@ -307,3 +307,41 @@ func TestUnlinkNothingLinked(t *testing.T) {
 		t.Fatal("unlink with nothing governing should error")
 	}
 }
+
+func TestLinkedDirsUnlinkAllAndReplace(t *testing.T) {
+	confdir := t.TempDir()
+	d1, d2 := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	os.WriteFile(filepath.Join(confdir, "other.conf"), []byte("AZ_TENANT=other.com\n"), 0o644)
+	s := AzureScheme()
+	s.Use("acme", confdir, d1)
+	s.Use("acme", confdir, d2)
+
+	dirs := s.LinkedDirs(confdir, "acme")
+	if len(dirs) != 2 {
+		t.Fatalf("LinkedDirs = %v", dirs)
+	}
+
+	if _, err := s.ReplaceLinks(confdir, "acme", "missing"); err == nil {
+		t.Fatal("replace with a nonexistent profile must error")
+	}
+	if _, err := s.ReplaceLinks(confdir, "acme", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(d1, ".azprofile")); strings.TrimSpace(string(b)) != "other" {
+		t.Fatalf("d1 pointer not replaced: %q", b)
+	}
+	if got := s.LinkedDirs(confdir, "other"); len(got) != 2 {
+		t.Fatalf("mappings should follow the replace: %v", got)
+	}
+
+	if _, err := s.UnlinkAll(confdir, "other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(d2, ".azprofile")); !os.IsNotExist(err) {
+		t.Fatal("UnlinkAll should remove pointer files")
+	}
+	if got := s.LinkedDirs(confdir, "other"); len(got) != 0 {
+		t.Fatalf("mappings should be gone: %v", got)
+	}
+}
