@@ -14,7 +14,7 @@ func seedStatusHome(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME"} {
+	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME", "AZRL_PROFILE"} {
 		t.Setenv(k, "")
 	}
 	az := filepath.Join(home, ".azure-profiles")
@@ -235,5 +235,38 @@ func TestStatusCmdMappingExpiry(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("acme mapping missing from JSON: %+v", rep.Mappings)
+	}
+}
+
+func TestStatusReportsShellOverride(t *testing.T) {
+	seedStatusHome(t)
+	t.Setenv("AZRL_PROFILE", "azure:work")
+
+	statusJSON = false
+	out := runRoot(t, "status")
+	if !strings.Contains(out, "shell override: azure:work") {
+		t.Fatalf("plain status missing shell override line:\n%s", out)
+	}
+
+	out = runRoot(t, "status", "--json")
+	statusJSON = false
+	if !strings.Contains(out, `"shell_override": "azure:work"`) {
+		t.Fatalf("json status missing shell_override:\n%s", out)
+	}
+}
+
+func TestStatusOmitsShellOverrideWhenUnset(t *testing.T) {
+	seedStatusHome(t)
+	t.Setenv("AZRL_PROFILE", "")
+
+	statusJSON = false
+	out := runRoot(t, "status")
+	if strings.Contains(out, "shell override") {
+		t.Fatalf("no override line expected:\n%s", out)
+	}
+	out = runRoot(t, "status", "--json")
+	statusJSON = false
+	if strings.Contains(out, "shell_override") {
+		t.Fatalf("omitempty field leaked into JSON:\n%s", out)
 	}
 }

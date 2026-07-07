@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/slamb2k/azrl/internal/provider"
@@ -49,9 +50,10 @@ type statusRow struct {
 // statusReport is the full `azrl status --json` shape: the same three sections
 // the TUI landing view renders.
 type statusReport struct {
-	Mappings []statusMapping `json:"mappings"`
-	Ambient  []statusAmbient `json:"ambient"`
-	Unmapped []statusRow     `json:"unmapped"`
+	ShellOverride string          `json:"shell_override,omitempty"`
+	Mappings      []statusMapping `json:"mappings"`
+	Ambient       []statusAmbient `json:"ambient"`
+	Unmapped      []statusRow     `json:"unmapped"`
 }
 
 var statusCmd = &cobra.Command{
@@ -82,6 +84,7 @@ var statusCmd = &cobra.Command{
 				Directory: st.Directory, Expiry: st.Expiry, Drifted: st.Drifted, LastUsed: st.LastUsed,
 			})
 		}
+		rep.ShellOverride = os.Getenv("AZRL_PROFILE")
 		if statusJSON {
 			b, err := json.MarshalIndent(rep, "", "  ")
 			if err != nil {
@@ -98,6 +101,10 @@ var statusCmd = &cobra.Command{
 // printStatusSections renders the plain-text three-section view: non-TTY safe,
 // no colour, no interactive elements.
 func printStatusSections(w io.Writer, ov ui.Overview, rep statusReport) {
+	if rep.ShellOverride != "" {
+		_, prof, _ := strings.Cut(rep.ShellOverride, ":")
+		fmt.Fprintf(w, "shell override: %s — this terminal acts as %s\n\n", rep.ShellOverride, prof)
+	}
 	fmt.Fprintln(w, "MAPPINGS")
 	if len(ov.Mappings) == 0 {
 		fmt.Fprintln(w, "  (none)")
