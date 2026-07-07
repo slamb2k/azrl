@@ -56,18 +56,22 @@ func groupArgs(group string, rest ...string) []string {
 
 // runHandoff suspends the TUI (releasing the terminal) and runs azrl <args> so
 // the bridge/login flow streams its normal output, then resumes the TUI.
+// Bubble Tea's RestoreTerminal (v1.3.x) re-enables the alt screen, bracketed
+// paste, and focus reporting after an exec — but not mouse tracking — so both
+// handoffs re-issue EnableMouseCellMotion or every handoff kills the mouse
+// until the program restarts.
 func runHandoff(args []string) tea.Cmd {
 	self, err := os.Executable()
 	if err != nil || self == "" {
 		self = "azrl"
 	}
 	c := exec.Command(self, args...)
-	return tea.ExecProcess(c, func(err error) tea.Msg {
+	return tea.Sequence(tea.ExecProcess(c, func(err error) tea.Msg {
 		if err != nil {
 			return opDoneMsg{err: fmt.Errorf("%s exited: %w", args[0], err)}
 		}
 		return opDoneMsg{msg: fmt.Sprintf("%s complete", args[0])}
-	})
+	}), tea.EnableMouseCellMotion)
 }
 
 // runShellHandoff suspends the TUI into `azrl … shell <name>` and reports the
@@ -79,7 +83,7 @@ func runShellHandoff(args []string) tea.Cmd {
 		self = "azrl"
 	}
 	c := exec.Command(self, args...)
-	return tea.ExecProcess(c, func(error) tea.Msg {
+	return tea.Sequence(tea.ExecProcess(c, func(error) tea.Msg {
 		return opDoneMsg{msg: "shell exited"}
-	})
+	}), tea.EnableMouseCellMotion)
 }
