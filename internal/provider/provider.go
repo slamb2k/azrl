@@ -27,6 +27,13 @@ type Ambient struct {
 	Source   string // "env:AWS_PROFILE" | "file:~/.config/gh/hosts.yml" | ...
 }
 
+// SessionLive reports whether a profile's cached session is usable right now:
+// an identity exists and any tracked expiry is still in the future. A nil
+// expiry (github; providers whose CLIs refresh silently) counts as live.
+func SessionLive(st Status) bool {
+	return st.Identity != "" && (st.Expiry == nil || st.Expiry.After(time.Now()))
+}
+
 // Provider is one login target. The profile-mechanic methods delegate to the
 // provider's Scheme so behaviour stays identical across providers; provider-
 // specific sign-in orchestration lives on the concrete type, not here.

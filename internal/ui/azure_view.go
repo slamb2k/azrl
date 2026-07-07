@@ -91,6 +91,11 @@ func (v azureView) Init() tea.Cmd { return identityCmd() }
 func (v *azureView) syncHeader() {
 	v.identityOverride = v.signedIn
 	v.notice = ""
+	if v.shellName != "" {
+		// A shell override already tells the user which identity governs this
+		// dir; the drift warning about the ambient az session is moot.
+		return
+	}
 	if v.drift {
 		what := "is " + v.ambientWho
 		if v.ambientEmpty {

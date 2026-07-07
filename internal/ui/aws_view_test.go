@@ -343,8 +343,8 @@ func TestCaptureAbsentFromNonEmptyActionList(t *testing.T) {
 	if strings.Contains(out, "Capture session") {
 		t.Fatalf("Capture is onboarding-contextual; it must not sit in the everyday list:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (5)") {
-		t.Fatalf("everyday action count should be 5:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (6)") {
+		t.Fatalf("everyday action count should be 6:\n%s", out)
 	}
 }
 
@@ -368,7 +368,7 @@ func TestLinkHereDisabledWhenAlreadyLinked(t *testing.T) {
 	if !strings.Contains(out, "Link here") || !strings.Contains(out, "already linked here") {
 		t.Fatalf("Link here should render disabled with its reason:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (5)") {
+	if !strings.Contains(out, "ACTIONS (6)") {
 		t.Fatalf("action count must not drop when a verb is disabled:\n%s", out)
 	}
 	// The accelerator explains instead of running.

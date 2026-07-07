@@ -69,3 +69,17 @@ func runHandoff(args []string) tea.Cmd {
 		return opDoneMsg{msg: fmt.Sprintf("%s complete", args[0])}
 	})
 }
+
+// runShellHandoff suspends the TUI into `azrl … shell <name>` and reports the
+// return neutrally: the subshell's own exit status is the user's business
+// (their last command failing is not an azrl error).
+func runShellHandoff(args []string) tea.Cmd {
+	self, err := os.Executable()
+	if err != nil || self == "" {
+		self = "azrl"
+	}
+	c := exec.Command(self, args...)
+	return tea.ExecProcess(c, func(error) tea.Msg {
+		return opDoneMsg{msg: "shell exited"}
+	})
+}

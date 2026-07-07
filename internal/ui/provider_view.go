@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -65,6 +64,7 @@ type providerTabView struct {
 	touched     bool
 	namingVerb  string // "" (not naming), "login", or "capture"
 	nameInput   textinput.Model
+	shellName   string // set from AZRL_PROFILE when its provider prefix matches this tab
 
 	confirming    bool
 	pendingDelete string
@@ -88,6 +88,7 @@ type providerTabView struct {
 func providerActions(group string) []providerAction {
 	return []providerAction{
 		{key: "s", label: "Sign in", hint: "session only — no link", run: loginAction(group)},
+		{key: "t", label: "Shell as…", hint: "subshell as this profile — no link", run: shellAction},
 		{key: "u", label: "Link here", hint: "link this dir — no login", run: useAction},
 		{key: "n", label: "New profile", hint: "sign in + link this dir", run: newProfileAction, bootstrap: true},
 		{key: "a", label: "Capture session", hint: "adopt current CLI session · links this dir", run: captureAction, bootstrap: true},
@@ -145,6 +146,12 @@ func (v *providerTabView) reload() {
 	}
 	if v.cursor >= len(v.profiles) {
 		v.cursor = 0
+	}
+	v.shellName = ""
+	if ov := os.Getenv("AZRL_PROFILE"); ov != "" {
+		if prov, prof, ok := strings.Cut(ov, ":"); ok && prov == v.prov.Name() {
+			v.shellName = prof
+		}
 	}
 }
 
@@ -223,7 +230,7 @@ func cliGroup(name string) string {
 // sessionLive reports whether a profile's disk-only status shows a usable
 // session — identity present and not expired.
 func sessionLive(st provider.Status) bool {
-	return st.Identity != "" && (st.Expiry == nil || st.Expiry.After(time.Now()))
+	return provider.SessionLive(st)
 }
 
 // update runs the shared list/pane navigation and action dispatch, returning the
@@ -463,6 +470,17 @@ func loginAction(group string) func(v *providerTabView) tea.Cmd {
 	}
 }
 
+// shellAction hands off to a subshell impersonating the selected profile —
+// exports its env for the shell's lifetime, no link recorded.
+func shellAction(v *providerTabView) tea.Cmd {
+	name := v.selected()
+	if name == "" {
+		return nil
+	}
+	args := append(groupArgs(cliGroup(v.prov.Name()), "shell"), name)
+	return runShellHandoff(args)
+}
+
 // namingPromptAction opens the name input with the given verb ("login" or "capture").
 func namingPromptAction(verb string) func(v *providerTabView) tea.Cmd {
 	return func(v *providerTabView) tea.Cmd {
@@ -573,8 +591,11 @@ func (v providerTabView) identityStrip() string {
 	if v.identityOverride != "" {
 		dirIdentity = v.identityOverride
 	}
-	strip := headerStrip(contentW, providerIcon(v.prov.Name()), v.prov.Title(), pwd,
-		effectiveIdentity(v.dirProfile, dirIdentity, v.ambIdent))
+	ident := effectiveIdentity(v.dirProfile, dirIdentity, v.ambIdent)
+	if v.shellName != "" {
+		ident = accentStyle.Render("⌁ shell: " + v.shellName)
+	}
+	strip := headerStrip(contentW, providerIcon(v.prov.Name()), v.prov.Title(), pwd, ident)
 	if v.notice != "" {
 		strip += "\n" + ansi.Wordwrap(v.notice, contentW, "")
 	}

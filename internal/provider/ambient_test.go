@@ -65,3 +65,23 @@ func TestEnvOrHomeFallsBackToHome(t *testing.T) {
 		t.Fatalf("EnvOrHome = %q, %q, %v; want %s, ~/.config/native, true", path, base, ok, filepath.Join(home, ".config", "native"))
 	}
 }
+
+func TestSessionLive(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	future := time.Now().Add(time.Hour)
+	cases := []struct {
+		name string
+		st   provider.Status
+		want bool
+	}{
+		{"no identity", provider.Status{}, false},
+		{"identity, nil expiry", provider.Status{Identity: "u@x"}, true},
+		{"identity, future expiry", provider.Status{Identity: "u@x", Expiry: &future}, true},
+		{"identity, past expiry", provider.Status{Identity: "u@x", Expiry: &past}, false},
+	}
+	for _, c := range cases {
+		if got := provider.SessionLive(c.st); got != c.want {
+			t.Fatalf("%s: SessionLive = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
