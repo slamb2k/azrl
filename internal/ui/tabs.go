@@ -31,6 +31,7 @@ type tabsModel struct {
 	picker   *dirPicker
 	options  *optionsPicker
 	barFocus bool
+	help     bool
 }
 
 // NewTabs builds the tabbed container on the dashboard (the default landing view).
@@ -149,6 +150,11 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// tab's own frame fits.
 		return m.broadcast(tea.WindowSizeMsg{Width: msg.Width, Height: m.innerHeight()})
 	case tea.KeyMsg:
+		// The help overlay swallows its closing keypress.
+		if m.help {
+			m.help = false
+			return m, nil
+		}
 		// While the tab bar holds focus, ←/→ walk the tabs and ↓/enter/esc
 		// hand focus back to the active view.
 		if m.barFocus && m.picker == nil {
@@ -169,6 +175,9 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "o":
 				op := newOptionsPicker(m.width, m.innerHeight())
 				m.options = &op
+				return m, nil
+			case "?":
+				m.help = true
 				return m, nil
 			case "q", "ctrl+c":
 				return m, tea.Quit
@@ -222,6 +231,11 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.activeCapturesInput() {
 				op := newOptionsPicker(m.width, m.innerHeight())
 				m.options = &op
+				return m, nil
+			}
+		case "?":
+			if !m.activeCapturesInput() {
+				m.help = true
 				return m, nil
 			}
 		}
@@ -306,6 +320,9 @@ func (m tabsModel) View() string {
 		// Settings float as a centered popup over whatever is beneath.
 		body = overlayCenter(body, m.options.view(), m.width)
 	}
+	if m.help {
+		body = overlayCenter(body, helpOverlay(), m.width)
+	}
 	out := banner + "\n\n" + bar + "\n" + body
 	// Backstop invariant: no line may exceed the terminal width, whatever a child
 	// renders. Truncate every line (ANSI-aware) to guarantee it.
@@ -372,4 +389,23 @@ func (m tabsModel) applyProviderSelection(names []string) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, c)
 	}
 	return nm, tea.Batch(cmds...)
+}
+
+// helpOverlay is the full keymap reference, floated over any tab by '?'.
+func helpOverlay() string {
+	lines := []string{
+		paneTitleStyle.Render("KEYS"),
+		"",
+		keyHelp("↑↓", "select", "↵", "open/run", "esc", "back"),
+		keyHelp("⇥ ]", "next tab", "⇧⇥ [", "prev tab"),
+		keyHelp("s", "sign in", "u", "link here", "n", "new profile"),
+		keyHelp("a", "capture (empty state)", "b", "browser profile", "delete", "remove"),
+		keyHelp("e", "write .envrc (azure)", "d", "change dir", "o", "options"),
+		keyHelp("r", "refresh", "?", "close help", "q", "quit"),
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(azureBlue).
+		Padding(1, 3).
+		Render(strings.Join(lines, "\n"))
 }

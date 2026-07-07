@@ -383,3 +383,27 @@ func TestOptionsPopupOverlaysAndOpensFromBar(t *testing.T) {
 		t.Fatalf("underlying dashboard should remain visible around the popup:\n%s", v)
 	}
 }
+
+func TestHelpOverlayTogglesFromAnyTab(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	tm := nm.(tabsModel)
+	if !tm.help {
+		t.Fatal("'?' did not open the help overlay")
+	}
+	if v := tm.View(); !strings.Contains(v, "KEYS") || !strings.Contains(v, "link here") {
+		t.Fatalf("help overlay content missing:\n%s", v)
+	}
+	// Any key closes it without leaking to the tab.
+	nm2, _ := tm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if nm2.(tabsModel).help {
+		t.Fatal("a keypress should close the help overlay")
+	}
+	// While a text input is armed, '?' is text, not the overlay.
+	nm3, _ := nm2.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyTab}) // Azure tab
+	nm3, _ = nm3.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	nm4, _ := nm3.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	if nm4.(tabsModel).help {
+		t.Fatal("'?' must reach the armed text input, not open the overlay")
+	}
+}
