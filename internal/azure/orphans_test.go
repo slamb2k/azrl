@@ -131,11 +131,11 @@ func TestSweepOrphanedLogins(t *testing.T) {
 	writeProcEntry(t, root, 101, []string{"az", "login", "--tenant", "x"}, uid, 1, "380000")               // orphan, age 20m
 	writeProcEntry(t, root, 102, []string{"/usr/bin/python3", "/usr/bin/az", "login"}, uid, 500, "460000") // live, age 6m
 
-	oldFS, oldKill := procFS, killProc
+	oldFS, oldKill := ProcFS, killProc
 	var killed []int
-	procFS = root
+	ProcFS = root
 	killProc = func(pid int) error { killed = append(killed, pid); return nil }
-	t.Cleanup(func() { procFS, killProc = oldFS, oldKill })
+	t.Cleanup(func() { ProcFS, killProc = oldFS, oldKill })
 
 	var buf bytes.Buffer
 	SweepOrphanedLogins(&buf)
@@ -153,10 +153,10 @@ func TestSweepOrphanedLogins(t *testing.T) {
 }
 
 func TestSweepOrphanedLoginsNoProc(t *testing.T) {
-	oldFS, oldKill := procFS, killProc
-	procFS = filepath.Join(t.TempDir(), "nope")
+	oldFS, oldKill := ProcFS, killProc
+	ProcFS = filepath.Join(t.TempDir(), "nope")
 	killProc = func(pid int) error { t.Fatalf("kill(%d) called with no proc root", pid); return nil }
-	t.Cleanup(func() { procFS, killProc = oldFS, oldKill })
+	t.Cleanup(func() { ProcFS, killProc = oldFS, oldKill })
 
 	var buf bytes.Buffer
 	SweepOrphanedLogins(&buf)

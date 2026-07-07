@@ -75,7 +75,9 @@ unrelated python processes, and anything where `login` precedes the az token.
   - `azrl: note: another az login is running (pid 5678, 12m) — it may steal
     the browser callback` per live process (warn, never kill — user decision).
   The kill is injected (`kill func(pid int) error`, default
-  `syscall.Kill(pid, SIGTERM)`) so tests never signal real processes.
+  `os.FindProcess(pid)` + `p.Signal(syscall.SIGTERM)` — not `syscall.Kill`,
+  so the package still compiles for windows/darwin release builds) so tests
+  never signal real processes.
 
 **Wiring:** `CleanSlate(cfgDir string, out io.Writer)` gains the writer and
 calls `SweepOrphanedLogins(out)` before the existing logout/account-clear/

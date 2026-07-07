@@ -156,12 +156,14 @@ func formatAge(d time.Duration) string {
 	}
 }
 
-// procFS and killProc are package seams so tests can redirect the sweep away
-// from the real /proc and real signals. killProc uses os.Process.Signal (NOT
-// syscall.Kill) so the package still compiles for windows/darwin release
-// builds; on hosts without /proc it is never reached.
+// ProcFS and killProc are package seams so tests can redirect the sweep away
+// from the real /proc and real signals. ProcFS is exported so cmd-package
+// tests exercising the login path (which reaches CleanSlate -> the sweep) can
+// point it at an empty temp dir instead of the real /proc. killProc uses
+// os.Process.Signal (NOT syscall.Kill) so the package still compiles for
+// windows/darwin release builds; on hosts without /proc it is never reached.
 var (
-	procFS   = "/proc"
+	ProcFS   = "/proc"
 	killProc = func(pid int) error {
 		p, err := os.FindProcess(pid)
 		if err != nil {
@@ -177,7 +179,7 @@ var (
 // next login's browser callback. Best-effort: without /proc (macOS, Windows)
 // and on any read or kill error it is a silent no-op, never blocking a login.
 func SweepOrphanedLogins(out io.Writer) {
-	orphans, live := classifyAzLogins(procFS, os.Getuid())
+	orphans, live := classifyAzLogins(ProcFS, os.Getuid())
 	for _, p := range orphans {
 		if killProc(p.PID) == nil {
 			fmt.Fprintf(out, "azrl: reaped orphaned az login (pid %d)\n", p.PID)
