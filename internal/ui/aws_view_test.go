@@ -344,7 +344,7 @@ func TestCaptureAbsentFromNonEmptyActionList(t *testing.T) {
 		t.Fatalf("Capture is onboarding-contextual; it must not sit in the everyday list:\n%s", out)
 	}
 	if !strings.Contains(out, "ACTIONS (7)") {
-		t.Fatalf("everyday action count should be 6:\n%s", out)
+		t.Fatalf("everyday action count should be 7:\n%s", out)
 	}
 }
 

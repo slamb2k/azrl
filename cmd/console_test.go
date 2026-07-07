@@ -16,6 +16,8 @@ func seedConsoleHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("CLOUDSDK_CONFIG", "")
+	t.Setenv("AZRL_BROWSER_CMD", "")
 	write := func(rel, body string) {
 		p := filepath.Join(home, rel)
 		os.MkdirAll(filepath.Dir(p), 0o755)
