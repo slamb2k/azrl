@@ -340,8 +340,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			row := m.ov.Mappings[m.cursor]
-			pwd, _ := os.Getwd()
-			if row.Dir != pwd {
+			if row.Scope != ScopeCwd {
 				m.status = mutedStyle.Render("links are removed where they live — run unlink in " + displayDir(row.Dir))
 				return m, nil
 			}
@@ -349,10 +348,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if p.Name() != row.Provider {
 					continue
 				}
-				if _, err := p.Scheme().Unlink(p.ProfilesDir(), pwd); err != nil {
+				if _, err := p.Scheme().Unlink(p.ProfilesDir(), row.Dir); err != nil {
 					m.status = failureStyle.Render("✗ " + err.Error())
 				} else {
-					m.status = successStyle.Render("✓ unlinked " + displayDir(pwd) + " (profile kept)")
+					m.status = successStyle.Render("✓ unlinked " + displayDir(row.Dir) + " (profile kept)")
 					m.reload()
 				}
 				return m, nil

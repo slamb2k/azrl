@@ -608,7 +608,7 @@ func TestDashboardUnlinkCwdRowRemovesLink(t *testing.T) {
 func TestDashboardUnlinkOtherDirRowExplains(t *testing.T) {
 	cwd, _ := os.Getwd()
 	other := filepath.Join(cwd, "elsewhere")
-	ov := Overview{Mappings: []MappingRow{{Provider: "azure", Dir: other, Profile: "acme"}}}
+	ov := Overview{Mappings: []MappingRow{{Provider: "azure", Dir: other, Profile: "acme", Scope: ScopeNone}}}
 	m := dashboardModel{width: 100, ov: ov, items: overviewItems(ov)}
 	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
 	m = mod.(dashboardModel)
