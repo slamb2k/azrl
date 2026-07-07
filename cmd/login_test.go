@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/slamb2k/azrl/internal/azure"
 	"github.com/slamb2k/azrl/internal/profile"
 )
 
@@ -23,6 +24,13 @@ func seedAzLoginEnv(t *testing.T, confs map[string]string) (azLog string) {
 	// Keep any leaked AZURE_CONFIG_DIR from login.go scoped to this test.
 	t.Setenv("AZURE_CONFIG_DIR", "")
 	t.Setenv("AZRL_BROWSER_CMD", "")
+	// Keep the orphan-login sweep (CleanSlate -> SweepOrphanedLogins) off the
+	// real /proc: a genuine orphaned az login on the dev machine would get
+	// SIGTERM'd, and a live one would inject a nondeterministic note line
+	// into asserted output.
+	oldProcFS := azure.ProcFS
+	azure.ProcFS = t.TempDir()
+	t.Cleanup(func() { azure.ProcFS = oldProcFS })
 
 	az := filepath.Join(home, ".azure-profiles")
 	os.MkdirAll(az, 0o755)

@@ -54,7 +54,7 @@ Cobra subcommands, split across packages:
 
 ### The login flow
 
-1. `CleanSlate` — `az logout` + `az account clear`, remove scoped MSAL caches within the isolated `AZURE_CONFIG_DIR`.
+1. `CleanSlate` — reaps orphaned `az login` processes (same user, parent dead — leftovers of earlier attempts that would steal the browser callback) and warns about live ones, then `az logout` + `az account clear`, remove scoped MSAL caches within the isolated `AZURE_CONFIG_DIR`.
 2. `LoginCapture` — runs `az login --allow-no-subscription` in the background with `BROWSER` set to `azrl __browser-capture`, polls for the capture file, parses the random callback port.
 3. `Bridge` — **path B (zero-paste)**: if the local host is SSH-reachable, open a reverse tunnel (`ssh -R port:localhost:port`) and launch the browser there. **Path A (fallback / paste)**: print a one-line `ssh -fNL …` for the user to paste locally.
 4. `WaitForLogin` — waits for `az login` to complete with a configurable timeout (default 180s).

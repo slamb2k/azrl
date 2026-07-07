@@ -84,7 +84,7 @@ var loginCmd = &cobra.Command{
 		os.MkdirAll(cfgDir, 0o755)
 		os.Setenv("AZURE_CONFIG_DIR", cfgDir)
 		fmt.Fprintf(out, "azrl: profile=%s tenant=%s\n", name, conf.Tenant)
-		azure.CleanSlate(cfgDir)
+		azure.CleanSlate(cfgDir, out)
 		if err := runLogin(conf.Tenant, g, loginPaste, out); err != nil {
 			return err
 		}

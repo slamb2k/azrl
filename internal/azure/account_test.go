@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,10 +23,13 @@ func shimAz(t *testing.T, logPath string) {
 func TestCleanSlate(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "az.log")
 	shimAz(t, log)
+	oldFS := ProcFS
+	ProcFS = t.TempDir()
+	t.Cleanup(func() { ProcFS = oldFS })
 	cfg := t.TempDir()
 	os.WriteFile(filepath.Join(cfg, "msal_token_cache.json"), []byte("x"), 0o644)
 	os.WriteFile(filepath.Join(cfg, "service_principal_entries.json"), []byte("x"), 0o644)
-	if err := CleanSlate(cfg); err != nil {
+	if err := CleanSlate(cfg, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(cfg, "msal_token_cache.json")); !os.IsNotExist(err) {
