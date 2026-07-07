@@ -555,7 +555,7 @@ func (v providerTabView) identityStrip() string {
 }
 
 func (v providerTabView) View() string {
-	_, leftW, rightW, _ := (Model{width: v.width, height: v.height}).dims()
+	_, leftW, rightW := paneDims(v.width)
 
 	scopes := make(map[string]string, len(v.profiles))
 	for _, p := range v.profiles {
