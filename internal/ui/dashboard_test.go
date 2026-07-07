@@ -300,7 +300,7 @@ func TestDashboardNarrowWidthNoOverflow(t *testing.T) {
 }
 
 func TestDashboardDriftAndExpiryRendering(t *testing.T) {
-	future := time.Now().Add(42 * time.Minute)
+	future := time.Now().Add(10 * time.Minute)
 	m := dashboardModel{width: 120, ov: Overview{
 		Mappings: []MappingRow{
 			{
@@ -319,7 +319,7 @@ func TestDashboardDriftAndExpiryRendering(t *testing.T) {
 	if !strings.Contains(v, "⚠ drift") {
 		t.Fatalf("drift marker missing:\n%s", v)
 	}
-	if !strings.Contains(v, "in ") {
+	if !strings.Contains(v, "⚠ expires in") {
 		t.Fatalf("relative expiry missing:\n%s", v)
 	}
 
