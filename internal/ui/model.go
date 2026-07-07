@@ -847,7 +847,7 @@ func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touc
 	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), mode == selActive && touched))
 	b.WriteString("\n\n")
 	if len(profiles) == 0 {
-		b.WriteString(mutedStyle.Render("  (none yet — ") + keycap("a") + mutedStyle.Render(" creates one)"))
+		b.WriteString(mutedStyle.Render("  (none yet — ") + keycap("n") + mutedStyle.Render(" creates, ") + keycap("a") + mutedStyle.Render(" adopts)"))
 		return b.String()
 	}
 	textW := leftW - 5 // selection bar/pad (2) + icon slot (3)

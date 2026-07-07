@@ -189,8 +189,8 @@ func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
 	v := newAwsView()
 	nm, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	av := nm.(awsView)
-	if !av.naming || cmd != nil {
-		t.Fatalf("'n' should open the name prompt (naming=%v)", av.naming)
+	if av.namingVerb == "" || cmd != nil {
+		t.Fatalf("'n' should open the name prompt (namingVerb=%q)", av.namingVerb)
 	}
 	for _, r := range "fresh" {
 		nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
@@ -198,18 +198,18 @@ func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
 	}
 	nm, cmd = av.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	av = nm.(awsView)
-	if av.naming || cmd == nil {
-		t.Fatalf("enter should close the prompt and exec the create login (naming=%v cmd=%v)", av.naming, cmd)
+	if av.namingVerb != "" || cmd == nil {
+		t.Fatalf("enter should close the prompt and exec the create login (namingVerb=%q cmd=%v)", av.namingVerb, cmd)
 	}
 	// esc cancels a fresh prompt without exec.
 	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	nm, cmd = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if nm.(awsView).naming || cmd != nil {
+	if nm.(awsView).namingVerb != "" || cmd != nil {
 		t.Fatal("esc should cancel the prompt without exec")
 	}
 }
 
-func TestEmptyProviderShowsOnlyBootstrapAction(t *testing.T) {
+func TestEmptyProviderOffersOnboardingPair(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	clearAmbientEnv(t)
@@ -218,18 +218,48 @@ func TestEmptyProviderShowsOnlyBootstrapAction(t *testing.T) {
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
 	out := nm.(awsView).View()
-	if !strings.Contains(out, "ACTIONS (1)") || !strings.Contains(out, "New profile") {
-		t.Fatalf("empty provider should offer exactly New profile:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (2)") ||
+		!strings.Contains(out, "New profile") || !strings.Contains(out, "Capture session") {
+		t.Fatalf("empty provider should offer New profile + Capture session:\n%s", out)
 	}
 	for _, hidden := range []string{"Sign in", "Link here", "Remove"} {
 		if strings.Contains(out, hidden) {
-			t.Fatalf("%q should hide with zero profiles:\n%s", hidden, out)
+			t.Fatalf("%q should not show with zero profiles:\n%s", hidden, out)
 		}
 	}
-	// The bootstrap action works: 'n' opens the name prompt.
-	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	if !nm.(awsView).naming {
-		t.Fatal("'n' should open the new-profile prompt on an empty provider")
+	// 'a' opens the capture name prompt with an adopt-flavored confirm hint.
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	av := nm.(awsView)
+	if av.namingVerb != "capture" {
+		t.Fatalf("'a' should open the capture prompt, namingVerb=%q", av.namingVerb)
+	}
+	if !strings.Contains(av.View(), "adopt session + link") {
+		t.Fatalf("capture prompt missing its confirm hint:\n%s", av.View())
+	}
+	// enter with the placeholder name execs the capture handoff.
+	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if nm.(awsView).namingVerb != "" || cmd == nil {
+		t.Fatal("enter should close the prompt and exec the capture handoff")
+	}
+}
+
+func TestCaptureAbsentFromNonEmptyActionList(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	out := nm.(awsView).View()
+	if strings.Contains(out, "Capture session") {
+		t.Fatalf("Capture is onboarding-contextual; it must not sit in the everyday list:\n%s", out)
+	}
+	if !strings.Contains(out, "ACTIONS (5)") {
+		t.Fatalf("everyday action count should be 5:\n%s", out)
 	}
 }
 

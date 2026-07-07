@@ -56,7 +56,7 @@ type providerTabView struct {
 	status     string
 	suspended  bool
 	touched    bool
-	naming     bool
+	namingVerb string // "" (not naming), "login", or "capture"
 	nameInput  textinput.Model
 
 	confirming    bool
@@ -77,6 +77,7 @@ func providerActions(group string) []providerAction {
 		{key: "s", label: "Sign in", hint: "session only — no link", run: loginAction(group)},
 		{key: "u", label: "Link here", hint: "link this dir — no login", run: useAction},
 		{key: "n", label: "New profile", hint: "sign in + link this dir", run: newProfileAction, bootstrap: true},
+		{key: "a", label: "Capture session", hint: "adopt current CLI session · links this dir", run: captureAction, bootstrap: true},
 		{key: "b", label: "Browser profile", hint: "map to a local browser profile", run: browserAction},
 		{key: "delete", label: "Remove…", hint: "delete profile", run: removeAction},
 	}
@@ -151,6 +152,10 @@ func (v providerTabView) enabledActions() []actionState {
 	sel := v.selected()
 	out := make([]actionState, 0, len(v.actions))
 	for _, a := range v.actions {
+		if a.key == "a" {
+			// Capture is onboarding-contextual: empty state + dashboard adopt only.
+			continue
+		}
 		st := actionState{providerAction: a, enabled: true}
 		switch a.key {
 		case "u":
@@ -190,7 +195,7 @@ func (v providerTabView) Init() tea.Cmd { return nil }
 // capturesInput reports whether the new-profile name input is active, so the
 // container forwards keys here instead of acting on them.
 func (v providerTabView) capturesInput() bool {
-	return v.naming || v.browserManual || v.browserPick != nil || v.confirming
+	return v.namingVerb != "" || v.browserManual || v.browserPick != nil || v.confirming
 }
 
 // cliGroup maps a provider name to its azrl command group.
@@ -279,10 +284,10 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			}
 			return v, nil
 		}
-		if v.naming {
+		if v.namingVerb != "" {
 			switch msg.String() {
 			case "esc":
-				v.naming = false
+				v.namingVerb = ""
 			case "enter":
 				name := strings.TrimSpace(v.nameInput.Value())
 				if name == "" {
@@ -292,8 +297,12 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				if name == "" {
 					return v, nil
 				}
-				v.naming = false
+				verb := v.namingVerb
+				v.namingVerb = ""
 				v.status = ""
+				if verb == "capture" {
+					return v, runHandoff(groupArgs(cliGroup(v.prov.Name()), "capture", name))
+				}
 				return v, runHandoff(groupArgs(cliGroup(v.prov.Name()), "login", name, "--yes"))
 			default:
 				var cmd tea.Cmd
@@ -435,17 +444,32 @@ func loginAction(group string) func(v *providerTabView) tea.Cmd {
 	}
 }
 
+// namingPromptAction opens the name input with the given verb ("login" or "capture").
+func namingPromptAction(verb string) func(v *providerTabView) tea.Cmd {
+	return func(v *providerTabView) tea.Cmd {
+		pwd, _ := os.Getwd()
+		ti := textinput.New()
+		ti.Placeholder = profile.DefaultName("", pwd)
+		ti.Focus()
+		v.nameInput = ti
+		v.namingVerb = verb
+		v.status = ""
+		return nil
+	}
+}
+
 // newProfileAction opens the name prompt; confirming execs `login <name>
-// --yes`, whose create path signs in and pins the current directory.
+// --yes`, whose create path signs in and links the current directory.
 func newProfileAction(v *providerTabView) tea.Cmd {
-	pwd, _ := os.Getwd()
-	ti := textinput.New()
-	ti.Placeholder = profile.DefaultName("", pwd)
-	ti.Focus()
-	v.nameInput = ti
-	v.naming = true
-	v.status = ""
-	return nil
+	return namingPromptAction("login")(v)
+}
+
+// captureAction opens the name prompt for adopting the CLI's current session;
+// confirming execs `capture <name>`, which records the session's metadata as
+// a profile and links the current directory. Onboarding-contextual: offered
+// only in the empty state (and via the dashboard's adopt flow).
+func captureAction(v *providerTabView) tea.Cmd {
+	return namingPromptAction("capture")(v)
 }
 
 // useAction pins the current directory to the selected profile. Shared by all
@@ -572,10 +596,14 @@ func (v providerTabView) View() string {
 		info = profileInfoBlock(pr, st, browser, note, rightW)
 	}
 	actionsBody := r.view(rightW)
-	if v.naming {
-		actionsBody = mutedStyle.Render("Name for the new profile:") + "\n\n" +
+	if v.namingVerb != "" {
+		prompt, confirmHint := "Name for the new profile:", "create + sign in + link"
+		if v.namingVerb == "capture" {
+			prompt, confirmHint = "Name for the captured profile:", "adopt session + link"
+		}
+		actionsBody = mutedStyle.Render(prompt) + "\n\n" +
 			v.nameInput.View() + "\n\n" +
-			keyHelp("↵", "create + sign in + pin", "esc", "cancel")
+			keyHelp("↵", confirmHint, "esc", "cancel")
 	}
 	if v.browserManual {
 		actionsBody = mutedStyle.Render("Browser command (runs on the local machine):") + "\n\n" +
