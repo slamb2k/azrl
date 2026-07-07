@@ -59,6 +59,10 @@ type providerTabView struct {
 	naming     bool
 	nameInput  textinput.Model
 
+	confirming    bool
+	pendingDelete string
+	confirm       radio
+
 	browserFor    string // profile a browser mapping is being chosen for
 	browserPick   *browserPicker
 	browserManual bool
@@ -186,7 +190,7 @@ func (v providerTabView) Init() tea.Cmd { return nil }
 // capturesInput reports whether the new-profile name input is active, so the
 // container forwards keys here instead of acting on them.
 func (v providerTabView) capturesInput() bool {
-	return v.naming || v.browserManual || v.browserPick != nil
+	return v.naming || v.browserManual || v.browserPick != nil || v.confirming
 }
 
 // cliGroup maps a provider name to its azrl command group.
@@ -220,6 +224,28 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			}
 		}
 	case tea.KeyMsg:
+		if v.confirming {
+			switch msg.String() {
+			case "ctrl+c":
+				return v, tea.Quit
+			case "esc", "n", "q":
+				v.confirming = false
+				v.pendingDelete = ""
+			case "y":
+				return v.doRemove()
+			case "up", "k", "left":
+				v.confirm.up()
+			case "down", "j", "right":
+				v.confirm.down()
+			case "enter":
+				if v.confirm.cursor == 1 {
+					return v.doRemove()
+				}
+				v.confirming = false
+				v.pendingDelete = ""
+			}
+			return v, nil
+		}
 		if v.browserPick != nil {
 			np, picked, closed := v.browserPick.update(msg)
 			v.browserPick = &np
@@ -460,14 +486,29 @@ func (v *providerTabView) applyBrowserMapping(cmdVal, labelVal string) {
 	v.status = successStyle.Render(fmt.Sprintf("%q opens with %s", v.browserFor, disp))
 }
 
-// removeAction deletes the selected profile and reloads the list. Shared by all
-// providers.
+// removeAction arms the shared confirm dialog for the selected profile —
+// nothing is deleted until the user confirms.
 func removeAction(v *providerTabView) tea.Cmd {
 	name := v.selected()
 	if name == "" {
 		v.status = mutedStyle.Render("no profile selected")
 		return nil
 	}
+	v.confirming = true
+	v.pendingDelete = name
+	v.confirm = newRadio([]radioOption{
+		{label: "No, keep it"},
+		{label: "Yes, remove " + name},
+	})
+	v.confirm.focused = true
+	return nil
+}
+
+// doRemove deletes the pending profile and reloads the list.
+func (v providerTabView) doRemove() (providerTabView, tea.Cmd) {
+	name := v.pendingDelete
+	v.confirming = false
+	v.pendingDelete = ""
 	dir := v.prov.ProfilesDir()
 	pwd, _ := os.Getwd()
 	if _, err := v.prov.Remove(name, dir, pwd); err != nil {
@@ -476,7 +517,7 @@ func removeAction(v *providerTabView) tea.Cmd {
 		v.status = successStyle.Render(fmt.Sprintf("removed %q", name))
 		v.reload()
 	}
-	return nil
+	return v, nil
 }
 
 // identityStrip is the standard provider header: icon + title, the current
@@ -544,11 +585,19 @@ func (v providerTabView) View() string {
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(rightW) + "\n" +
 		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(acts)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
+	if v.confirming {
+		right = paneTitle("CONFIRM", true) + "\n\n" +
+			mutedStyle.Render("Removes its conf, token dir,\nand this dir's "+v.prov.Scheme().Pointer+".") + "\n\n" +
+			v.confirm.view(rightW)
+	}
 
 	contentW, _, _ := paneDims(v.width)
 	help := keyHelpFit(contentW,
 		[]string{"↑↓", "select", "↵", "open/run", "esc", "back"},
 		[]string{"q", "quit", "→", "details", "⇥", "tab", "d", "dir", "o", "options"})
+	if v.confirming {
+		help = keyHelp("↑↓", "choose", "↵", "confirm", "y", "yes", "n/esc", "cancel")
+	}
 	view := renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
 	if v.browserPick != nil {
 		return overlayCenter(view, v.browserPick.view(), v.width)

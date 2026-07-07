@@ -70,7 +70,7 @@ func TestProviderViewEnterOpensActionsEscReturns(t *testing.T) {
 	}
 }
 
-func TestProviderViewDeleteKeyRemoves(t *testing.T) {
+func TestProviderViewRemoveConfirms(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	ap := filepath.Join(home, ".aws-profiles")
@@ -79,13 +79,32 @@ func TestProviderViewDeleteKeyRemoves(t *testing.T) {
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
 	v := newAwsView()
-	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDelete})
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	// delete arms the confirm — nothing is removed yet.
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDelete})
 	av := nm.(awsView)
-	if !strings.Contains(av.status, "removed") {
-		t.Fatalf("delete key did not remove the profile: %q", av.status)
+	if !av.confirming || av.pendingDelete != "work" {
+		t.Fatalf("delete should arm the confirm (confirming=%v pending=%q)", av.confirming, av.pendingDelete)
 	}
-	if len(av.profiles) != 0 {
-		t.Fatalf("profile list not reloaded after remove: %+v", av.profiles)
+	out := av.View()
+	if !strings.Contains(out, "CONFIRM") || !strings.Contains(out, "work") || !strings.Contains(out, ".awsprofile") {
+		t.Fatalf("confirm pane should name the profile and its pointer file:\n%s", out)
+	}
+	if len(av.profiles) != 1 {
+		t.Fatal("arming the confirm must not delete")
+	}
+	// 'n' cancels.
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	av = nm.(awsView)
+	if av.confirming || len(av.profiles) != 1 {
+		t.Fatal("'n' should cancel without deleting")
+	}
+	// delete + 'y' removes.
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyDelete})
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	av = nm.(awsView)
+	if !strings.Contains(av.status, "removed") || len(av.profiles) != 0 {
+		t.Fatalf("'y' should remove (status=%q, %d profiles)", av.status, len(av.profiles))
 	}
 }
 
