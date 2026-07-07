@@ -361,3 +361,29 @@ func TestBuildOverviewMappingCarriesExpiry(t *testing.T) {
 		t.Fatalf("expected a past expiry, got %v", row.Expiry)
 	}
 }
+
+func TestBuildOverviewAmbientCarriesMatchedProfileExpiry(t *testing.T) {
+	seedDashHome(t)
+	home := os.Getenv("HOME")
+	// The ambient az default (~/.azure) signed in as the same user as the
+	// saved acme profile, whose MSAL cache carries a long-past expiry.
+	os.MkdirAll(filepath.Join(home, ".azure"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure", "azureProfile.json"),
+		[]byte(`{"subscriptions":[{"user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"g1"}]}`), 0o644)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme", "msal_token_cache.json"),
+		[]byte(`{"AccessToken":{"k":{"expires_on":"1000000"}}}`), 0o644)
+
+	ov := BuildOverview(provider.All(), home)
+	for _, a := range ov.Ambient {
+		if a.Provider == "azure" {
+			if a.Profile != "acme" {
+				t.Fatalf("ambient azure default should match acme, got %q", a.Profile)
+			}
+			if a.Expiry == nil {
+				t.Fatal("managed ambient row should carry the matched profile's expiry")
+			}
+			return
+		}
+	}
+	t.Fatal("no azure ambient row produced — check the ~/.azure seeding")
+}

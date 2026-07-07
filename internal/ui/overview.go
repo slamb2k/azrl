@@ -48,6 +48,7 @@ type AmbientRow struct {
 	Identity string
 	Source   string
 	Profile  string
+	Expiry   *time.Time // the matched managed profile's expiry; nil = unmanaged/none
 }
 
 // UnmappedRow is a saved profile appearing in no mapping, kept visible so its
@@ -115,10 +116,14 @@ func BuildOverview(provs []provider.Provider, cwd string) Overview {
 		ov.Mappings = append(ov.Mappings, rows...)
 
 		if amb, err := p.Ambient(); err == nil && amb.Identity != "" {
-			ov.Ambient = append(ov.Ambient, AmbientRow{
+			row := AmbientRow{
 				Provider: p.Name(), Title: p.Title(), Identity: amb.Identity,
 				Source: amb.Source, Profile: provider.MatchProfile(listed, amb.Identity),
-			})
+			}
+			if st, ok := statuses[row.Profile]; ok {
+				row.Expiry = st.Expiry
+			}
+			ov.Ambient = append(ov.Ambient, row)
 		}
 
 		mapped := map[string]bool{}

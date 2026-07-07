@@ -502,3 +502,23 @@ func TestExpiredHintGatedToAws(t *testing.T) {
 		t.Fatalf("gcp unmapped expiry must not drive the hint: %q", short)
 	}
 }
+
+func TestAmbientLineExpiryTagsAwsOnly(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	soon := time.Now().Add(5 * time.Minute)
+	expiredAws := ambientLine(AmbientRow{Provider: "aws", Title: "AWS", Identity: "1/Dev",
+		Source: "s", Profile: "prod", Expiry: &past}, 10, 20, 20)
+	if !strings.Contains(expiredAws, "⚠ expired") {
+		t.Fatalf("expired aws default missing tag: %q", expiredAws)
+	}
+	soonAws := ambientLine(AmbientRow{Provider: "aws", Title: "AWS", Identity: "1/Dev",
+		Source: "s", Profile: "prod", Expiry: &soon}, 10, 20, 20)
+	if !strings.Contains(soonAws, "⚠ expires in") {
+		t.Fatalf("soon-expiring aws default missing amber tag: %q", soonAws)
+	}
+	azure := ambientLine(AmbientRow{Provider: "azure", Title: "Azure", Identity: "me@x",
+		Source: "s", Profile: "acme", Expiry: &past}, 10, 20, 20)
+	if strings.Contains(azure, "expire") {
+		t.Fatalf("azure default must never show expiry: %q", azure)
+	}
+}

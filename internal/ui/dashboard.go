@@ -452,7 +452,16 @@ func ambientLine(r AmbientRow, titleW, idW, srcW int) string {
 	if r.Profile != "" {
 		// The default isn't associated with any folder, so no profile/dir
 		// target — just whether azrl manages this identity.
-		return line + successStyle.Render("managed")
+		line += successStyle.Render("managed")
+		if ExpiryActionable(r.Provider) {
+			switch {
+			case expired(r.Expiry):
+				line += "  " + failureStyle.Render("⚠ expired")
+			case expiringSoon(r.Expiry):
+				line += "  " + accentStyle.Render("⚠ expires in "+shortDur(time.Until(*r.Expiry)))
+			}
+		}
+		return line
 	}
 	return line + accentStyle.Render("unmanaged") + mutedStyle.Render(" · [a]dopt")
 }
