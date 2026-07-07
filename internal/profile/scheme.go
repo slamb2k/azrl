@@ -270,32 +270,42 @@ func (s Scheme) LinkedDirs(confdir, name string) []string {
 }
 
 // UnlinkAll removes every linked directory's pointer file and mapping row.
+// On a mid-loop error it returns only the dirs actually processed, so
+// callers don't report success for dirs left untouched.
 func (s Scheme) UnlinkAll(confdir, name string) ([]string, error) {
 	dirs := s.LinkedDirs(confdir, name)
+	var done []string
 	for _, d := range dirs {
 		if err := os.Remove(filepath.Join(d, s.Pointer)); err != nil && !os.IsNotExist(err) {
-			return dirs, err
+			return done, err
 		}
 		_ = RemoveMapping(confdir, d, "pointer")
+		done = append(done, d)
 	}
-	return dirs, nil
+	return done, nil
 }
 
 // ReplaceLinks repoints every linked directory at another profile — an edge
 // rewrite only; provider-native extras (git credential setup, config sync)
-// happen on the next use/login as usual.
+// happen on the next use/login as usual. On a mid-loop error it returns only
+// the dirs actually processed.
 func (s Scheme) ReplaceLinks(confdir, oldName, newName string) ([]string, error) {
+	if newName == oldName {
+		return nil, fmt.Errorf("%s: cannot replace links with the profile being removed", s.Prefix)
+	}
 	if _, err := os.Stat(filepath.Join(confdir, newName+".conf")); err != nil {
 		return nil, fmt.Errorf("%s: no such profile %q to replace links with", s.Prefix, newName)
 	}
 	dirs := s.LinkedDirs(confdir, oldName)
+	var done []string
 	for _, d := range dirs {
 		if err := os.WriteFile(filepath.Join(d, s.Pointer), []byte(newName+"\n"), 0o644); err != nil {
-			return dirs, err
+			return done, err
 		}
 		_ = RecordMapping(confdir, Mapping{Dir: d, Profile: newName, Source: "pointer"})
+		done = append(done, d)
 	}
-	return dirs, nil
+	return done, nil
 }
 
 // writeAtomic writes body to path via a temp file + rename.

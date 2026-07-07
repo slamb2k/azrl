@@ -161,6 +161,41 @@ func TestRmRefusesWhileLinkedThenUnlinkAll(t *testing.T) {
 	}
 }
 
+func TestRmUnlinkAllDeclinedConfirmKeepsLinks(t *testing.T) {
+	resetRmFlags(t)
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	chdir(t, work)
+	RootCmd.SetArgs([]string{"use", "acme"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.WriteString("n\n")
+	w.Close()
+	oldStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = oldStdin })
+
+	RootCmd.SetArgs([]string{"rm", "acme", "--unlink-all"})
+	if err := RootCmd.Execute(); err == nil {
+		t.Fatal("declining the confirmation should abort rm")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".azure-profiles", "acme.conf")); err != nil {
+		t.Fatal("profile should survive a declined confirmation")
+	}
+	if _, err := os.Stat(filepath.Join(work, ".azprofile")); err != nil {
+		t.Fatal("pointer file should survive a declined confirmation — mutation must wait for confirm")
+	}
+}
+
 func TestRmUnlinkAllAndReplaceAreMutuallyExclusive(t *testing.T) {
 	resetRmFlags(t)
 	home := t.TempDir()

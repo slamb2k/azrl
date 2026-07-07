@@ -435,7 +435,7 @@ func (m dashboardModel) View() string {
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
 		"📁 "+displayDir(cwd), short)
 	help := keyHelpFit(m.width-4,
-		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/u/b/U", "act on row"},
+		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/u/b/⇧U", "act on row"},
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
 
 	var body []string

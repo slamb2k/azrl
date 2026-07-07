@@ -325,6 +325,12 @@ func TestLinkedDirsUnlinkAllAndReplace(t *testing.T) {
 	if _, err := s.ReplaceLinks(confdir, "acme", "missing"); err == nil {
 		t.Fatal("replace with a nonexistent profile must error")
 	}
+	if _, err := s.ReplaceLinks(confdir, "acme", "acme"); err == nil {
+		t.Fatal("replace with itself must error, not repoint links at a profile about to be deleted")
+	}
+	if got := s.LinkedDirs(confdir, "acme"); len(got) != 2 {
+		t.Fatalf("self-replace must not mutate links: %v", got)
+	}
 	if _, err := s.ReplaceLinks(confdir, "acme", "other"); err != nil {
 		t.Fatal(err)
 	}

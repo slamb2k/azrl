@@ -648,7 +648,7 @@ func TestDashboardUnlinkIgnoredWhileNaming(t *testing.T) {
 func TestDashboardFooterListsUnlinkChip(t *testing.T) {
 	seedDashHome(t)
 	v := sizedDashboard(t).View()
-	if !strings.Contains(v, "S/T/C/U/B/U") { // keyGlyph upper-cases the chip label
+	if !strings.Contains(v, "S/T/C/U/B/⇧U") { // keyGlyph upper-cases the chip label; ⇧U stays distinct from U
 		t.Fatalf("footer should list the U chip:\n%s", v)
 	}
 }

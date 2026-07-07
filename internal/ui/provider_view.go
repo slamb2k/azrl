@@ -94,7 +94,7 @@ func providerActions(group string) []providerAction {
 	return []providerAction{
 		{key: "s", label: "Renew", hint: "sign in again — links unchanged", run: loginAction(group)},
 		{key: "t", label: "Shell as…", hint: "subshell as this profile — no link", run: shellAction},
-		{key: "n", label: "New profile", hint: "sign in + link this dir", run: newProfileAction, bootstrap: true},
+		{key: "n", label: "New profile", hint: "token container + sign-in — link it later", run: newProfileAction, bootstrap: true},
 		{key: "a", label: "Capture session", hint: "adopt current CLI session · links this dir", run: captureAction, bootstrap: true},
 		{key: "b", label: "Assign browser…", hint: "map to a local browser profile", run: browserAction},
 		{key: "c", label: "Open console", hint: "web console as this credential", run: consoleAction},
@@ -647,7 +647,7 @@ func namingPromptAction(verb string) func(v *providerTabView) tea.Cmd {
 }
 
 // newProfileAction opens the name prompt; confirming execs `login <name>
-// --yes`, whose create path signs in and links the current directory.
+// --yes --no-link`, whose create path signs in but leaves linking for later.
 func newProfileAction(v *providerTabView) tea.Cmd {
 	return namingPromptAction("login")(v)
 }

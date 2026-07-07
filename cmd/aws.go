@@ -194,7 +194,10 @@ func newAwsRmCmd() *cobra.Command {
 			}
 			prov := aws.NewProvider()
 			dir := prov.ProfilesDir()
-			if err := unlinkOrRefuse(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+			if err := refuseIfLinked(prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
+			if err := unlinkOrReplace(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
 				return err
 			}
 			pwd, _ := os.Getwd()
