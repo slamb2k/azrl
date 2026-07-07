@@ -67,9 +67,13 @@ type providerTabView struct {
 	nameInput   textinput.Model
 	shellName   string // set from AZRL_PROFILE when its provider prefix matches this tab
 
-	confirming    bool
-	pendingDelete string
-	confirm       radio
+	confirming     bool
+	pendingDelete  string
+	confirm        radio
+	confirmKind    []string // one of "cancel"/"remove"/"unlink"/"replace" per v.confirm option, in order
+	linkedDirs     []string // dirs LinkedDirs found for pendingDelete when it was armed; nil for a link-free profile
+	replacePicking bool     // second-level picker: choosing which other profile to repoint linkedDirs at
+	replacePick    radio
 
 	// notice is an optional extra header line (e.g. Azure's drift warning);
 	// identityOverride, when set, replaces the dir-linked profile's disk
@@ -265,25 +269,40 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			return v.dispatch(msg.action)
 		}
 	case tea.KeyMsg:
+		if v.confirming && v.replacePicking {
+			switch msg.String() {
+			case "ctrl+c":
+				return v, tea.Quit
+			case "esc":
+				v.cancelConfirm()
+			case "up", "k", "left":
+				v.replacePick.up()
+			case "down", "j", "right":
+				v.replacePick.down()
+			case "enter":
+				return v.doReplace(v.replacePick.selected().label)
+			}
+			return v, nil
+		}
 		if v.confirming {
 			switch msg.String() {
 			case "ctrl+c":
 				return v, tea.Quit
 			case "esc", "n", "q":
-				v.confirming = false
-				v.pendingDelete = ""
+				v.cancelConfirm()
 			case "y":
+				// Fast path: link-free keeps the historical bare delete; a linked
+				// profile maps 'y' to unlink-all so it can't strand a pointer file.
+				if len(v.linkedDirs) > 0 {
+					return v.doUnlinkAndRemove()
+				}
 				return v.doRemove()
 			case "up", "k", "left":
 				v.confirm.up()
 			case "down", "j", "right":
 				v.confirm.down()
 			case "enter":
-				if v.confirm.cursor == 1 {
-					return v.doRemove()
-				}
-				v.confirming = false
-				v.pendingDelete = ""
+				return v.runConfirmSelection()
 			}
 			return v, nil
 		}
@@ -662,28 +681,107 @@ func (v *providerTabView) applyBrowserMapping(cmdVal, labelVal string) {
 }
 
 // removeAction arms the shared confirm dialog for the selected profile —
-// nothing is deleted until the user confirms.
+// nothing is deleted until the user confirms. A profile with linked dirs gets
+// a third option (besides Cancel) to unlink everywhere or repoint the links
+// at another profile before deleting; a link-free profile keeps the original
+// two-option Yes/No dialog untouched.
 func removeAction(v *providerTabView) tea.Cmd {
 	name := v.selected()
 	if name == "" {
 		v.status = mutedStyle.Render("no profile selected")
 		return nil
 	}
+	dir := v.prov.ProfilesDir()
 	v.confirming = true
 	v.pendingDelete = name
-	v.confirm = newRadio([]radioOption{
-		{label: "No, keep it"},
-		{label: "Yes, remove " + name},
-	})
+	v.replacePicking = false
+	v.linkedDirs = v.prov.Scheme().LinkedDirs(dir, name)
+	if len(v.linkedDirs) == 0 {
+		v.confirm = newRadio([]radioOption{
+			{label: "No, keep it"},
+			{label: "Yes, remove " + name},
+		})
+		v.confirmKind = []string{"cancel", "remove"}
+	} else {
+		otherProfiles := 0
+		for _, p := range v.profiles {
+			if p.Name != name {
+				otherProfiles++
+			}
+		}
+		unit := "dir"
+		if len(v.linkedDirs) != 1 {
+			unit = "dirs"
+		}
+		replaceOpt := radioOption{label: "Replace links with…"}
+		if otherProfiles == 0 {
+			replaceOpt.disabled = true
+			replaceOpt.hint = "no other profile to point them at"
+		}
+		v.confirm = newRadio([]radioOption{
+			{label: "Cancel"},
+			{label: fmt.Sprintf("Unlink %d %s + delete", len(v.linkedDirs), unit)},
+			replaceOpt,
+		})
+		v.confirmKind = []string{"cancel", "unlink", "replace"}
+	}
 	v.confirm.focused = true
 	return nil
+}
+
+// cancelConfirm closes the confirm dialog (and any nested replace picker)
+// without touching disk — the single exit used by esc/n/q at either level.
+func (v *providerTabView) cancelConfirm() {
+	v.confirming = false
+	v.replacePicking = false
+	v.pendingDelete = ""
+	v.linkedDirs = nil
+}
+
+// runConfirmSelection dispatches enter on the top-level confirm radio by the
+// semantic kind of the selected row (confirmKind), not its cursor index —
+// the option set differs between the 2-option and 3-option dialogs.
+func (v providerTabView) runConfirmSelection() (providerTabView, tea.Cmd) {
+	kind := "cancel"
+	if v.confirm.cursor < len(v.confirmKind) {
+		kind = v.confirmKind[v.confirm.cursor]
+	}
+	switch kind {
+	case "remove":
+		return v.doRemove()
+	case "unlink":
+		return v.doUnlinkAndRemove()
+	case "replace":
+		if v.confirm.selected().disabled {
+			v.status = mutedStyle.Render(v.confirm.selected().hint)
+			return v, nil
+		}
+		return v.openReplacePicker()
+	default:
+		v.cancelConfirm()
+		return v, nil
+	}
+}
+
+// openReplacePicker arms the second-level radio listing every other profile
+// as a repoint target.
+func (v providerTabView) openReplacePicker() (providerTabView, tea.Cmd) {
+	var opts []radioOption
+	for _, p := range v.profiles {
+		if p.Name != v.pendingDelete {
+			opts = append(opts, radioOption{label: p.Name})
+		}
+	}
+	v.replacePick = newRadio(opts)
+	v.replacePick.focused = true
+	v.replacePicking = true
+	return v, nil
 }
 
 // doRemove deletes the pending profile and reloads the list.
 func (v providerTabView) doRemove() (providerTabView, tea.Cmd) {
 	name := v.pendingDelete
-	v.confirming = false
-	v.pendingDelete = ""
+	v.cancelConfirm()
 	dir := v.prov.ProfilesDir()
 	pwd, _ := os.Getwd()
 	if _, err := v.prov.Remove(name, dir, pwd); err != nil {
@@ -694,6 +792,51 @@ func (v providerTabView) doRemove() (providerTabView, tea.Cmd) {
 		v.clampAction()
 	}
 	return v, nil
+}
+
+// doUnlinkAndRemove drops every linked dir's pointer + mapping row, then
+// deletes the profile itself.
+func (v providerTabView) doUnlinkAndRemove() (providerTabView, tea.Cmd) {
+	name := v.pendingDelete
+	dir := v.prov.ProfilesDir()
+	if _, err := v.prov.Scheme().UnlinkAll(dir, name); err != nil {
+		v.status = failureStyle.Render(err.Error())
+		v.cancelConfirm()
+		return v, nil
+	}
+	return v.doRemove()
+}
+
+// doReplace repoints every linked dir at newName, then deletes the original
+// profile — the dir governed by pwd (if any) now names newName, so
+// prov.Remove no longer finds it a target and leaves it alone.
+func (v providerTabView) doReplace(newName string) (providerTabView, tea.Cmd) {
+	name := v.pendingDelete
+	dir := v.prov.ProfilesDir()
+	if _, err := v.prov.Scheme().ReplaceLinks(dir, name, newName); err != nil {
+		v.status = failureStyle.Render(err.Error())
+		v.cancelConfirm()
+		return v, nil
+	}
+	return v.doRemove()
+}
+
+// formatDirList renders up to the first 3 dirs one per line, display-shortened,
+// plus a "+ n more" trailer when there are more.
+func formatDirList(dirs []string) string {
+	shown := dirs
+	if len(dirs) > 3 {
+		shown = dirs[:3]
+	}
+	lines := make([]string, len(shown))
+	for i, d := range shown {
+		lines[i] = "  " + displayDir(d)
+	}
+	text := strings.Join(lines, "\n")
+	if len(dirs) > 3 {
+		text += fmt.Sprintf("\n  + %d more", len(dirs)-3)
+	}
+	return text
 }
 
 // identityStrip is the standard provider header: icon + title, the current
@@ -785,7 +928,16 @@ func (v providerTabView) View() string {
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(rightW) + "\n" +
 		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(acts)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
-	if v.confirming {
+	switch {
+	case v.replacePicking:
+		right = paneTitle("REPLACE WITH", true) + "\n\n" +
+			mutedStyle.Render(fmt.Sprintf("Repoint %d linked dir(s) at:", len(v.linkedDirs))) + "\n\n" +
+			v.replacePick.view(rightW)
+	case v.confirming && len(v.linkedDirs) > 0:
+		right = paneTitle("CONFIRM", true) + "\n\n" +
+			mutedStyle.Render("Linked in:\n"+formatDirList(v.linkedDirs)) + "\n\n" +
+			v.confirm.view(rightW)
+	case v.confirming:
 		right = paneTitle("CONFIRM", true) + "\n\n" +
 			mutedStyle.Render("Removes its conf, token dir,\nand this dir's "+v.prov.Scheme().Pointer+".") + "\n\n" +
 			v.confirm.view(rightW)
@@ -795,7 +947,12 @@ func (v providerTabView) View() string {
 	help := keyHelpFit(contentW,
 		[]string{"↑↓", "select", "↵", "open/run", "esc", "back"},
 		[]string{"q", "quit", "→", "details", "⇥", "tab", "d", "dir", "o", "options"})
-	if v.confirming {
+	switch {
+	case v.replacePicking:
+		help = keyHelp("↑↓", "choose", "↵", "confirm", "esc", "cancel")
+	case v.confirming && len(v.linkedDirs) > 0:
+		help = keyHelp("↑↓", "choose", "↵", "confirm", "y", "unlink+delete", "n/esc", "cancel")
+	case v.confirming:
 		help = keyHelp("↑↓", "choose", "↵", "confirm", "y", "yes", "n/esc", "cancel")
 	}
 	view := renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
