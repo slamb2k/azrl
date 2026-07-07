@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -35,7 +37,10 @@ type tabsModel struct {
 }
 
 // NewTabs builds the tabbed container on the dashboard (the default landing view).
-func NewTabs() tabsModel { return NewTabsOn(0) }
+func NewTabs() tabsModel {
+	zone.NewGlobal() // idempotent — defensive so tests that skip runTabs still have a manager.
+	return NewTabsOn(0)
+}
 
 // NewTabsOn builds the tabbed container preselected on tab index active. Tab 0 is
 // the cross-provider dashboard; Azure leads the provider tabs (the flagship
@@ -144,6 +149,8 @@ func (m tabsModel) activeCapturesInput() bool {
 
 func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		// Reserve the banner rows, the gap under it, and the tab-bar line so each
@@ -262,6 +269,141 @@ func (m tabsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
+// leftRelease reports a completed left click (bubblezone's canonical event).
+func leftRelease(msg tea.MouseMsg) bool {
+	return msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft
+}
+
+// handleMouse routes mouse input: the help overlay closes on any left
+// release; the options and change-directory overlays route clicks to their
+// own rows (a row hit selects, click-again is the overlay's enter, a click
+// outside the box is the overlay's esc) and the wheel to their cursor.
+// Otherwise tab cells switch tabs — unless the active tab is in a text-entry
+// state (activeCapturesInput), mirroring the keyboard tab-switch keys, which
+// forward to the active tab instead of switching — and everything else is
+// the active tab's business — including its own overlays (e.g. the browser
+// picker), which simply flow through forwardMouse like any other mouse event.
+func (m tabsModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.help {
+		if leftRelease(msg) {
+			m.help = false
+		}
+		return m, nil
+	}
+	if m.options != nil {
+		return m.handleOptionsMouse(msg)
+	}
+	if m.picker != nil {
+		return m.handleDirPickerMouse(msg)
+	}
+	if leftRelease(msg) && !m.activeCapturesInput() {
+		for i := range m.tabs {
+			if z := zone.Get(fmt.Sprintf("tab:%d", i)); z != nil && z.InBounds(msg) {
+				m.active = i
+				m.barFocus = false
+				return m, nil
+			}
+		}
+	}
+	return m.forwardMouse(msg)
+}
+
+// handleOptionsMouse resolves a mouse event against the options overlay:
+// wheel moves its cursor; a left release inside a row selects it (click
+// again runs the overlay's enter, applying the checked set exactly like
+// pressing ↵); a left release outside the box is the overlay's esc
+// (dismiss without saving).
+func (m tabsModel) handleOptionsMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		if m.options.cursor < len(m.options.provs)-1 {
+			m.options.cursor++
+		}
+		return m, nil
+	case tea.MouseButtonWheelUp:
+		if m.options.cursor > 0 {
+			m.options.cursor--
+		}
+		return m, nil
+	}
+	if !leftRelease(msg) {
+		return m, nil
+	}
+	if z := zone.Get("box:options"); z == nil || !z.InBounds(msg) {
+		no, _, closed := m.options.update(tea.KeyMsg{Type: tea.KeyEscape})
+		m.options = &no
+		if closed {
+			m.options = nil
+		}
+		return m, nil
+	}
+	for i := range m.options.provs {
+		if z := zone.Get(fmt.Sprintf("opt:%d", i)); z != nil && z.InBounds(msg) {
+			no, saved, closed := m.options.clickRow(i)
+			m.options = &no
+			if closed {
+				m.options = nil
+				if len(saved) > 0 {
+					return m.applyProviderSelection(saved)
+				}
+			}
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+// handleDirPickerMouse mirrors handleOptionsMouse for the change-directory
+// overlay: wheel moves its cursor, a row click selects/confirms, a click
+// outside the box dismisses without changing directory.
+func (m tabsModel) handleDirPickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		if m.picker.cursor < len(m.picker.matches)-1 {
+			m.picker.cursor++
+		}
+		return m, nil
+	case tea.MouseButtonWheelUp:
+		if m.picker.cursor > 0 {
+			m.picker.cursor--
+		}
+		return m, nil
+	}
+	if !leftRelease(msg) {
+		return m, nil
+	}
+	if z := zone.Get("box:dir"); z == nil || !z.InBounds(msg) {
+		np, _, closed := m.picker.update(tea.KeyMsg{Type: tea.KeyEscape})
+		m.picker = &np
+		if closed {
+			m.picker = nil
+		}
+		return m, nil
+	}
+	for i := range m.picker.matches {
+		if z := zone.Get(fmt.Sprintf("dir:%d", i)); z != nil && z.InBounds(msg) {
+			np, picked, closed := m.picker.clickRow(i)
+			m.picker = &np
+			if closed {
+				m.picker = nil
+				if picked != "" && os.Chdir(picked) == nil {
+					return m.broadcast(cwdChangedMsg{dir: picked})
+				}
+			}
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+// forwardMouse hands the event to the active tab's model, mirroring how key
+// messages already reach it.
+func (m tabsModel) forwardMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	nm, c := m.tabs[m.active].model.Update(msg)
+	m.tabs[m.active].model = nm
+	return m, c
+}
+
 // Close tears down any tab model that owns OS resources by calling its Close if
 // it implements one (e.g. the dashboard's fsnotify watcher). It is best-effort:
 // per-tab errors are ignored. run.go calls it once after the program loop ends,
@@ -294,16 +436,18 @@ func (m tabsModel) View() string {
 	var cells []string
 	for i, t := range m.tabs {
 		label := " " + t.title + " "
+		var styled string
 		switch {
 		case i == m.active && m.barFocus:
 			// The bar holds focus: bright selection block.
-			cells = append(cells, selBlockActive.Render(label))
+			styled = selBlockActive.Render(label)
 		case i == m.active:
 			// Focus lives below: the tab retains its selection, dimmed.
-			cells = append(cells, selBlockParent.Render(label))
+			styled = selBlockParent.Render(label)
 		default:
-			cells = append(cells, inactiveTabStyle.Render(label))
+			styled = inactiveTabStyle.Render(label)
 		}
+		cells = append(cells, zone.Mark(fmt.Sprintf("tab:%d", i), styled))
 	}
 	bar := strings.Join(cells, tabSepStyle.Render("│"))
 	// Center the banner block within the full terminal width (each line kept ≤
@@ -333,7 +477,7 @@ func (m tabsModel) View() string {
 		}
 		out = strings.Join(lines, "\n")
 	}
-	return out
+	return zone.Scan(out)
 }
 
 var (
@@ -403,6 +547,8 @@ func helpOverlay() string {
 		keyHelp("e", "write .envrc (azure)", "d", "change dir", "o", "options"),
 		keyHelp("r f5", "refresh", "w", "recheck drift (dashboard)", "?", "close help"),
 		keyHelp("q", "quit"),
+		"",
+		mutedStyle.Render("hold shift to select/copy terminal text while azrl is open"),
 	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

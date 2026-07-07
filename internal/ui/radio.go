@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 // radioOption is one selectable row in a radio group.
@@ -94,7 +95,11 @@ func (r radio) view(width int) string {
 				line += "  " + mutedStyle.Render(o.hint)
 			}
 		}
-		lines = append(lines, truncateLine(line, width))
+		line = truncateLine(line, width)
+		if o.key != "" {
+			line = zone.Mark("act:"+o.key, line)
+		}
+		lines = append(lines, line)
 	}
 	// One blank line between rows keeps each action visually distinct,
 	// matching the profile pane's spacing.

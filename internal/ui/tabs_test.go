@@ -5,9 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/provider"
 )
@@ -148,6 +150,30 @@ func TestSwitchTabMsgPreselectsProfile(t *testing.T) {
 	av := am.(tabsModel).tabs[1].model.(azureView)
 	if got := av.profiles[av.cursor].Name; got != "beta" {
 		t.Fatalf("azure cursor on %q, want beta", got)
+	}
+}
+
+// TestSwitchTabMsgWithActionTriggersIt proves an accelerator action riding a
+// switchTabMsg runs against the newly-selected profile: the GitHub tab is
+// active, its browser-discovery flow is underway (status copy from
+// browserAction — see browserpicker.go), and the returned cmd is the
+// discovery command, non-nil so the container actually executes it.
+func TestSwitchTabMsgWithActionTriggersIt(t *testing.T) {
+	m := seedTabs(t)
+	nm, cmd := m.Update(switchTabMsg{provider: "github", profile: "work", action: "b"})
+	tm := nm.(tabsModel)
+	if tm.tabs[tm.active].title != "GitHub" {
+		t.Fatalf("should land on the GitHub tab, got %q", tm.tabs[tm.active].title)
+	}
+	if cmd == nil {
+		t.Fatal("dispatching action \"b\" should return the browser-discovery cmd, got nil")
+	}
+	gv := tm.tabs[tm.active].model.(githubView)
+	if gv.profiles[gv.cursor].Name != "work" {
+		t.Fatalf("cursor not on the routed profile: %+v", gv.profiles[gv.cursor])
+	}
+	if v := gv.View(); !strings.Contains(v, "looking for browser profiles on the local machine") {
+		t.Fatalf("expected browser-discovery status in view, got:\n%s", v)
 	}
 }
 
@@ -357,6 +383,55 @@ func TestTabsDefaultToAzureAndGitHub(t *testing.T) {
 	}
 }
 
+// TestMouseClickOnTabCellSwitchesTab proves bubblezone marks each tab cell in
+// View and the container hit-tests a left-click release against those zones.
+func TestMouseClickOnTabCellSwitchesTab(t *testing.T) {
+	m := seedTabs(t)
+	// Render through the root View so zone.Scan records tab-cell bounds.
+	_ = m.View()
+	time.Sleep(120 * time.Millisecond) // bubblezone records zones asynchronously
+	z := zone.Get("tab:2")
+	if z == nil || z.IsZero() {
+		t.Fatal("tab cell 2 has no zone — Mark/Scan not wired")
+	}
+	nm, _ := m.Update(tea.MouseMsg{
+		X: z.StartX, Y: z.StartY,
+		Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft,
+	})
+	if got := nm.(tabsModel).active; got != 2 {
+		t.Fatalf("click on tab cell 2 should activate it, active = %d", got)
+	}
+}
+
+// TestMouseClickOnTabCellIgnoredWhileNaming proves a tab-cell click is
+// ignored while the active tab is in a text-entry state, mirroring the
+// keyboard tab-switch keys (which forward to the input instead of
+// switching) — regression for a click silently stealing focus mid-prompt.
+func TestMouseClickOnTabCellIgnoredWhileNaming(t *testing.T) {
+	m := seedTabs(t)
+	// Move to the Azure tab and arm the new-profile text input ('n').
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	tm := nm.(tabsModel)
+	if tm.tabs[1].model.(azureView).namingVerb == "" {
+		t.Fatal("'n' did not arm the name input")
+	}
+	// Render through the root View so bubblezone records the tab-cell bounds.
+	_ = tm.View()
+	time.Sleep(120 * time.Millisecond) // bubblezone records zones asynchronously
+	z := zone.Get("tab:2")
+	if z == nil || z.IsZero() {
+		t.Fatal("tab cell 2 has no zone — Mark/Scan not wired")
+	}
+	nm2, _ := tm.Update(tea.MouseMsg{
+		X: z.StartX, Y: z.StartY,
+		Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft,
+	})
+	if got := nm2.(tabsModel).active; got != 1 {
+		t.Fatalf("click on tab cell 2 while naming should be ignored, active = %d, want 1", got)
+	}
+}
+
 func TestOptionsOverlayEnablesProviderTabs(t *testing.T) {
 	m := seedTabs(t)
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
@@ -420,7 +495,7 @@ func TestHelpOverlayTogglesFromAnyTab(t *testing.T) {
 	if !tm.help {
 		t.Fatal("'?' did not open the help overlay")
 	}
-	if v := tm.View(); !strings.Contains(v, "KEYS") || !strings.Contains(v, "link here") || !strings.Contains(v, "shell as profile") || !strings.Contains(v, "open console") {
+	if v := tm.View(); !strings.Contains(v, "KEYS") || !strings.Contains(v, "link here") || !strings.Contains(v, "shell as profile") || !strings.Contains(v, "open console") || !strings.Contains(v, "hold shift to select/copy terminal text") {
 		t.Fatalf("help overlay content missing:\n%s", v)
 	}
 	// Any key closes it without leaking to the tab.
@@ -434,5 +509,158 @@ func TestHelpOverlayTogglesFromAnyTab(t *testing.T) {
 	nm4, _ := nm3.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
 	if nm4.(tabsModel).help {
 		t.Fatal("'?' must reach the armed text input, not open the overlay")
+	}
+}
+
+// TestHelpOverlayClickDismisses proves any left click closes the help
+// overlay, wherever it lands.
+func TestHelpOverlayClickDismisses(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	tm := nm.(tabsModel)
+	nm, _ = tm.Update(tea.MouseMsg{X: 1, Y: 1, Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft})
+	if nm.(tabsModel).help {
+		t.Fatal("any click should dismiss the help overlay")
+	}
+}
+
+// TestClickOutsideOptionsDismisses is the zone-integration proof for the
+// options overlay's outside-click esc path: the box is real bubblezone
+// bounds, and a release one cell to its left must dismiss without saving.
+func TestClickOutsideOptionsDismisses(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")}) // open options
+	tm := nm.(tabsModel)
+	_ = tm.View()
+	time.Sleep(120 * time.Millisecond)
+	z := zone.Get("box:options")
+	if z == nil || z.IsZero() {
+		t.Fatal("options box zone missing")
+	}
+	outside := tea.MouseMsg{X: z.StartX - 1, Y: z.StartY, Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft}
+	nm, _ = tm.Update(outside)
+	if nm.(tabsModel).options != nil {
+		t.Fatal("click outside the options popup should dismiss it")
+	}
+}
+
+// TestClickOptionsRowThroughZonesSelectsThenSaves drives a full row click
+// through real zone bounds: a click on an unselected row just selects it;
+// clicking that same row again runs the overlay's enter (commits the
+// checked set and closes), proving the opt:<i> wiring end to end.
+func TestClickOptionsRowThroughZonesSelectsThenSaves(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	tm := nm.(tabsModel)
+	_ = tm.View()
+	time.Sleep(120 * time.Millisecond)
+	z := zone.Get("opt:1") // github row — cursor starts on row 0 (azure)
+	if z == nil || z.IsZero() {
+		t.Fatal("opt:1 row zone missing")
+	}
+	click := tea.MouseMsg{X: z.StartX, Y: z.StartY, Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft}
+	nm, _ = tm.Update(click)
+	tm2 := nm.(tabsModel)
+	if tm2.options == nil || tm2.options.cursor != 1 {
+		t.Fatal("first click should select row 1 without closing")
+	}
+	nm2, _ := tm2.Update(click)
+	if nm2.(tabsModel).options != nil {
+		t.Fatal("second click on the selected row should commit and close the options popup")
+	}
+}
+
+// TestOptionsWheelMovesCursorThroughContainer proves the container routes
+// wheel events to the options overlay's own cursor while it's open.
+func TestOptionsWheelMovesCursorThroughContainer(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	tm := nm.(tabsModel)
+	if tm.options.cursor != 0 {
+		t.Fatalf("expected cursor 0 to start, got %d", tm.options.cursor)
+	}
+	nm2, _ := tm.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
+	tm2 := nm2.(tabsModel)
+	if tm2.options.cursor != 1 {
+		t.Fatalf("wheel down should move the options cursor, got %d", tm2.options.cursor)
+	}
+	nm3, _ := tm2.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
+	if nm3.(tabsModel).options.cursor != 0 {
+		t.Fatalf("wheel up should move back, got %d", nm3.(tabsModel).options.cursor)
+	}
+}
+
+// TestClickOutsideDirPickerDismisses mirrors TestClickOutsideOptionsDismisses
+// for the change-directory overlay.
+func TestClickOutsideDirPickerDismisses(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	tm := nm.(tabsModel)
+	_ = tm.View()
+	time.Sleep(120 * time.Millisecond)
+	z := zone.Get("box:dir")
+	if z == nil || z.IsZero() {
+		t.Fatal("dir box zone missing")
+	}
+	outside := tea.MouseMsg{X: z.StartX - 1, Y: z.StartY, Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft}
+	nm, _ = tm.Update(outside)
+	if nm.(tabsModel).picker != nil {
+		t.Fatal("click outside the dir picker popup should dismiss it")
+	}
+}
+
+// TestClickDirPickerRowThroughZonesChangesCwd drives a full row click through
+// real zone bounds: select, then click-again runs enter (accepts and
+// os.Chdir's), proving the dir:<i> wiring end to end.
+func TestClickDirPickerRowThroughZonesChangesCwd(t *testing.T) {
+	base := t.TempDir()
+	other := t.TempDir()
+	target := t.TempDir()
+	t.Chdir(base)
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	tm := nm.(tabsModel)
+	tm.picker.candidates = []string{other, target}
+	tm.picker.refilter()
+	_ = tm.View()
+	time.Sleep(120 * time.Millisecond)
+	z := zone.Get("dir:1")
+	if z == nil || z.IsZero() {
+		t.Fatal("dir:1 row zone missing")
+	}
+	click := tea.MouseMsg{X: z.StartX, Y: z.StartY, Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft}
+	nm, _ = tm.Update(click)
+	tm2 := nm.(tabsModel)
+	if tm2.picker == nil || tm2.picker.cursor != 1 {
+		t.Fatal("first click should select row 1 without closing")
+	}
+	nm2, _ := tm2.Update(click)
+	if nm2.(tabsModel).picker != nil {
+		t.Fatal("second click on the selected row should accept and close the picker")
+	}
+	if cwd, _ := os.Getwd(); cwd != target {
+		t.Fatalf("cwd = %q, want %q", cwd, target)
+	}
+}
+
+// TestDirPickerWheelMovesCursorThroughContainer proves the container routes
+// wheel events to the dir picker's own cursor while it's open.
+func TestDirPickerWheelMovesCursorThroughContainer(t *testing.T) {
+	m := seedTabs(t)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	tm := nm.(tabsModel)
+	tm.picker.candidates = []string{"/a", "/b"}
+	tm.picker.refilter()
+	if tm.picker.cursor != 0 {
+		t.Fatalf("expected cursor 0 to start, got %d", tm.picker.cursor)
+	}
+	nm2, _ := tm.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
+	tm2 := nm2.(tabsModel)
+	if tm2.picker.cursor != 1 {
+		t.Fatalf("wheel down should move the picker cursor, got %d", tm2.picker.cursor)
+	}
+	nm3, _ := tm2.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
+	if nm3.(tabsModel).picker.cursor != 0 {
+		t.Fatalf("wheel up should move back, got %d", nm3.(tabsModel).picker.cursor)
 	}
 }

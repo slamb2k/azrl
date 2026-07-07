@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -216,7 +218,23 @@ func (p dirPicker) update(msg tea.KeyMsg) (dirPicker, string, bool) {
 	return p, "", false
 }
 
+// clickRow handles a mouse click on match row i: a different row selects it;
+// the already-selected row runs enter (accepts and closes), matching
+// click-again-confirms elsewhere in the TUI.
+func (p dirPicker) clickRow(i int) (dirPicker, string, bool) {
+	if i < 0 || i >= len(p.matches) {
+		return p, "", false
+	}
+	if i != p.cursor {
+		p.cursor = i
+		return p, "", false
+	}
+	return p.update(tea.KeyMsg{Type: tea.KeyEnter})
+}
+
 // view renders the overlay body (the container supplies banner + tab bar).
+// The whole box is zone-marked "box:dir" (outside-click dismiss) and each
+// rendered match row "dir:<i>" (row click).
 func (p dirPicker) view() string {
 	contentW := p.width - 4
 	if contentW < 1 {
@@ -234,11 +252,11 @@ func (p dirPicker) view() string {
 			break
 		}
 		line := truncateLine(displayDir(m), contentW-4)
+		row := lipgloss.NewStyle().Foreground(white).PaddingLeft(2).Render(line)
 		if i == p.cursor {
-			b.WriteString("  " + selBlockActive.Render(line) + "\n")
-		} else {
-			b.WriteString(lipgloss.NewStyle().Foreground(white).PaddingLeft(2).Render(line) + "\n")
+			row = "  " + selBlockActive.Render(line)
 		}
+		b.WriteString(zone.Mark(fmt.Sprintf("dir:%d", i), row) + "\n")
 	}
 	if len(p.matches) == 0 {
 		b.WriteString(mutedStyle.Render("  (no matches — ") + keycap("↵") + mutedStyle.Render(" accepts a literal existing path)") + "\n")
@@ -248,5 +266,5 @@ func (p dirPicker) view() string {
 	for i, l := range lines {
 		lines[i] = padTo(truncateLine(l, contentW), contentW)
 	}
-	return frameStyle.Render(strings.Join(lines, "\n"))
+	return zone.Mark("box:dir", frameStyle.Render(strings.Join(lines, "\n")))
 }

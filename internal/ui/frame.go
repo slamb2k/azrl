@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/profile"
 )
@@ -141,7 +142,7 @@ func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touc
 			tag = "  " + mutedStyle.Render("⌁ default")
 			nameW = textW - lipgloss.Width(tag)
 		}
-		line := scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), nameW)) + tag
+		line := zone.Mark("prof:"+p.Name, scopeSlot(scopes[p.Name])+nameStyle.Render(truncateLine(p.Display(), nameW))+tag)
 		b.WriteString(line + "\n")
 		b.WriteString("   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
 	}

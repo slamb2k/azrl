@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/fsnotify/fsnotify"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
@@ -34,10 +35,13 @@ type dashboardTickMsg struct{}
 type fsEventMsg struct{}
 
 // switchTabMsg asks the tab container to jump to a provider's tab with a profile
-// pre-selected; emitted when the user presses Enter on a dashboard row.
+// pre-selected; emitted when the user presses Enter (action "") or an
+// accelerator key like `b` (action set) on a dashboard row — the container
+// dispatches action on the target tab after selecting the profile.
 type switchTabMsg struct {
 	provider string
 	profile  string
+	action   string
 }
 
 // dashboardModel is the landing view: MAPPINGS (directory→profile associations
@@ -56,6 +60,7 @@ type dashboardModel struct {
 	naming    bool
 	nameInput textinput.Model
 	adoptItem dashItem
+	status    string
 }
 
 // newDashboard builds the dashboard over provs, reading the poll interval from
@@ -69,8 +74,21 @@ func newDashboard(provs []provider.Provider) dashboardModel {
 		interval:  time.Duration(config.DashboardPollSecs(config.ProfilesDir())) * time.Second,
 	}
 	m.reload()
+	m.cursor = governingIndex(m.ov)
 	m.watcher = newDashboardWatcher(provs)
 	return m
+}
+
+// governingIndex returns the flat item index of the first mapping row that
+// governs the cwd — where the cursor should wake up (spec: the dashboard is
+// the command center; you land on the row that answers "what am I here?").
+func governingIndex(ov Overview) int {
+	for i, r := range ov.Mappings {
+		if r.Scope == ScopeCwd {
+			return i // mappings occupy the head of the flat item list
+		}
+	}
+	return 0
 }
 
 // reload re-aggregates the three sections from disk and rebuilds the flat
@@ -196,6 +214,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
+	case tea.MouseMsg:
+		nm, cmd := m.handleMouse(msg)
+		return nm, cmd
 	case dashboardTickMsg:
 		m.reload()
 		return m, tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
@@ -210,6 +231,11 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case opDoneMsg:
 		// A handed-off flow (e.g. adopt → capture) finished: pick up its writes.
 		m.reload()
+		if msg.err != nil {
+			m.status = failureStyle.Render("✗ " + msg.err.Error())
+		} else if msg.msg != "" {
+			m.status = successStyle.Render("✓ " + msg.msg)
+		}
 		return m, nil
 	case tea.KeyMsg:
 		if m.naming {
@@ -234,6 +260,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		m.status = ""
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -268,6 +295,42 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case "s", "t", "c", "u", "b":
+			if m.cursor < 0 || m.cursor >= len(m.items) {
+				return m, nil
+			}
+			it := m.items[m.cursor]
+			if it.profile == "" {
+				m.status = mutedStyle.Render("no managed profile on this row — a adopts it first")
+				return m, nil
+			}
+			switch msg.String() {
+			case "s":
+				return m, runHandoff(append(groupArgs(cliGroup(it.provider), "login"), it.profile))
+			case "t":
+				return m, runShellHandoff(append(groupArgs(cliGroup(it.provider), "shell"), it.profile))
+			case "c":
+				return m, runHandoff(append(groupArgs(cliGroup(it.provider), "console"), it.profile))
+			case "b":
+				return m, func() tea.Msg {
+					return switchTabMsg{provider: it.provider, profile: it.profile, action: "b"}
+				}
+			case "u":
+				pwd, _ := os.Getwd()
+				for _, p := range m.providers {
+					if p.Name() != it.provider {
+						continue
+					}
+					if err := p.Use(it.profile, p.ProfilesDir(), pwd); err != nil {
+						m.status = failureStyle.Render("✗ " + err.Error())
+					} else {
+						m.status = successStyle.Render("✓ linked " + displayDir(pwd) + " → " + it.profile)
+						m.reload()
+					}
+					return m, nil
+				}
+				return m, nil
+			}
 		case "enter":
 			if m.cursor >= 0 && m.cursor < len(m.items) {
 				it := m.items[m.cursor]
@@ -278,6 +341,54 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// handleMouse resolves a mouse event against the dashboard's own row zones:
+// wheel moves the cursor (clamped, no focus hand-off to the tab bar — unlike
+// ↑ at the top row), left-release hit-tests the "dash:<i>" zones marked in
+// View. Mouse is a no-op while the adopt name prompt owns input.
+func (m dashboardModel) handleMouse(msg tea.MouseMsg) (dashboardModel, tea.Cmd) {
+	if m.naming {
+		return m, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		if m.cursor < len(m.items)-1 {
+			m.cursor++
+		}
+		return m, nil
+	case tea.MouseButtonWheelUp:
+		if m.cursor > 0 {
+			m.cursor--
+		}
+		return m, nil
+	}
+	if !leftRelease(msg) {
+		return m, nil
+	}
+	for i := range m.items {
+		if z := zone.Get(fmt.Sprintf("dash:%d", i)); z != nil && z.InBounds(msg) {
+			return m.clickRow(i)
+		}
+	}
+	return m, nil
+}
+
+// clickRow handles a click on row i: out-of-range is a no-op; selecting a
+// different row just moves the cursor there; clicking the already-selected
+// row is exactly the enter behavior (drill into that row's tab).
+func (m dashboardModel) clickRow(i int) (dashboardModel, tea.Cmd) {
+	if i < 0 || i >= len(m.items) {
+		return m, nil
+	}
+	if i != m.cursor {
+		m.cursor = i
+		return m, nil
+	}
+	it := m.items[i]
+	return m, func() tea.Msg {
+		return switchTabMsg{provider: it.provider, profile: it.profile}
+	}
 }
 
 func (m dashboardModel) View() string {
@@ -292,11 +403,13 @@ func (m dashboardModel) View() string {
 	if m.naming {
 		short = accentStyle.Render("adopt " + m.adoptItem.provider)
 		notice = ""
+	} else if m.status != "" {
+		short = m.status
 	}
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
 		"📁 "+displayDir(cwd), short)
 	help := keyHelpFit(m.width-4,
-		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt"},
+		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/u/b", "act on row"},
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
 
 	var body []string
@@ -321,8 +434,14 @@ func (m dashboardModel) View() string {
 		if idx == m.cursor {
 			s = accentStyle.Render("› ")
 		}
-		idx++
 		return s
+	}
+	// row wraps one selectable line in a "dash:<i>" zone (click target) and
+	// advances idx, mirroring the flat item index View builds in lockstep.
+	row := func(content string) string {
+		line := zone.Mark(fmt.Sprintf("dash:%d", idx), marker()+content)
+		idx++
+		return line
 	}
 
 	body = append(body, paneTitleStyle.Render("MAPPINGS"))
@@ -331,7 +450,7 @@ func (m dashboardModel) View() string {
 	} else {
 		dirW, tgtW := mappingWidths(m.ov.Mappings)
 		for _, r := range m.ov.Mappings {
-			body = append(body, marker()+mappingLine(r, dirW, tgtW))
+			body = append(body, row(mappingLine(r, dirW, tgtW)))
 		}
 	}
 
@@ -341,7 +460,7 @@ func (m dashboardModel) View() string {
 	} else {
 		titleW, idW, srcW := ambientWidths(m.ov.Ambient)
 		for _, r := range m.ov.Ambient {
-			body = append(body, marker()+ambientLine(r, titleW, idW, srcW))
+			body = append(body, row(ambientLine(r, titleW, idW, srcW)))
 		}
 	}
 
@@ -349,7 +468,7 @@ func (m dashboardModel) View() string {
 	switch {
 	case len(m.ov.Unmapped) > 0:
 		for _, r := range m.ov.Unmapped {
-			body = append(body, marker()+unmappedLine(r))
+			body = append(body, row(unmappedLine(r)))
 		}
 	case m.ov.hasProfiles():
 		body = append(body, "  "+mutedStyle.Render("All profiles are mapped."))

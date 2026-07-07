@@ -1,7 +1,7 @@
 # TUI UX redesign — manual verification (real laptop + VM)
 
-Items only a real environment can exercise; extend this file as later
-redesign plans (console, mouse) ship.
+Items only a real environment can exercise; all redesign plans (shell,
+console, mouse) have shipped.
 
 ## azrl shell (Plan 3)
 
@@ -26,3 +26,12 @@ redesign plans (console, mouse) ship.
       Google account (authuser honored with multiple signed-in accounts).
 - [ ] No-browser config and unreachable-host paths print the URL cleanly.
 - [ ] TUI `c` opens the console and returns without disturbing the TUI.
+
+## Mouse + dashboard verbs (Plan 5)
+
+- [ ] Click/click-again across tab cells, profile rows, actions, dashboard rows
+      behaves in a real terminal (tmux + plain) as in tests.
+- [ ] Wheel scrolls the focused list; no runaway scrolling in tmux passthrough.
+- [ ] Click outside options/dirpicker/browserpicker dismisses; help closes on any click.
+- [ ] Shift+drag selects terminal text while azrl runs (per the help note).
+- [ ] Dashboard s/t/c/u/b on a real profile row round-trip correctly (t suspends, c opens browser).

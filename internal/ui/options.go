@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/provider"
@@ -68,8 +70,25 @@ func (o optionsPicker) update(msg tea.KeyMsg) (optionsPicker, []string, bool) {
 	return o, nil, false
 }
 
+// clickRow handles a mouse click on option row i: a different row just
+// selects it (mirrors ↑/↓); clicking the already-selected row runs the
+// overlay's enter (commits the checked set), matching click-again-confirms
+// elsewhere in the TUI.
+func (o optionsPicker) clickRow(i int) (optionsPicker, []string, bool) {
+	if i < 0 || i >= len(o.provs) {
+		return o, nil, false
+	}
+	if i != o.cursor {
+		o.cursor = i
+		return o, nil, false
+	}
+	return o.update(tea.KeyMsg{Type: tea.KeyEnter})
+}
+
 // view renders a compact bordered box; the container overlays it centered on
-// the active tab so settings read as a popup, not a screen.
+// the active tab so settings read as a popup, not a screen. The whole box is
+// zone-marked "box:options" (outside-click dismiss) and each row "opt:<i>"
+// (row click).
 func (o optionsPicker) view() string {
 	innerW := 40
 	var b strings.Builder
@@ -84,16 +103,17 @@ func (o optionsPicker) view() string {
 		if i == o.cursor {
 			title = selBlockActive.Render(title)
 		}
-		b.WriteString(truncateLine(box+" "+providerIcon(p.Name())+" "+title, innerW) + "\n\n")
+		line := truncateLine(box+" "+providerIcon(p.Name())+" "+title, innerW)
+		b.WriteString(zone.Mark(fmt.Sprintf("opt:%d", i), line) + "\n\n")
 	}
 	b.WriteString(lipgloss.PlaceHorizontal(innerW, lipgloss.Center, keyHelp("space", "toggle", "↵", "save", "esc", "cancel")))
 	lines := strings.Split(b.String(), "\n")
 	for i, l := range lines {
 		lines[i] = padTo(truncateLine(l, innerW), innerW)
 	}
-	return lipgloss.NewStyle().
+	return zone.Mark("box:options", lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(azureBlue).
 		Padding(0, 2).
-		Render(strings.Join(lines, "\n"))
+		Render(strings.Join(lines, "\n")))
 }

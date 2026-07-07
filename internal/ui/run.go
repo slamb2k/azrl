@@ -1,6 +1,9 @@
 package ui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
+)
 
 // Run launches the azrl tabbed TUI on the cross-provider dashboard (the default
 // landing view).
@@ -14,7 +17,9 @@ func RunGitHub() error {
 }
 
 func runTabs(m tabsModel) error {
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	zone.NewGlobal()
+	defer zone.Close()
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	// Run returns the final model on every exit path; centralize teardown here so
 	// tab-owned resources (the dashboard's fsnotify watcher) are released whatever
 	// the quit key or active tab. Best-effort — still surface the run error.

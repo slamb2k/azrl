@@ -503,6 +503,118 @@ func TestExpiredHintGatedToAws(t *testing.T) {
 	}
 }
 
+func TestDashboardRowVerbsBuildHandoffs(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", profile: "prod"}}}
+	for _, key := range []string{"s", "t", "c"} {
+		mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		m = mod.(dashboardModel)
+		if cmd == nil {
+			t.Fatalf("%q on a managed row should hand off", key)
+		}
+	}
+}
+
+func TestDashboardBRoutesToTab(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "github", profile: "oss"}}}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	if cmd == nil {
+		t.Fatal("b should emit a switchTabMsg")
+	}
+	msg := cmd()
+	sw, ok := msg.(switchTabMsg)
+	if !ok || sw.provider != "github" || sw.profile != "oss" || sw.action != "b" {
+		t.Fatalf("switchTabMsg = %+v", msg)
+	}
+}
+
+func TestDashboardRowVerbsExplainOnUnmanagedRow(t *testing.T) {
+	// An ambient row with no managed profile can't sign in/shell/console/link/browser.
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", adopt: true}}}
+	for _, key := range []string{"s", "t", "c", "u", "b"} {
+		mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		m = mod.(dashboardModel)
+		if cmd != nil {
+			t.Fatalf("%q on an unmanaged row must not exec", key)
+		}
+	}
+	if m.status == "" || !strings.Contains(m.status, "adopt") {
+		t.Fatalf("unmanaged-row verb should explain itself in the status line: %q", m.status)
+	}
+}
+
+func TestDashboardLinkHereUsesProviderInProcess(t *testing.T) {
+	seedDashHome(t)
+	work := filepath.Join(os.Getenv("HOME"), "work")
+	os.MkdirAll(work, 0o755)
+	t.Chdir(work)
+	m := newDashboard(provider.All())
+	// Find the azure acme item seedDashHome creates.
+	idx := -1
+	for i, it := range m.items {
+		if it.provider == "azure" && it.profile == "acme" {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		t.Fatalf("no azure:acme item: %+v", m.items)
+	}
+	m.cursor = idx
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	m = mod.(dashboardModel)
+	if b, err := os.ReadFile(filepath.Join(work, ".azprofile")); err != nil || strings.TrimSpace(string(b)) != "acme" {
+		t.Fatalf("u should link the cwd to acme: %q, %v", b, err)
+	}
+	if !strings.Contains(m.status, "linked") {
+		t.Fatalf("status should confirm the link: %q", m.status)
+	}
+}
+
+func TestDashboardCursorStartsOnGoverningRow(t *testing.T) {
+	ov := Overview{Mappings: []MappingRow{
+		{Provider: "github", Dir: "/w/other", Profile: "oss", Scope: ScopeNone},
+		{Provider: "azure", Dir: "/w/here", Profile: "acme", Scope: ScopeCwd},
+	}}
+	if got := governingIndex(ov); got != 1 {
+		t.Fatalf("governingIndex = %d, want 1", got)
+	}
+	if got := governingIndex(Overview{}); got != 0 {
+		t.Fatalf("empty overview should default to 0, got %d", got)
+	}
+}
+
+func TestDashboardSurfacesOpDone(t *testing.T) {
+	m := dashboardModel{width: 100}
+	mod, _ := m.Update(opDoneMsg{msg: "shell exited"})
+	if got := mod.(dashboardModel).status; !strings.Contains(got, "shell exited") {
+		t.Fatalf("opDoneMsg should surface in the dashboard status: %q", got)
+	}
+}
+
+func TestDashboardWheelMovesCursor(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "a"}, {provider: "b"}}}
+	mod, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
+	if mod.(dashboardModel).cursor != 1 {
+		t.Fatal("wheel down should move the dashboard cursor")
+	}
+}
+
+func TestDashboardClickAgainDrills(t *testing.T) {
+	// Semantic layer: clickRow(i) — first click selects, second drills.
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "azure", profile: "acme"}, {provider: "aws", profile: "prod"}}}
+	m2, cmd := m.clickRow(1)
+	if m2.cursor != 1 || cmd != nil {
+		t.Fatalf("first click selects only: cursor=%d cmd=%v", m2.cursor, cmd)
+	}
+	m3, cmd := m2.clickRow(1)
+	if cmd == nil {
+		t.Fatal("click-again should drill into the tab")
+	}
+	if sw, ok := cmd().(switchTabMsg); !ok || sw.provider != "aws" {
+		t.Fatalf("drill should emit switchTabMsg: %+v", cmd())
+	}
+	_ = m3
+}
+
 func TestAmbientLineExpiryTagsAwsOnly(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	soon := time.Now().Add(5 * time.Minute)
