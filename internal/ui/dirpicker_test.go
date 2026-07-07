@@ -94,7 +94,7 @@ func TestProviderViewShowsDetailPaneAndLegend(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
 	out := nm.(awsView).View()
 
-	for _, want := range []string{"DETAILS", "Identity", "Last used", "unmapped", "link this dir — no login", "🟠"} {
+	for _, want := range []string{"DETAILS", "Identity", "Last used", "⌁ default", "link this dir — no login", "🟠"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("provider view missing %q:\n%s", want, out)
 		}

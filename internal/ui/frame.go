@@ -74,10 +74,11 @@ func renderPaneFrame(width, height int, identity, left, right, leftFoot, status,
 
 // renderProfilePane hand-renders a PROFILES(n) pane for a slice of profiles
 // (selection bar on the focused row, muted details) without a bubbles list.
-// Rows lead with their active-identity icon (scopeSlot: ● green cwd pin, ●
-// orange parent pin, 🌐 global default); renamed profiles render their label
-// in the renamedStyle accent instead of a footnote legend. Segments are
-// styled independently so the icon keeps its own colour on selected rows.
+// Rows lead with their relevance-to-this-dir icon (scopeSlot: ● green cwd link,
+// ● orange parent link, empty slot otherwise); the global default renders a
+// trailing "⌁ default" tag. Renamed profiles render their label in the
+// renamedStyle accent instead of a footnote legend. Segments are styled
+// independently so the icon keeps its own colour on selected rows.
 func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touched bool, leftW int, scopes map[string]string) string {
 	var b strings.Builder
 	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), mode == selActive && touched))
@@ -132,7 +133,11 @@ func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touc
 		if p.Name == emph {
 			nameStyle = nameStyle.Bold(true)
 		}
-		b.WriteString(scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW)) + "\n")
+		line := scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW))
+		if scopes[p.Name] == scopeGlobal {
+			line += "  " + mutedStyle.Render("⌁ default")
+		}
+		b.WriteString(line + "\n")
 		b.WriteString("   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
 	}
 	return b.String()

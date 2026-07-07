@@ -143,18 +143,13 @@ const (
 
 // scopeLegend is the one-line-per-tier key rendered under the profiles list
 // (centered), decoding the relevance icons.
+// scopeLegend decodes the row marks, centered under the profiles list: two
+// relevance dots plus the default tag.
 func scopeLegend(w int) string {
-	rows := []string{
-		successStyle.Render("●") + mutedStyle.Render(" this dir   ") +
-			lipgloss.NewStyle().Foreground(goldDeep).Render("●") + mutedStyle.Render(" parent dir"),
-		"🌐" + mutedStyle.Render(" default    ") +
-			lipgloss.NewStyle().Foreground(whiteDim).Render("●") + mutedStyle.Render(" elsewhere  ") +
-			lipgloss.NewStyle().Foreground(grayDeep).Render("●") + mutedStyle.Render(" unmapped"),
-	}
-	for i, r := range rows {
-		rows[i] = lipgloss.PlaceHorizontal(w, lipgloss.Center, truncateLine(r, w))
-	}
-	return strings.Join(rows, "\n")
+	row := successStyle.Render("●") + mutedStyle.Render(" this dir   ") +
+		lipgloss.NewStyle().Foreground(goldDeep).Render("●") + mutedStyle.Render(" parent dir   ") +
+		mutedStyle.Render("⌁ default")
+	return lipgloss.PlaceHorizontal(w, lipgloss.Center, truncateLine(row, w))
 }
 
 // overlayCenter splices box over the middle of bg (a full-width rendered

@@ -146,24 +146,43 @@ func TestProviderViewBrowserEscClearsStatus(t *testing.T) {
 	}
 }
 
-func TestRenderProfilePaneScopeGlyphs(t *testing.T) {
+func TestRenderProfilePaneScopeMarks(t *testing.T) {
 	profiles := []profile.Listed{
 		{Name: "work", Detail: "acme.awsapps.com"},
 		{Name: "staging", Detail: "acme.awsapps.com"},
 		{Name: "personal", Detail: "personal.awsapps.com"},
 		{Name: "idle", Detail: "idle.awsapps.com"},
 	}
-	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal, "idle": scopeElsewhere}
-	out := renderProfilePane(profiles, 0, selActive, true, 40, scopes)
+	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal}
+	out := renderProfilePane(profiles, 0, selActive, true, 44, scopes)
+	// Linked-here and linked-via-parent carry the dot.
 	if !strings.Contains(out, "●  work") || !strings.Contains(out, "●  staging") {
-		t.Fatalf("dir-pinned profiles missing leading ● icon:\n%s", out)
+		t.Fatalf("linked profiles missing leading ● icon:\n%s", out)
 	}
-	// Only the global default carries 🌐; not-applicable rows get a grey ●.
-	if !strings.Contains(out, "🌐 personal") {
-		t.Fatalf("global-default profile missing 🌐 icon:\n%s", out)
+	// The ambient default is a tag, not a scope glyph.
+	if !strings.Contains(out, "personal") || !strings.Contains(out, "⌁ default") || strings.Contains(out, "🌐") {
+		t.Fatalf("default should render as a trailing tag, never 🌐:\n%s", out)
 	}
-	if !strings.Contains(out, "●  idle") || strings.Contains(out, "🌐 idle") {
-		t.Fatalf("mapped-elsewhere profile should carry the ● icon:\n%s", out)
+	// Everything else gets a calm empty slot — no grey dots.
+	if strings.Contains(out, "●  idle") || strings.Contains(out, "●  personal") {
+		t.Fatalf("non-linked rows must not carry a dot:\n%s", out)
+	}
+	if !strings.Contains(out, "   idle") {
+		t.Fatalf("non-linked row should keep the aligned empty slot:\n%s", out)
+	}
+}
+
+func TestScopeLegendIsTwoDotsAndATag(t *testing.T) {
+	l := scopeLegend(60)
+	for _, want := range []string{"this dir", "parent dir", "⌁ default"} {
+		if !strings.Contains(l, want) {
+			t.Fatalf("legend missing %q: %q", want, l)
+		}
+	}
+	for _, gone := range []string{"elsewhere", "unmapped", "🌐"} {
+		if strings.Contains(l, gone) {
+			t.Fatalf("legend still shows retired tier %q: %q", gone, l)
+		}
 	}
 }
 

@@ -46,25 +46,25 @@ type actionState struct {
 // interactive and point the user at the CLI; use/remove act on the profile
 // store directly.
 type providerTabView struct {
-	prov       provider.Provider
-	actions    []providerAction
-	profiles   []profile.Listed
-	statuses   map[string]provider.Status
-	ambIdent   string
-	active     string
-	dirProfile string
-	dirScope   string
-	mapped     map[string]bool
-	cursor     int
-	focus      int
-	actionCur  int
-	width      int
-	height     int
-	status     string
-	suspended  bool
-	touched    bool
-	namingVerb string // "" (not naming), "login", or "capture"
-	nameInput  textinput.Model
+	prov        provider.Provider
+	actions     []providerAction
+	profiles    []profile.Listed
+	statuses    map[string]provider.Status
+	ambIdent    string
+	active      string
+	dirProfile  string
+	dirScope    string
+	mappingDirs map[string][]string
+	cursor      int
+	focus       int
+	actionCur   int
+	width       int
+	height      int
+	status      string
+	suspended   bool
+	touched     bool
+	namingVerb  string // "" (not naming), "login", or "capture"
+	nameInput   textinput.Model
 
 	confirming    bool
 	pendingDelete string
@@ -124,9 +124,9 @@ func (v *providerTabView) reload() {
 		v.ambIdent = amb.Identity
 		v.active = provider.MatchProfile(statuses, amb.Identity)
 	}
-	v.mapped = map[string]bool{}
+	v.mappingDirs = map[string][]string{}
 	for _, m := range v.prov.Scheme().ReadMappings(dir) {
-		v.mapped[m.Profile] = true
+		v.mappingDirs[m.Profile] = append(v.mappingDirs[m.Profile], m.Dir)
 	}
 	v.dirProfile, v.dirScope = "", ""
 	pwd, _ := os.Getwd()
@@ -187,18 +187,15 @@ func (v providerTabView) enabledActions() []actionState {
 	return out
 }
 
-// rowScope returns the effective relevance of one profile row — the closest
-// wins: a directory pin (cwd or ancestor) outranks the global default, which
-// outranks being mapped elsewhere; "" means mapped nowhere (deep-grey icon).
+// rowScope returns one profile row's relevance to the current directory —
+// the closest link wins; the global default is tagged, not scoped; anything
+// else renders an empty slot.
 func (v providerTabView) rowScope(name string) string {
 	if name == v.dirProfile {
 		return v.dirScope
 	}
 	if name == v.active {
 		return scopeGlobal
-	}
-	if v.mapped[name] {
-		return scopeElsewhere
 	}
 	return ""
 }
