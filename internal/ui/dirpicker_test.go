@@ -92,7 +92,7 @@ func TestProviderViewShowsDetailPaneAndLegend(t *testing.T) {
 
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
-	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; the first profile is already selected
 	out := nm.(awsView).View()
 
 	for _, want := range []string{"DETAILS", "Identity", "Last used", "⌁ default", "map to a local browser profile", "🟠"} {

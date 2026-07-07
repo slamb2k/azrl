@@ -53,8 +53,8 @@ console, mouse) have shipped.
       pointer is untouched. Now `cd` to the parent itself and `azrl unlink`
       — the link is removed, the profile is untouched.
 - [ ] **No-link create then dashboard link:** from an unlinked directory,
-      use the TUI's `＋ New profile…` row (or `azrl login <name>
-      --no-link`) to create and sign in. Confirm no `.azprofile` was written
+      use the TUI's `NEW ＋` title-bar button / `n` key (or `azrl login
+      <name> --no-link`) to create and sign in. Confirm no `.azprofile` was written
       here and the profile doesn't show as linked on this tab. Open the
       Dashboard, find the new profile's UNMAPPED row, press `u` to link it
       to the cwd — the row moves to MAPPINGS and `azrl status` now shows the

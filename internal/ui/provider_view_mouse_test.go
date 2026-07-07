@@ -46,8 +46,8 @@ func TestWheelMovesProfileCursor(t *testing.T) {
 
 // TestWheelClampsAtEnds proves wheel-at-top/bottom clamps instead of wrapping
 // or handing focus to the tab bar (unlike the up/down keys at the top row).
-// Valid cursor range is [0..len(profiles)] (row 0 is the pinned new-profile
-// row), so the bottom clamp lands on len(profiles), not len(profiles)-1.
+// The cursor indexes profiles directly, so the bottom clamp lands on
+// len(profiles)-1.
 func TestWheelClampsAtEnds(t *testing.T) {
 	v := twoProfileAwsView(t)
 	nv, cmd := v.providerTabView.update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
@@ -55,10 +55,9 @@ func TestWheelClampsAtEnds(t *testing.T) {
 		t.Fatalf("wheel up at the top must clamp, not emit focusTabsMsg: cursor=%d cmd=%v", nv.cursor, cmd)
 	}
 	nv, _ = nv.update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
-	nv, _ = nv.update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
 	nv, _ = nv.update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}) // one past the end — must still clamp
-	if nv.cursor != 2 {
-		t.Fatalf("wheel down at the bottom must clamp at len(profiles), got %d", nv.cursor)
+	if nv.cursor != 1 {
+		t.Fatalf("wheel down at the bottom must clamp at len(profiles)-1, got %d", nv.cursor)
 	}
 }
 
@@ -68,14 +67,10 @@ func TestWheelClampsAtEnds(t *testing.T) {
 // to actions).
 func TestClickProfileSelectsThenFocusesActions(t *testing.T) {
 	v := twoProfileAwsView(t)
-	if v.selected() != "" {
-		t.Fatalf("expected row 0 (＋ New profile…) selected by default, got %q", v.selected())
+	if v.selected() != "acme" {
+		t.Fatalf("expected the first profile selected by default, got %q", v.selected())
 	}
-	base, _ := v.providerTabView.clickProfile("acme")
-	if base.selected() != "acme" {
-		t.Fatalf("click should select acme, got %q", base.selected())
-	}
-	nv, cmd := base.clickProfile("work")
+	nv, cmd := v.providerTabView.clickProfile("work")
 	if cmd != nil {
 		t.Fatalf("selecting a different row should not return a command, got %v", cmd)
 	}

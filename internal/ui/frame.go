@@ -75,9 +75,10 @@ func renderPaneFrame(width, height int, identity, left, right, leftFoot, status,
 
 // renderProfilePane hand-renders a PROFILES(n) pane for a slice of profiles
 // (selection bar on the focused row, muted details) without a bubbles list.
-// Row 0 is always the pinned "＋ New profile…" entity-creation row (cursor 0);
-// profiles occupy rows 1..n (cursor-1 indexes v.profiles) — on both a
-// populated and an empty tab. Rows lead with their relevance-to-this-dir icon
+// Cursor i indexes profiles[i] directly. The title row carries the "NEW ＋"
+// entity-creation affordance right-aligned (zone prof:+new — a click opens
+// the naming prompt; it never sits in the list, so the cursor only ever
+// lands on real profiles). Rows lead with their relevance-to-this-dir icon
 // (scopeSlot: ● green cwd link, ● orange parent link, empty slot otherwise);
 // the global default renders a trailing "⌁ default" tag. Renamed profiles
 // render their label in the renamedStyle accent instead of a footnote legend.
@@ -85,23 +86,20 @@ func renderPaneFrame(width, height int, identity, left, right, leftFoot, status,
 // selected rows.
 func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touched bool, leftW int, scopes map[string]string) string {
 	var b strings.Builder
-	b.WriteString(paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), mode == selActive && touched))
+	title := paneTitle(fmt.Sprintf("PROFILES (%d)", len(profiles)), mode == selActive && touched)
+	newBtn := zone.Mark("prof:+new", accentStyle.Render("NEW ＋"))
+	if gap := leftW - lipgloss.Width(title) - lipgloss.Width(newBtn); gap >= 2 {
+		title += strings.Repeat(" ", gap) + newBtn
+	}
+	b.WriteString(title)
 	b.WriteString("\n\n")
 	textW := leftW - 5 // selection bar/pad (2) + icon slot (3)
 	if textW < 1 {
 		textW = 1
 	}
-	newRowStyle := lipgloss.NewStyle().Foreground(white)
-	switch {
-	case cursor == 0 && mode == selActive:
-		newRowStyle = selBlockActive
-	case cursor == 0 && mode == selParent:
-		newRowStyle = selBlockParent
-	}
-	b.WriteString(zone.Mark("prof:+new", "   "+newRowStyle.Render(truncateLine("＋ New profile…", textW))) + "\n")
 	if len(profiles) == 0 {
-		b.WriteString("\n" + mutedStyle.Render("  (no profiles — ") + keycap("↵") +
-			mutedStyle.Render(" on ＋ New profile creates, ") + keycap("a") + mutedStyle.Render(" adopts a live session)"))
+		b.WriteString(mutedStyle.Render("  (no profiles — ") + keycap("n") +
+			mutedStyle.Render(" creates, ") + keycap("a") + mutedStyle.Render(" adopts a live session)"))
 		return b.String()
 	}
 	// The most-active profile — the one that would be used right now — renders
@@ -118,10 +116,12 @@ func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touc
 		}
 	}
 	for i, p := range profiles {
-		// One blank line before every row keeps each two-line profile distinct
-		// from its neighbor (including the new-profile row above it).
-		b.WriteString("\n")
-		selected := i+1 == cursor
+		// One blank line between rows keeps each two-line profile distinct
+		// from its neighbor.
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		selected := i == cursor
 		nameStyle := lipgloss.NewStyle().Foreground(white)
 		detailStyle := mutedStyle
 		switch {

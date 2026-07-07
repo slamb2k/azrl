@@ -27,7 +27,7 @@ func seedAzure(t *testing.T) azureView {
 func TestAzureViewRendersUnifiedActions(t *testing.T) {
 	v := seedAzure(t)
 	out := v.View()
-	for _, want := range []string{"Azure", "PROFILES (1)", "acme", "Renew", "New profile", "Assign browser…", "Delete…"} {
+	for _, want := range []string{"Azure", "PROFILES (1)", "acme", "Renew", "NEW ＋", "Assign browser…", "Delete…"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("azure view missing %q:\n%s", want, out)
 		}
@@ -42,7 +42,7 @@ func TestAzureViewRendersUnifiedActions(t *testing.T) {
 
 func TestAzureSignInHotkeyReturnsHandoff(t *testing.T) {
 	v := seedAzure(t)
-	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto acme
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; acme is already selected
 	_, cmd := nm.(azureView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	if cmd == nil {
 		t.Fatal("'s' should return the login handoff command")
@@ -74,8 +74,8 @@ func TestAzureEmptyStateOffersOnboardingPair(t *testing.T) {
 	v := newAzureView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 34})
 	out := nm.(azureView).View()
-	if !strings.Contains(out, "ACTIONS (1)") || !strings.Contains(out, "Capture session") || !strings.Contains(out, "＋ New profile…") {
-		t.Fatalf("empty azure tab should offer the pinned New profile row + Capture session:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (1)") || !strings.Contains(out, "Capture session") || !strings.Contains(out, "NEW ＋") {
+		t.Fatalf("empty azure tab should offer the NEW ＋ button + Capture session:\n%s", out)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestAzureEnvrcHotkeyNeedsProfile(t *testing.T) {
 func TestAzureBrowserActionOpensPickerAndWritesKeys(t *testing.T) {
 	v := seedAzure(t)
 	confPath := filepath.Join(os.Getenv("HOME"), ".azure-profiles", "acme.conf")
-	nm0, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto acme
+	nm0, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; acme is already selected
 	nm, cmd := nm0.(azureView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	av := nm.(azureView)
 	if av.browserFor != "acme" || cmd == nil {

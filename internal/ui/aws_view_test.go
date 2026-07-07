@@ -26,7 +26,7 @@ func TestAwsViewRendersProfilesAndActions(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	out := nm.(awsView).View()
 
-	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Renew", "New profile", "Delete…"} {
+	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Renew", "NEW ＋", "Delete…"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("AWS view missing %q:\n%s", want, out)
 		}
@@ -55,7 +55,7 @@ func TestProviderViewEnterOpensActionsEscReturns(t *testing.T) {
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
 	v := newAwsView()
-	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; the first profile is already selected
 	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if nm.(awsView).focus != focusActions {
 		t.Fatal("enter on the profile pane did not open the action pane")
@@ -82,7 +82,7 @@ func TestProviderViewRemoveConfirms(t *testing.T) {
 
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
-	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; the first profile is already selected
 	// delete arms the confirm — nothing is removed yet.
 	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDelete})
 	av := nm.(awsView)
@@ -125,7 +125,7 @@ func TestProviderViewBrowserEscClearsStatus(t *testing.T) {
 	os.WriteFile(filepath.Join(ap, "work.conf"),
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
-	nm0, _ := newAwsView().Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm0, _ := newAwsView().Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; the first profile is already selected
 	v := nm0.(awsView)
 	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	av := nm.(awsView)
@@ -165,7 +165,7 @@ func TestBrowserDiscoveryDroppedWhenConfirmArmedMeanwhile(t *testing.T) {
 	os.WriteFile(filepath.Join(ap, "work.conf"),
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
-	nm0, _ := newAwsView().Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm0, _ := newAwsView().Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; the first profile is already selected
 	v := nm0.(awsView)
 	// Kick off browser discovery, then — before it resolves — arm the confirm
 	// dialog (e.g. the user pressed delete during the SSH round-trip).
@@ -308,8 +308,8 @@ func TestEmptyProviderOffersOnboardingPair(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
 	out := nm.(awsView).View()
 	if !strings.Contains(out, "ACTIONS (1)") ||
-		!strings.Contains(out, "＋ New profile…") || !strings.Contains(out, "Capture session") {
-		t.Fatalf("empty provider should show the pinned New profile row + a Capture session action:\n%s", out)
+		!strings.Contains(out, "NEW ＋") || !strings.Contains(out, "Capture session") {
+		t.Fatalf("empty provider should show the NEW ＋ button + a Capture session action:\n%s", out)
 	}
 	for _, hidden := range []string{"Renew", "Delete…"} {
 		if strings.Contains(out, hidden) {
@@ -390,7 +390,7 @@ func TestSignInVisibleWithLiveSessionHint(t *testing.T) {
 	v := newAwsView()
 	v.statuses["work"] = provider.Status{ProfileName: "work", Identity: "123/Admin"}
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 120, Height: 34})
-	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; the first profile is already selected
 	av := nm.(awsView)
 	out := av.View()
 	if !strings.Contains(out, "Renew") || !strings.Contains(out, "re-auth anyway") {
@@ -436,7 +436,7 @@ func TestDetailsShowsLinkedDirs(t *testing.T) {
 
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 160, Height: 34})
-	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // key nav marks the pane visited; the first profile is already selected
 	out := nm.(awsView).View()
 	if !strings.Contains(out, "Linked") || !strings.Contains(out, "+ 1 more") {
 		t.Fatalf("DETAILS should list the linked dirs:\n%s", out)
