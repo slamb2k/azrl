@@ -90,12 +90,11 @@ func providerActions(group string) []providerAction {
 	return []providerAction{
 		{key: "s", label: "Renew", hint: "sign in again — links unchanged", run: loginAction(group)},
 		{key: "t", label: "Shell as…", hint: "subshell as this profile — no link", run: shellAction},
-		{key: "u", label: "Link here", hint: "link this dir — no login", run: useAction},
 		{key: "n", label: "New profile", hint: "sign in + link this dir", run: newProfileAction, bootstrap: true},
 		{key: "a", label: "Capture session", hint: "adopt current CLI session · links this dir", run: captureAction, bootstrap: true},
-		{key: "b", label: "Browser profile", hint: "map to a local browser profile", run: browserAction},
+		{key: "b", label: "Assign browser…", hint: "map to a local browser profile", run: browserAction},
 		{key: "c", label: "Open console", hint: "web console as this credential", run: consoleAction},
-		{key: "delete", label: "Remove…", hint: "delete profile", run: removeAction},
+		{key: "delete", label: "Delete…", hint: "delete profile", run: removeAction},
 	}
 }
 
@@ -181,11 +180,6 @@ func (v providerTabView) enabledActions() []actionState {
 		}
 		st := actionState{providerAction: a, enabled: true}
 		switch a.key {
-		case "u":
-			if sel != "" && sel == v.dirProfile && v.dirScope == ScopeCwd {
-				st.enabled = false
-				st.hint = "already linked here"
-			}
 		case "s":
 			if sel != "" && sessionLive(v.statuses[sel]) {
 				// Still runnable — re-auth is idempotent — but say why it's optional.
@@ -608,24 +602,6 @@ func newProfileAction(v *providerTabView) tea.Cmd {
 // only in the empty state (and via the dashboard's adopt flow).
 func captureAction(v *providerTabView) tea.Cmd {
 	return namingPromptAction("capture")(v)
-}
-
-// useAction links the current directory to the selected profile. Shared by all
-// providers.
-func useAction(v *providerTabView) tea.Cmd {
-	name := v.selected()
-	if name == "" {
-		v.status = mutedStyle.Render("no profile selected")
-		return nil
-	}
-	dir := v.prov.ProfilesDir()
-	pwd, _ := os.Getwd()
-	if err := v.prov.Use(name, dir, pwd); err != nil {
-		v.status = failureStyle.Render(err.Error())
-	} else {
-		v.status = successStyle.Render(fmt.Sprintf("linked this dir → %s", name))
-	}
-	return nil
 }
 
 // applyBrowserMapping writes the browser cmd/label keys for browserFor.

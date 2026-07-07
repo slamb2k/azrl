@@ -27,7 +27,7 @@ func seedAzure(t *testing.T) azureView {
 func TestAzureViewRendersUnifiedActions(t *testing.T) {
 	v := seedAzure(t)
 	out := v.View()
-	for _, want := range []string{"Azure", "PROFILES (1)", "acme", "Renew", "Link here", "New profile", "Browser profile", "Remove"} {
+	for _, want := range []string{"Azure", "PROFILES (1)", "acme", "Renew", "New profile", "Assign browser…", "Delete…"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("azure view missing %q:\n%s", want, out)
 		}

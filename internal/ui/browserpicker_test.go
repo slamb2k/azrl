@@ -28,8 +28,8 @@ func TestBrowserActionListedOnProviderTabs(t *testing.T) {
 	seedAwsHome(t, "AWS_SSO_START_URL=https://acme.awsapps.com/start\n")
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	if out := nm.(awsView).View(); !strings.Contains(out, "Browser profile") {
-		t.Fatalf("missing Browser profile action:\n%s", out)
+	if out := nm.(awsView).View(); !strings.Contains(out, "Assign browser…") {
+		t.Fatalf("missing Assign browser… action:\n%s", out)
 	}
 }
 

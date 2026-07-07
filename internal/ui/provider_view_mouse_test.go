@@ -3,7 +3,6 @@ package ui
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -83,30 +82,17 @@ func TestClickProfileSelectsThenFocusesActions(t *testing.T) {
 	}
 }
 
-// TestClickDisabledActionExplains proves clicking a disabled action row
-// surfaces its reason in the status line instead of running.
-func TestClickDisabledActionExplains(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	clearAmbientEnv(t)
-	ap := filepath.Join(home, ".aws-profiles")
-	os.MkdirAll(ap, 0o755)
-	os.WriteFile(filepath.Join(ap, "work.conf"),
-		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
-	linked := t.TempDir()
-	os.WriteFile(filepath.Join(linked, ".awsprofile"), []byte("work\n"), 0o644)
-	t.Chdir(linked)
-
-	v := newAwsView()
-	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
-	av := nm.(awsView)
-
-	nv, cmd := av.providerTabView.clickAction("u") // Link here, disabled: already linked here
+// TestClickUnknownActionKeyIsNoop proves clicking a key with no matching row
+// (e.g. "u" — Link here lives on the dashboard now, not the tabs) is inert
+// rather than running or crashing.
+func TestClickUnknownActionKeyIsNoop(t *testing.T) {
+	v := twoProfileAwsView(t)
+	nv, cmd := v.providerTabView.clickAction("u")
 	if cmd != nil {
-		t.Fatalf("disabled action click must not run, got cmd %v", cmd)
+		t.Fatalf("unknown action key must not run, got cmd %v", cmd)
 	}
-	if !strings.Contains(nv.status, "already linked") {
-		t.Fatalf("disabled action click must surface its reason: %q", nv.status)
+	if nv.status != "" {
+		t.Fatalf("unknown action key must not set a status, got %q", nv.status)
 	}
 }
 

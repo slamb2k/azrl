@@ -26,7 +26,7 @@ func TestAwsViewRendersProfilesAndActions(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	out := nm.(awsView).View()
 
-	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Renew", "Link here", "New profile", "Remove"} {
+	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Renew", "New profile", "Delete…"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("AWS view missing %q:\n%s", want, out)
 		}
@@ -307,7 +307,7 @@ func TestEmptyProviderOffersOnboardingPair(t *testing.T) {
 		!strings.Contains(out, "New profile") || !strings.Contains(out, "Capture session") {
 		t.Fatalf("empty provider should offer New profile + Capture session:\n%s", out)
 	}
-	for _, hidden := range []string{"Renew", "Link here", "Remove"} {
+	for _, hidden := range []string{"Renew", "Delete…"} {
 		if strings.Contains(out, hidden) {
 			t.Fatalf("%q should not show with zero profiles:\n%s", hidden, out)
 		}
@@ -343,12 +343,14 @@ func TestCaptureAbsentFromNonEmptyActionList(t *testing.T) {
 	if strings.Contains(out, "Capture session") {
 		t.Fatalf("Capture is onboarding-contextual; it must not sit in the everyday list:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (7)") {
-		t.Fatalf("everyday action count should be 7:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (6)") {
+		t.Fatalf("everyday action count should be 6:\n%s", out)
 	}
 }
 
-func TestLinkHereDisabledWhenAlreadyLinked(t *testing.T) {
+// TestLinkHereAbsentFromTabs proves Link here has moved to the dashboard:
+// tabs no longer offer it, disabled or otherwise.
+func TestLinkHereAbsentFromTabs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	clearAmbientEnv(t)
@@ -364,20 +366,11 @@ func TestLinkHereDisabledWhenAlreadyLinked(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
 	av := nm.(awsView)
 	out := av.View()
-	// Never hidden: the verb stays listed, disabled, with its reason.
-	if !strings.Contains(out, "Link here") || !strings.Contains(out, "already linked here") {
-		t.Fatalf("Link here should render disabled with its reason:\n%s", out)
+	if strings.Contains(out, "Link here") || strings.Contains(out, "already linked here") {
+		t.Fatalf("Link here must not appear in the tab's everyday list:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (7)") {
-		t.Fatalf("action count must not drop when a verb is disabled:\n%s", out)
-	}
-	// The accelerator explains instead of running.
-	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
-	if cmd != nil {
-		t.Fatal("disabled accelerator must not run")
-	}
-	if !strings.Contains(nm.(awsView).status, "already linked here") {
-		t.Fatalf("disabled accelerator should surface the reason, got %q", nm.(awsView).status)
+	if !strings.Contains(out, "ACTIONS (6)") {
+		t.Fatalf("everyday action count should be 6:\n%s", out)
 	}
 }
 
