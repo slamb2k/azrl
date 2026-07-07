@@ -260,3 +260,50 @@ func TestSchemeTouchMappingBestEffort(t *testing.T) {
 		t.Fatalf("LAST_DIR = %q, want %q", dir, work)
 	}
 }
+
+func TestUnlinkRemovesCwdPointerAndMapping(t *testing.T) {
+	confdir := t.TempDir()
+	work := t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	s := AzureScheme()
+	if err := s.Use("acme", confdir, work); err != nil {
+		t.Fatal(err)
+	}
+	name, err := s.Unlink(confdir, work)
+	if err != nil || name != "acme" {
+		t.Fatalf("Unlink = %q, %v", name, err)
+	}
+	if _, err := os.Stat(filepath.Join(work, ".azprofile")); !os.IsNotExist(err) {
+		t.Fatal("pointer file should be gone")
+	}
+	for _, m := range ReadMappings(confdir) {
+		if m.Dir == work {
+			t.Fatalf("mapping row should be gone: %+v", m)
+		}
+	}
+}
+
+func TestUnlinkRefusesParentGovernedDir(t *testing.T) {
+	confdir := t.TempDir()
+	parent := t.TempDir()
+	child := filepath.Join(parent, "sub")
+	os.MkdirAll(child, 0o755)
+	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	s := AzureScheme()
+	if err := s.Use("acme", confdir, parent); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Unlink(confdir, child)
+	if err == nil || !strings.Contains(err.Error(), parent) || !strings.Contains(err.Error(), "run unlink there") {
+		t.Fatalf("parent-governed unlink must refuse naming the parent: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(parent, ".azprofile")); statErr != nil {
+		t.Fatal("the parent's pointer must be untouched")
+	}
+}
+
+func TestUnlinkNothingLinked(t *testing.T) {
+	if _, err := AzureScheme().Unlink(t.TempDir(), t.TempDir()); err == nil {
+		t.Fatal("unlink with nothing governing should error")
+	}
+}

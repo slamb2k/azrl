@@ -240,6 +240,7 @@ func githubSubcommands() []*cobra.Command {
 		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(), newGhBrowserCmd(),
 		newShellCmd("github", "Open a subshell acting as a GitHub profile (no link)"),
 		newConsoleCmd("github", "Open GitHub as a profile's account"),
+		newUnlinkCmd("github", "Remove this directory's GitHub profile link (keeps the profile)"),
 	}
 }
 

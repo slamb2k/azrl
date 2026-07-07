@@ -311,6 +311,7 @@ func awsSubcommands() []*cobra.Command {
 		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(), newAwsBrowserCmd(),
 		newShellCmd("aws", "Open a subshell acting as an AWS profile (no link)"),
 		newConsoleCmd("aws", "Open the AWS access portal for a profile"),
+		newUnlinkCmd("aws", "Remove this directory's AWS profile link (keeps the profile)"),
 	}
 }
 

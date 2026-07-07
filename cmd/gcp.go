@@ -316,6 +316,7 @@ func gcpSubcommands() []*cobra.Command {
 		newGcpRmCmd(), newGcpCaptureCmd(), newGcpStatusCmd(), newGcpBrowserCmd(),
 		newShellCmd("gcp", "Open a subshell acting as a GCP profile (no link)"),
 		newConsoleCmd("gcp", "Open the GCP console for a profile's project"),
+		newUnlinkCmd("gcp", "Remove this directory's GCP profile link (keeps the profile)"),
 	}
 }
 

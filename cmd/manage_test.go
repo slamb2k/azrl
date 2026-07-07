@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestListCmd(t *testing.T) {
@@ -71,4 +74,38 @@ func chdir(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chdir(old) })
+}
+
+func TestUnlinkCmd(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	chdir(t, work)
+	RootCmd.SetArgs([]string{"use", "acme"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	RootCmd.SetArgs([]string{"unlink"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(work, ".azprofile")); !os.IsNotExist(err) {
+		t.Fatal("unlink should remove .azprofile")
+	}
+}
+
+func TestUnlinkVerbRegisteredOnAllSurfaces(t *testing.T) {
+	find := func(cmds []*cobra.Command) bool {
+		for _, c := range cmds {
+			if strings.HasPrefix(c.Use, "unlink") {
+				return true
+			}
+		}
+		return false
+	}
+	if !find(RootCmd.Commands()) || !find(githubSubcommands()) || !find(awsSubcommands()) || !find(gcpSubcommands()) {
+		t.Fatal("unlink missing from a surface")
+	}
 }

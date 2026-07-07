@@ -234,6 +234,29 @@ func readOrderedKV(path string) (map[string]string, []string, error) {
 	return m, order, nil
 }
 
+// Unlink removes the calling directory's own pointer file and its mapping
+// row, returning the profile it pointed at. It never reaches into parents:
+// a directory governed from above is refused with the governing path — links
+// are removed where they live.
+func (s Scheme) Unlink(confdir, pwd string) (string, error) {
+	ptr := filepath.Join(pwd, s.Pointer)
+	b, err := os.ReadFile(ptr)
+	if err != nil {
+		if pdir, ok := s.Locate(pwd); ok {
+			name, _ := s.Resolve("", pwd)
+			return "", fmt.Errorf("%s: this directory is governed by %s (profile %s) — run unlink there",
+				s.Prefix, filepath.Join(pdir, s.Pointer), name)
+		}
+		return "", fmt.Errorf("%s: nothing linked in %s", s.Prefix, pwd)
+	}
+	name := strings.TrimSpace(string(b))
+	if err := os.Remove(ptr); err != nil {
+		return "", err
+	}
+	_ = RemoveMapping(confdir, pwd, "pointer")
+	return name, nil
+}
+
 // writeAtomic writes body to path via a temp file + rename.
 func writeAtomic(path, body string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
