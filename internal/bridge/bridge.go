@@ -80,3 +80,14 @@ func Bridge(port, url string, g config.Global, forcePaste bool) (*exec.Cmd, stri
 	_ = exec.Command("ssh", g.BrowserHost, fmt.Sprintf("%s '%s'", g.BrowserCmd, url)).Run()
 	return tunnel, "", nil
 }
+
+// OpenURL opens a plain URL in the configured browser — the login bridge's
+// launch primitives without the OAuth callback tunnel (a console link has no
+// port to forward). Local mode launches directly; remote runs the browser
+// command on BrowserHost over SSH.
+func OpenURL(g config.Global, url string) error {
+	if g.IsLocal() {
+		return LaunchLocal(g.BrowserCmd, url)
+	}
+	return exec.Command("ssh", g.BrowserHost, fmt.Sprintf("%s '%s'", g.BrowserCmd, url)).Run()
+}

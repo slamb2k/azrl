@@ -125,3 +125,50 @@ func TestBridgePathBDeadTunnel(t *testing.T) {
 		t.Fatalf("dead tunnel: expected paste fallback, got %q", paste)
 	}
 }
+
+func TestOpenURLLocalRunsBrowserCmd(t *testing.T) {
+	bin := t.TempDir()
+	log := filepath.Join(bin, "browser.log")
+	script := "#!/usr/bin/env bash\necho \"$*\" >> \"" + log + "\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "mybrowser"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	g := config.Global{BrowserCmd: "mybrowser"} // BrowserHost empty ⇒ local
+	if err := OpenURL(g, "https://portal.azure.com/#@acme.com"); err != nil {
+		t.Fatal(err)
+	}
+	// LaunchLocal starts the command asynchronously; poll briefly for the log.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if b, _ := os.ReadFile(log); strings.Contains(string(b), "https://portal.azure.com/#@acme.com") {
+			return
+		}
+		if time.Now().After(deadline) {
+			b, _ := os.ReadFile(log)
+			t.Fatalf("browser cmd never received the URL; log: %s", b)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestOpenURLRemoteGoesOverSSH(t *testing.T) {
+	bin := t.TempDir()
+	log := filepath.Join(bin, "ssh.log")
+	script := "#!/usr/bin/env bash\necho \"$*\" >> \"" + log + "\"\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview"}
+	if err := OpenURL(g, "https://acme.awsapps.com/start"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(log)
+	got := string(b)
+	if !strings.Contains(got, "pc") || !strings.Contains(got, "wslview 'https://acme.awsapps.com/start'") {
+		t.Fatalf("remote launch not over ssh with the browser cmd; log: %s", got)
+	}
+}
