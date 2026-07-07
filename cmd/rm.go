@@ -81,10 +81,16 @@ func unlinkOrRefuse(cmd *cobra.Command, scheme profile.Scheme, confdir, name str
 	}
 	switch {
 	case unlinkAll:
-		_, err := scheme.UnlinkAll(confdir, name)
+		unlinked, err := scheme.UnlinkAll(confdir, name)
+		for _, d := range unlinked {
+			cmd.Printf("unlinked %s\n", d)
+		}
 		return err
 	case replace != "":
-		_, err := scheme.ReplaceLinks(confdir, name, replace)
+		repointed, err := scheme.ReplaceLinks(confdir, name, replace)
+		for _, d := range repointed {
+			cmd.Printf("repointed %s -> %s\n", d, replace)
+		}
 		return err
 	default:
 		var b strings.Builder
@@ -101,5 +107,6 @@ func init() {
 	rmCmd.Flags().BoolVarP(&rmYes, "yes", "y", false, "Skip the confirmation prompt")
 	rmCmd.Flags().BoolVar(&rmUnlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
 	rmCmd.Flags().StringVar(&rmReplace, "replace", "", "Repoint every directory link at this profile before deleting")
+	rmCmd.MarkFlagsMutuallyExclusive("unlink-all", "replace")
 	RootCmd.AddCommand(rmCmd)
 }

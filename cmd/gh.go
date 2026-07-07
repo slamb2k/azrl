@@ -178,6 +178,7 @@ func newGhRmCmd() *cobra.Command {
 	}
 	c.Flags().BoolVar(&unlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
 	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
+	c.MarkFlagsMutuallyExclusive("unlink-all", "replace")
 	return c
 }
 

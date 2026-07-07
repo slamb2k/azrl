@@ -110,7 +110,31 @@ func TestUnlinkVerbRegisteredOnAllSurfaces(t *testing.T) {
 	}
 }
 
+// resetRmFlags restores the azure rm command's flag state on the RootCmd
+// singleton after the test: value AND pflag's Changed bit — cobra's
+// mutually-exclusive validation reads Changed, which pflag never clears
+// between Execute calls, so a stale bit would fail a later bare rm.
+// (Same leak class as resetAwsCaptureFlags / gh_test.go's no-link cleanup.)
+func resetRmFlags(t *testing.T) {
+	t.Helper()
+	c, _, err := RootCmd.Find([]string{"rm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for name, zero := range map[string]string{"yes": "false", "unlink-all": "false", "replace": ""} {
+			f := c.Flags().Lookup(name)
+			if f == nil {
+				t.Fatalf("rm flag %q missing", name)
+			}
+			f.Value.Set(zero)
+			f.Changed = false
+		}
+	})
+}
+
 func TestRmRefusesWhileLinkedThenUnlinkAll(t *testing.T) {
+	resetRmFlags(t)
 	home := t.TempDir()
 	work := t.TempDir()
 	t.Setenv("HOME", home)
@@ -134,5 +158,20 @@ func TestRmRefusesWhileLinkedThenUnlinkAll(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".azure-profiles", "acme.conf")); !os.IsNotExist(err) {
 		t.Fatal("profile should be deleted")
+	}
+}
+
+func TestRmUnlinkAllAndReplaceAreMutuallyExclusive(t *testing.T) {
+	resetRmFlags(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	RootCmd.SetArgs([]string{"rm", "acme", "-y", "--unlink-all", "--replace", "other"})
+	if err := RootCmd.Execute(); err == nil {
+		t.Fatal("--unlink-all with --replace must error, not silently pick one")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".azure-profiles", "acme.conf")); err != nil {
+		t.Fatal("profile must survive the rejected command")
 	}
 }
