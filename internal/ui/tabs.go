@@ -64,7 +64,7 @@ func buildTabs(extra string) []tab {
 			provs = append(provs, p)
 		}
 	}
-	views := map[string]tea.Model{"azure": NewModel(), "github": newGithubView(), "aws": newAwsView(), "gcp": newGcpView()}
+	views := map[string]tea.Model{"azure": newAzureView(), "github": newGithubView(), "aws": newAwsView(), "gcp": newGcpView()}
 	return append([]tab{{title: "Dashboard", model: newDashboard(provs)}}, providerTabs(preferredOrder(provs), views)...)
 }
 

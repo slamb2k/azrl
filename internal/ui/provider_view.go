@@ -9,10 +9,17 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/slamb2k/azrl/internal/browserpick"
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
+)
+
+// focus identifies which pane receives navigation keys.
+const (
+	focusProfiles = iota
+	focusActions
 )
 
 // providerAction is one entry in a provider tab's action pane. run mutates the
@@ -62,6 +69,12 @@ type providerTabView struct {
 	confirming    bool
 	pendingDelete string
 	confirm       radio
+
+	// notice is an optional extra header line (e.g. Azure's drift warning);
+	// identityOverride, when set, replaces the dir-linked profile's disk
+	// identity in the header (Azure's live az-account-show result is fresher).
+	notice           string
+	identityOverride string
 
 	browserFor    string // profile a browser mapping is being chosen for
 	browserPick   *browserPicker
@@ -198,10 +211,14 @@ func (v providerTabView) capturesInput() bool {
 	return v.namingVerb != "" || v.browserManual || v.browserPick != nil || v.confirming
 }
 
-// cliGroup maps a provider name to its azrl command group.
+// cliGroup maps a provider name to its azrl command group ("" = the verbs
+// sit at the top level, as Azure's do).
 func cliGroup(name string) string {
-	if name == "github" {
+	switch name {
+	case "github":
 		return "gh"
+	case "azure":
+		return ""
 	}
 	return name
 }
@@ -545,13 +562,20 @@ func (v providerTabView) doRemove() (providerTabView, tea.Cmd) {
 }
 
 // identityStrip is the standard provider header: icon + title, the current
-// directory, and the effective identity there (the dir-pinned profile's
-// identity, else the provider's ambient default).
+// directory, the effective identity there, and an optional notice line.
 func (v providerTabView) identityStrip() string {
 	pwd, _ := os.Getwd()
 	contentW, _, _ := paneDims(v.width)
-	return headerStrip(contentW, providerIcon(v.prov.Name()), v.prov.Title(), pwd,
-		effectiveIdentity(v.dirProfile, v.statuses[v.dirProfile].Identity, v.ambIdent))
+	dirIdentity := v.statuses[v.dirProfile].Identity
+	if v.identityOverride != "" {
+		dirIdentity = v.identityOverride
+	}
+	strip := headerStrip(contentW, providerIcon(v.prov.Name()), v.prov.Title(), pwd,
+		effectiveIdentity(v.dirProfile, dirIdentity, v.ambIdent))
+	if v.notice != "" {
+		strip += "\n" + ansi.Wordwrap(v.notice, contentW, "")
+	}
+	return strip
 }
 
 func (v providerTabView) View() string {

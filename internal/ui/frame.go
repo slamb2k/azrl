@@ -11,7 +11,7 @@ import (
 
 // paneDims computes the shared content and two-pane column widths for a given
 // terminal width. It is the single source of truth for the canonical layout,
-// used by the Azure Model, the provider tabs, and the frame renderer so every
+// used by the provider tabs and the frame renderer so every
 // tab lines its panes up identically. contentW is the room inside the frame
 // (border + padding), leftW/rightW the two column widths flanking the seam.
 func paneDims(width int) (contentW, leftW, rightW int) {
@@ -72,9 +72,8 @@ func renderPaneFrame(width, height int, identity, left, right, leftFoot, status,
 	return frameStyle.Render(strings.Join(lines, "\n"))
 }
 
-// renderProfilePane hand-renders a PROFILES(n) pane for a slice of profiles,
-// mirroring the Azure list delegate (selection bar on the focused row, muted
-// details) so the provider tabs match the Azure Model without a bubbles list.
+// renderProfilePane hand-renders a PROFILES(n) pane for a slice of profiles
+// (selection bar on the focused row, muted details) without a bubbles list.
 // Rows lead with their active-identity icon (scopeSlot: ● green cwd pin, ●
 // orange parent pin, 🌐 global default); renamed profiles render their label
 // in the renamedStyle accent instead of a footnote legend. Segments are

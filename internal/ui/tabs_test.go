@@ -23,7 +23,7 @@ func (noViewProvider) Title() string { return "AcmeCloud" }
 // TestProviderTabsSkipsProviderWithoutView proves a provider missing a view is
 // skipped rather than appended as a nil-model tab (which would nil-panic).
 func TestProviderTabsSkipsProviderWithoutView(t *testing.T) {
-	views := map[string]tea.Model{"azure": NewModel()}
+	views := map[string]tea.Model{"azure": newAzureView()}
 	tabs := providerTabs([]provider.Provider{noViewProvider{}}, views)
 	if len(tabs) != 0 {
 		t.Fatalf("provider without a view should yield no tab, got %d", len(tabs))
@@ -145,22 +145,22 @@ func TestSwitchTabMsgPreselectsProfile(t *testing.T) {
 
 	// Jumping to Azure's "beta" (2nd, sorted after "acme") pre-selects it.
 	am, _ := tm.Update(switchTabMsg{provider: "azure", profile: "beta"})
-	av := am.(tabsModel).tabs[1].model.(Model)
-	if sel, _ := av.list.SelectedItem().(item); sel.name != "beta" {
-		t.Fatalf("azure cursor on %q, want beta", sel.name)
+	av := am.(tabsModel).tabs[1].model.(azureView)
+	if got := av.profiles[av.cursor].Name; got != "beta" {
+		t.Fatalf("azure cursor on %q, want beta", got)
 	}
 }
 
 func TestProviderTabsIgnoreDashboardMessages(t *testing.T) {
 	seedTabs(t)
 	// The provider views must ignore dashboard-only messages without panicking.
-	az, _ := NewModel().Update(dashboardTickMsg{})
-	if _, ok := az.(Model); !ok {
-		t.Fatal("Azure Model did not survive dashboardTickMsg")
+	az, _ := newAzureView().Update(dashboardTickMsg{})
+	if _, ok := az.(azureView); !ok {
+		t.Fatal("azureView did not survive dashboardTickMsg")
 	}
-	az2, _ := NewModel().Update(switchTabMsg{provider: "azure"})
-	if _, ok := az2.(Model); !ok {
-		t.Fatal("Azure Model did not survive switchTabMsg")
+	az2, _ := newAzureView().Update(switchTabMsg{provider: "azure"})
+	if _, ok := az2.(azureView); !ok {
+		t.Fatal("azureView did not survive switchTabMsg")
 	}
 	gh, _ := newGithubView().Update(dashboardTickMsg{})
 	if _, ok := gh.(githubView); !ok {
@@ -266,23 +266,23 @@ func TestTabsTabKeyCyclesTabs(t *testing.T) {
 	}
 }
 
-func TestTabsTabKeyForwardedWhileRenaming(t *testing.T) {
+func TestTabsTabKeyForwardedWhileNaming(t *testing.T) {
 	m := seedTabs(t)
-	// Move to the Azure tab and arm the rename text input ('n' on the profile).
+	// Move to the Azure tab and arm the new-profile text input ('n').
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	nm, _ = nm.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	tm := nm.(tabsModel)
-	if !tm.tabs[1].model.(Model).renaming {
-		t.Fatal("'n' did not arm the rename input")
+	if tm.tabs[1].model.(azureView).namingVerb == "" {
+		t.Fatal("'n' did not arm the name input")
 	}
-	// While renaming, tab/d must reach the text input, not the container.
+	// While naming, tab/d must reach the text input, not the container.
 	nm2, _ := tm.Update(tea.KeyMsg{Type: tea.KeyTab})
 	if nm2.(tabsModel).active != 1 {
-		t.Fatal("tab key switched tabs during rename")
+		t.Fatal("tab key switched tabs during naming")
 	}
 	nm3, _ := nm2.(tabsModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
 	if nm3.(tabsModel).picker != nil {
-		t.Fatal("'d' opened the dir picker during rename")
+		t.Fatal("'d' opened the dir picker during naming")
 	}
 }
 
