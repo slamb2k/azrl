@@ -325,6 +325,17 @@ func TestGhLoginNoLinkSkipsPin(t *testing.T) {
 	installFakeGhGit(t)
 	chdirClean(t)
 	pwd, _ := os.Getwd()
+	// Shared RootCmd flag (same leak resetAwsCaptureFlags guards against):
+	// Flags().Set writes through cobra's BoolVar binding to the closure var.
+	t.Cleanup(func() {
+		c, _, err := RootCmd.Find([]string{"gh", "login"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Flags().Set("no-link", "false"); err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	out := runRoot(t, "gh", "login", "neu", "--yes", "--no-link")
 	if !strings.Contains(out, `created profile "neu" (github.com)`) {
