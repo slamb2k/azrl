@@ -27,7 +27,7 @@ func validGhName(name string) error {
 
 func newGhLoginCmd() *cobra.Command {
 	var hostname string
-	var ghYes bool
+	var ghYes, ghNoLink bool
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a GitHub account (browser pops on your local machine)",
@@ -65,7 +65,7 @@ func newGhLoginCmd() *cobra.Command {
 				return err
 			}
 			pwd, _ := os.Getwd()
-			if created {
+			if created && !ghNoLink {
 				// Pin-on-create (all providers): creating = Sign in + Use here in
 				// one. Sign-in of an existing profile deliberately never pins.
 				if err := prov.Use(name, dir, pwd); err != nil {
@@ -82,6 +82,7 @@ func newGhLoginCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host (github.com, a *.ghe.com tenant, or a GHES hostname)")
 	c.Flags().BoolVarP(&ghYes, "yes", "y", false, "Create a missing profile without prompting.")
+	c.Flags().BoolVar(&ghNoLink, "no-link", false, "Create without claiming this directory (skip the .ghprofile pin).")
 	return c
 }
 

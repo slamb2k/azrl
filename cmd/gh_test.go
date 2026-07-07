@@ -316,3 +316,24 @@ func TestGhCapturePreservesExistingKeys(t *testing.T) {
 		t.Fatalf("recapture wiped existing keys:\n%s", out)
 	}
 }
+
+// TestGhLoginNoLinkSkipsPin proves created-but-no-link skips prov.Use: the
+// conf is written but no .ghprofile pin lands in pwd. Mirrors
+// TestGhLoginCreatesWithYes's seeding/shims.
+func TestGhLoginNoLinkSkipsPin(t *testing.T) {
+	home := seedGhHome(t)
+	installFakeGhGit(t)
+	chdirClean(t)
+	pwd, _ := os.Getwd()
+
+	out := runRoot(t, "gh", "login", "neu", "--yes", "--no-link")
+	if !strings.Contains(out, `created profile "neu" (github.com)`) {
+		t.Fatalf("missing created-profile announce:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".github-profiles", "neu.conf")); err != nil {
+		t.Fatalf("neu.conf not written: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(pwd, ".ghprofile")); !os.IsNotExist(statErr) {
+		t.Fatal("--no-link must not pin .ghprofile")
+	}
+}

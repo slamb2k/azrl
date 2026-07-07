@@ -61,8 +61,10 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 	return nil
 }
 
-// captureSession records the current az session as <name>.conf + .azprofile.
-func captureSession(name, pwd string, out io.Writer) error {
+// captureSession records the current az session as <name>.conf, and — when
+// link is true — pins the directory via .azprofile. Touch runs regardless: with
+// no pointer present it just records LAST_USED/LAST_DIR, not a mapping.
+func captureSession(name, pwd string, link bool, out io.Writer) error {
 	confPath := filepath.Join(config.ProfilesDir(), name+".conf")
 	if _, err := os.Stat(confPath); err == nil {
 		return fmt.Errorf("azrl: %s already exists — remove it first", confPath)
@@ -81,12 +83,18 @@ func captureSession(name, pwd string, out io.Writer) error {
 	if err := c.Write(confPath); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(pwd, ".azprofile"), []byte(name+"\n"), 0o644); err != nil {
-		return err
+	if link {
+		if err := os.WriteFile(filepath.Join(pwd, ".azprofile"), []byte(name+"\n"), 0o644); err != nil {
+			return err
+		}
 	}
 	if err := profile.AzureScheme().Touch(name, config.ProfilesDir(), pwd); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "azrl: wrote %s and %s/.azprofile\n", confPath, pwd)
+	if link {
+		fmt.Fprintf(out, "azrl: wrote %s and %s/.azprofile\n", confPath, pwd)
+	} else {
+		fmt.Fprintf(out, "azrl: wrote %s\n", confPath)
+	}
 	return nil
 }

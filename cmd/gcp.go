@@ -34,7 +34,7 @@ func gcpConfPath(dir, name string) string {
 
 func newGcpLoginCmd() *cobra.Command {
 	var configName, project, region string
-	var isolate, gcpYes bool
+	var isolate, gcpYes, gcpNoLink bool
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a Google Cloud account (browser pops on your local machine)",
@@ -106,7 +106,7 @@ func newGcpLoginCmd() *cobra.Command {
 				cmd.Println(warn)
 			}
 			pwd, _ := os.Getwd()
-			if created {
+			if created && !gcpNoLink {
 				// Pin-on-create (all providers): creating = Sign in + Use here in
 				// one. Sign-in of an existing profile deliberately never pins.
 				if err := prov.Use(name, dir, pwd); err != nil {
@@ -123,6 +123,7 @@ func newGcpLoginCmd() *cobra.Command {
 	c.Flags().StringVar(&region, "region", "", "Default compute region to bind")
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own CLOUDSDK_CONFIG dir")
 	c.Flags().BoolVarP(&gcpYes, "yes", "y", false, "Create a missing profile without prompting.")
+	c.Flags().BoolVar(&gcpNoLink, "no-link", false, "Create without claiming this directory (skip the .gcpprofile pin).")
 	return c
 }
 

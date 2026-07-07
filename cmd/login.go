@@ -15,6 +15,7 @@ import (
 
 var loginPaste bool
 var loginYes bool
+var loginNoLink bool
 
 // validAzureName guards a name typed at the azure first-login prompt: it rejects
 // an empty name and any name containing a path separator (azure profiles map to
@@ -66,7 +67,7 @@ var loginCmd = &cobra.Command{
 		if newProfile {
 			// First-login on a TTY with no saved profiles: create and sign in via
 			// the shared tenant-less create path (runAzureInit).
-			return runAzureInit(cmd, g, name, pwd, loginPaste)
+			return runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink)
 		}
 		conf, err := profile.LoadConf(name, config.ProfilesDir())
 		if err != nil {
@@ -75,7 +76,7 @@ var loginCmd = &cobra.Command{
 			if !confirmCreateProfile(cmd, "azrl", name, "tenant-less sign-in", loginYes) {
 				return fmt.Errorf("azrl: no profile %q — pass --yes to create it or run interactively", name)
 			}
-			return runAzureInit(cmd, g, name, pwd, loginPaste)
+			return runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink)
 		}
 		if conf.BrowserCmd != "" {
 			g.BrowserCmd = conf.BrowserCmd
@@ -125,5 +126,6 @@ func printSignedIn(out interface{ Write([]byte) (int, error) }, acct []byte) {
 func init() {
 	loginCmd.Flags().BoolVar(&loginPaste, "paste", false, "Force the manual paste-line path (A)")
 	loginCmd.Flags().BoolVarP(&loginYes, "yes", "y", false, "Create a missing profile without prompting.")
+	loginCmd.Flags().BoolVar(&loginNoLink, "no-link", false, "Create without claiming this directory (skip the .azprofile pin).")
 	RootCmd.AddCommand(loginCmd)
 }

@@ -385,3 +385,26 @@ func TestLoginProfileBrowserCmdOverridesGlobal(t *testing.T) {
 		t.Fatalf("global browser cmd leaked into the paste line:\n%s", out)
 	}
 }
+
+// TestLoginNoLinkSkipsPointer proves --no-link creates the profile (conf
+// written) without claiming the directory: no .azprofile is written in pwd.
+// Mirrors TestLoginUnknownNameYesCreates's seeding/shims.
+func TestLoginNoLinkSkipsPointer(t *testing.T) {
+	seedAzLoginEnv(t, nil)
+	t.Setenv("AZ_ACCT", acctJSON("contoso.com", "simon"))
+	home := os.Getenv("HOME")
+	chdirClean(t)
+	pwd, _ := os.Getwd()
+	t.Cleanup(func() { loginNoLink = false }) // shared RootCmd flag: don't leak into later tests
+
+	out, err := execRoot(t, "login", "newprof", "--yes", "--no-link")
+	if err != nil {
+		t.Fatalf("--no-link create-on-login should succeed: %v (out=%q)", err, out)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".azure-profiles", "newprof.conf")); statErr != nil {
+		t.Fatalf("azure profile conf not created via --no-link: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(pwd, ".azprofile")); !os.IsNotExist(statErr) {
+		t.Fatal("--no-link must not write .azprofile")
+	}
+}
