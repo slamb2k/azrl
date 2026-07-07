@@ -181,6 +181,31 @@ Bare `azrl` opens the tabbed TUI (below). `azrl status` prints the same
 three-section overview on the CLI; `--json` emits
 `{"mappings":[…],"ambient":[…],"unmapped":[…]}`.
 
+### Shell as a profile
+
+`azrl shell work` (also `azrl gh|aws|gcp shell <name>`, `ghrl shell <name>`) opens
+your `$SHELL` acting as that profile — no directory link is touched, and `exit`
+returns you to your normal identity. If the session is dead it signs you in
+first. Inside the subshell `AZRL_PROFILE` is set (e.g. `azure:work`) and the
+profile's browser mapping is exported as `AZRL_BROWSER_CMD`, so `git push` and
+`az login` inside the subshell open the right browser profile.
+
+Show it in your prompt:
+
+```sh
+# bash (.bashrc)
+PS1='${AZRL_PROFILE:+[$AZRL_PROFILE] }'"$PS1"
+# zsh (.zshrc)
+setopt PROMPT_SUBST; PROMPT='${AZRL_PROFILE:+[$AZRL_PROFILE] }'"$PROMPT"
+```
+
+```toml
+# starship.toml
+[env_var.AZRL_PROFILE]
+format = "[$env_value]($style) "
+style = "bold yellow"
+```
+
 ## Mapping a local browser profile
 
 `browser <name>` is available on every provider (`azrl browser`, `azrl gh
