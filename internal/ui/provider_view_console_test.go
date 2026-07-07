@@ -20,6 +20,7 @@ func TestConsoleActionListedAndDispatches(t *testing.T) {
 
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
 	av := nm.(awsView)
 	if !strings.Contains(av.View(), "Open console") {
 		t.Fatalf("c Open console missing from actions:\n%s", av.View())
