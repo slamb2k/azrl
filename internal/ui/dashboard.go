@@ -34,10 +34,13 @@ type dashboardTickMsg struct{}
 type fsEventMsg struct{}
 
 // switchTabMsg asks the tab container to jump to a provider's tab with a profile
-// pre-selected; emitted when the user presses Enter on a dashboard row.
+// pre-selected; emitted when the user presses Enter (action "") or an
+// accelerator key like `b` (action set) on a dashboard row — the container
+// dispatches action on the target tab after selecting the profile.
 type switchTabMsg struct {
 	provider string
 	profile  string
+	action   string
 }
 
 // dashboardModel is the landing view: MAPPINGS (directory→profile associations
@@ -288,7 +291,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "s", "t", "c", "u":
+		case "s", "t", "c", "u", "b":
 			if m.cursor < 0 || m.cursor >= len(m.items) {
 				return m, nil
 			}
@@ -304,6 +307,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, runShellHandoff(append(groupArgs(cliGroup(it.provider), "shell"), it.profile))
 			case "c":
 				return m, runHandoff(append(groupArgs(cliGroup(it.provider), "console"), it.profile))
+			case "b":
+				return m, func() tea.Msg {
+					return switchTabMsg{provider: it.provider, profile: it.profile, action: "b"}
+				}
 			case "u":
 				pwd, _ := os.Getwd()
 				for _, p := range m.providers {

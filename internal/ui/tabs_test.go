@@ -153,6 +153,30 @@ func TestSwitchTabMsgPreselectsProfile(t *testing.T) {
 	}
 }
 
+// TestSwitchTabMsgWithActionTriggersIt proves an accelerator action riding a
+// switchTabMsg runs against the newly-selected profile: the GitHub tab is
+// active, its browser-discovery flow is underway (status copy from
+// browserAction — see browserpicker.go), and the returned cmd is the
+// discovery command, non-nil so the container actually executes it.
+func TestSwitchTabMsgWithActionTriggersIt(t *testing.T) {
+	m := seedTabs(t)
+	nm, cmd := m.Update(switchTabMsg{provider: "github", profile: "work", action: "b"})
+	tm := nm.(tabsModel)
+	if tm.tabs[tm.active].title != "GitHub" {
+		t.Fatalf("should land on the GitHub tab, got %q", tm.tabs[tm.active].title)
+	}
+	if cmd == nil {
+		t.Fatal("dispatching action \"b\" should return the browser-discovery cmd, got nil")
+	}
+	gv := tm.tabs[tm.active].model.(githubView)
+	if gv.profiles[gv.cursor].Name != "work" {
+		t.Fatalf("cursor not on the routed profile: %+v", gv.profiles[gv.cursor])
+	}
+	if v := gv.View(); !strings.Contains(v, "looking for browser profiles on the local machine") {
+		t.Fatalf("expected browser-discovery status in view, got:\n%s", v)
+	}
+}
+
 func TestProviderTabsIgnoreDashboardMessages(t *testing.T) {
 	seedTabs(t)
 	// The provider views must ignore dashboard-only messages without panicking.

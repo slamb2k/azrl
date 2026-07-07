@@ -250,6 +250,12 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				break
 			}
 		}
+		// An accelerator action (e.g. "b" for browser profile) rides along: run it
+		// against the now-selected profile and return its cmd so async flows (like
+		// browser discovery) actually execute.
+		if msg.action != "" {
+			return v.dispatch(msg.action)
+		}
 	case tea.KeyMsg:
 		if v.confirming {
 			switch msg.String() {

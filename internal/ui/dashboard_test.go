@@ -514,10 +514,23 @@ func TestDashboardRowVerbsBuildHandoffs(t *testing.T) {
 	}
 }
 
+func TestDashboardBRoutesToTab(t *testing.T) {
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "github", profile: "oss"}}}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	if cmd == nil {
+		t.Fatal("b should emit a switchTabMsg")
+	}
+	msg := cmd()
+	sw, ok := msg.(switchTabMsg)
+	if !ok || sw.provider != "github" || sw.profile != "oss" || sw.action != "b" {
+		t.Fatalf("switchTabMsg = %+v", msg)
+	}
+}
+
 func TestDashboardRowVerbsExplainOnUnmanagedRow(t *testing.T) {
-	// An ambient row with no managed profile can't sign in/shell/console/link.
+	// An ambient row with no managed profile can't sign in/shell/console/link/browser.
 	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", adopt: true}}}
-	for _, key := range []string{"s", "t", "c", "u"} {
+	for _, key := range []string{"s", "t", "c", "u", "b"} {
 		mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 		m = mod.(dashboardModel)
 		if cmd != nil {
