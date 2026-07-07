@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/browserpick"
 	"github.com/slamb2k/azrl/internal/profile"
@@ -101,6 +102,7 @@ func providerActions(group string) []providerAction {
 // newProviderTabView builds the shared view for prov with the given action set,
 // loading the profile list up front.
 func newProviderTabView(prov provider.Provider, actions []providerAction) providerTabView {
+	zone.NewGlobal() // idempotent — defensive so tests constructing a view directly still have a manager.
 	v := providerTabView{prov: prov, actions: actions}
 	v.reload()
 	return v
@@ -241,6 +243,8 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		v.width, v.height = msg.Width, msg.Height
+	case tea.MouseMsg:
+		return v.handleMouse(msg)
 	case switchTabMsg:
 		// The dashboard jumped to this tab for a specific profile; move the cursor
 		// onto it so it's pre-selected. No-op when the profile isn't listed here.
@@ -439,6 +443,82 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			v.status = failureStyle.Render("✗ " + msg.err.Error())
 		} else if msg.msg != "" {
 			v.status = successStyle.Render("✓ " + msg.msg)
+		}
+	}
+	return v, nil
+}
+
+// handleMouse resolves a mouse event against the view's own zones: wheel
+// scrolls the profile cursor (clamped, never handing focus to the tab bar —
+// unlike ↑ at the top row), left-release hit-tests the profile and action row
+// zones marked in renderProfilePane/radio.view. While a sub-state owns input
+// (naming prompt, confirm dialog, browser picker) every mouse event is a
+// no-op — those overlays get their own zone handling separately.
+func (v providerTabView) handleMouse(msg tea.MouseMsg) (providerTabView, tea.Cmd) {
+	if v.capturesInput() {
+		return v, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		if v.cursor < len(v.profiles)-1 {
+			v.cursor++
+			v.clampAction()
+		}
+		return v, nil
+	case tea.MouseButtonWheelUp:
+		if v.cursor > 0 {
+			v.cursor--
+			v.clampAction()
+		}
+		return v, nil
+	}
+	if !leftRelease(msg) {
+		return v, nil
+	}
+	for _, p := range v.profiles {
+		if z := zone.Get("prof:" + p.Name); z != nil && z.InBounds(msg) {
+			return v.clickProfile(p.Name)
+		}
+	}
+	for _, a := range v.enabledActions() {
+		if z := zone.Get("act:" + a.key); z != nil && z.InBounds(msg) {
+			return v.clickAction(a.key)
+		}
+	}
+	return v, nil
+}
+
+// clickProfile handles a click on a profile row: selecting a different row
+// moves the cursor there; clicking the already-selected row is the same as
+// pressing enter on the profiles pane (focus moves to actions).
+func (v providerTabView) clickProfile(name string) (providerTabView, tea.Cmd) {
+	if v.selected() == name {
+		v.focus = focusActions
+		return v, nil
+	}
+	for i, p := range v.profiles {
+		if p.Name == name {
+			v.cursor = i
+			v.focus = focusProfiles
+			v.clampAction()
+			break
+		}
+	}
+	return v, nil
+}
+
+// clickAction handles a click on an action row — mirrors the accelerator-key
+// loop exactly: select the row, then run it if enabled, else surface its
+// disabled reason in the status line.
+func (v providerTabView) clickAction(key string) (providerTabView, tea.Cmd) {
+	for i, a := range v.enabledActions() {
+		if a.key == key {
+			v.actionCur = i
+			if !a.enabled {
+				v.status = mutedStyle.Render(a.hint)
+				return v, nil
+			}
+			return v.dispatch(a.key)
 		}
 	}
 	return v, nil
