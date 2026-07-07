@@ -34,7 +34,7 @@ func gcpConfPath(dir, name string) string {
 
 func newGcpLoginCmd() *cobra.Command {
 	var configName, project, region string
-	var isolate, gcpYes bool
+	var isolate, gcpYes, gcpNoLink bool
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a Google Cloud account (browser pops on your local machine)",
@@ -106,7 +106,7 @@ func newGcpLoginCmd() *cobra.Command {
 				cmd.Println(warn)
 			}
 			pwd, _ := os.Getwd()
-			if created {
+			if created && !gcpNoLink {
 				// Pin-on-create (all providers): creating = Sign in + Use here in
 				// one. Sign-in of an existing profile deliberately never pins.
 				if err := prov.Use(name, dir, pwd); err != nil {
@@ -123,6 +123,7 @@ func newGcpLoginCmd() *cobra.Command {
 	c.Flags().StringVar(&region, "region", "", "Default compute region to bind")
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own CLOUDSDK_CONFIG dir")
 	c.Flags().BoolVarP(&gcpYes, "yes", "y", false, "Create a missing profile without prompting.")
+	c.Flags().BoolVar(&gcpNoLink, "no-link", false, "Create without claiming this directory (skip the .gcpprofile pin).")
 	return c
 }
 
@@ -188,7 +189,9 @@ func newGcpUseCmd() *cobra.Command {
 }
 
 func newGcpRmCmd() *cobra.Command {
-	return &cobra.Command{
+	var unlinkAll bool
+	var replace string
+	c := &cobra.Command{
 		Use:   "rm <name>",
 		Short: "Remove a GCP profile and its isolated config dir",
 		Args:  cobra.ExactArgs(1),
@@ -198,8 +201,15 @@ func newGcpRmCmd() *cobra.Command {
 				return err
 			}
 			prov := gcp.NewProvider()
+			dir := prov.ProfilesDir()
+			if err := refuseIfLinked(prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
+			if err := unlinkOrReplace(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
 			pwd, _ := os.Getwd()
-			removed, err := prov.Remove(name, prov.ProfilesDir(), pwd)
+			removed, err := prov.Remove(name, dir, pwd)
 			if err != nil {
 				return err
 			}
@@ -209,6 +219,10 @@ func newGcpRmCmd() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&unlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
+	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
+	c.MarkFlagsMutuallyExclusive("unlink-all", "replace")
+	return c
 }
 
 func newGcpCaptureCmd() *cobra.Command {
@@ -316,6 +330,7 @@ func gcpSubcommands() []*cobra.Command {
 		newGcpRmCmd(), newGcpCaptureCmd(), newGcpStatusCmd(), newGcpBrowserCmd(),
 		newShellCmd("gcp", "Open a subshell acting as a GCP profile (no link)"),
 		newConsoleCmd("gcp", "Open the GCP console for a profile's project"),
+		newUnlinkCmd("gcp", "Remove this directory's GCP profile link (keeps the profile)"),
 	}
 }
 

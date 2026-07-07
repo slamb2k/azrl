@@ -27,7 +27,7 @@ func seedAzure(t *testing.T) azureView {
 func TestAzureViewRendersUnifiedActions(t *testing.T) {
 	v := seedAzure(t)
 	out := v.View()
-	for _, want := range []string{"Azure", "PROFILES (1)", "acme", "Renew", "Link here", "New profile", "Browser profile", "Remove"} {
+	for _, want := range []string{"Azure", "PROFILES (1)", "acme", "Renew", "New profile", "Assign browser…", "Delete…"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("azure view missing %q:\n%s", want, out)
 		}
@@ -42,7 +42,8 @@ func TestAzureViewRendersUnifiedActions(t *testing.T) {
 
 func TestAzureSignInHotkeyReturnsHandoff(t *testing.T) {
 	v := seedAzure(t)
-	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto acme
+	_, cmd := nm.(azureView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	if cmd == nil {
 		t.Fatal("'s' should return the login handoff command")
 	}
@@ -73,8 +74,8 @@ func TestAzureEmptyStateOffersOnboardingPair(t *testing.T) {
 	v := newAzureView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 34})
 	out := nm.(azureView).View()
-	if !strings.Contains(out, "ACTIONS (2)") || !strings.Contains(out, "Capture session") {
-		t.Fatalf("empty azure tab should offer the onboarding pair:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (1)") || !strings.Contains(out, "Capture session") || !strings.Contains(out, "＋ New profile…") {
+		t.Fatalf("empty azure tab should offer the pinned New profile row + Capture session:\n%s", out)
 	}
 }
 
@@ -121,7 +122,8 @@ func TestAzureEnvrcHotkeyNeedsProfile(t *testing.T) {
 func TestAzureBrowserActionOpensPickerAndWritesKeys(t *testing.T) {
 	v := seedAzure(t)
 	confPath := filepath.Join(os.Getenv("HOME"), ".azure-profiles", "acme.conf")
-	nm, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	nm0, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto acme
+	nm, cmd := nm0.(azureView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	av := nm.(azureView)
 	if av.browserFor != "acme" || cmd == nil {
 		t.Fatalf("'b' did not arm discovery (for=%q)", av.browserFor)

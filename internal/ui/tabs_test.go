@@ -141,14 +141,14 @@ func TestSwitchTabMsgPreselectsProfile(t *testing.T) {
 	// Jumping to GitHub's "work" (2nd, sorted after "play") moves its cursor there.
 	gm, _ := tm.Update(switchTabMsg{provider: "github", profile: "work"})
 	gv := gm.(tabsModel).tabs[2].model.(githubView)
-	if got := gv.profiles[gv.cursor].Name; got != "work" {
+	if got := gv.selected(); got != "work" {
 		t.Fatalf("github cursor on %q, want work", got)
 	}
 
 	// Jumping to Azure's "beta" (2nd, sorted after "acme") pre-selects it.
 	am, _ := tm.Update(switchTabMsg{provider: "azure", profile: "beta"})
 	av := am.(tabsModel).tabs[1].model.(azureView)
-	if got := av.profiles[av.cursor].Name; got != "beta" {
+	if got := av.selected(); got != "beta" {
 		t.Fatalf("azure cursor on %q, want beta", got)
 	}
 }
@@ -169,8 +169,8 @@ func TestSwitchTabMsgWithActionTriggersIt(t *testing.T) {
 		t.Fatal("dispatching action \"b\" should return the browser-discovery cmd, got nil")
 	}
 	gv := tm.tabs[tm.active].model.(githubView)
-	if gv.profiles[gv.cursor].Name != "work" {
-		t.Fatalf("cursor not on the routed profile: %+v", gv.profiles[gv.cursor])
+	if gv.selected() != "work" {
+		t.Fatalf("cursor not on the routed profile, selected=%q", gv.selected())
 	}
 	if v := gv.View(); !strings.Contains(v, "looking for browser profiles on the local machine") {
 		t.Fatalf("expected browser-discovery status in view, got:\n%s", v)
@@ -495,7 +495,7 @@ func TestHelpOverlayTogglesFromAnyTab(t *testing.T) {
 	if !tm.help {
 		t.Fatal("'?' did not open the help overlay")
 	}
-	if v := tm.View(); !strings.Contains(v, "KEYS") || !strings.Contains(v, "link here") || !strings.Contains(v, "shell as profile") || !strings.Contains(v, "open console") || !strings.Contains(v, "hold shift to select/copy terminal text") {
+	if v := tm.View(); !strings.Contains(v, "KEYS") || !strings.Contains(v, "link here") || !strings.Contains(v, "unlink (dashboard)") || !strings.Contains(v, "shell as profile") || !strings.Contains(v, "open console") || !strings.Contains(v, "hold shift to select/copy terminal text") {
 		t.Fatalf("help overlay content missing:\n%s", v)
 	}
 	// Any key closes it without leaking to the tab.

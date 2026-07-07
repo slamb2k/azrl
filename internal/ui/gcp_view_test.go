@@ -21,7 +21,7 @@ func TestGcpViewRendersProfilesAndActions(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	out := nm.(gcpView).View()
 
-	for _, want := range []string{"Google Cloud", "PROFILES", "work", "acme-prod", "Renew", "Link here", "New profile", "Remove"} {
+	for _, want := range []string{"Google Cloud", "PROFILES", "work", "acme-prod", "Renew", "New profile", "Delete…"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("GCP view missing %q:\n%s", want, out)
 		}

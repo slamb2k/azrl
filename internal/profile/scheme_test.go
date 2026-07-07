@@ -260,3 +260,94 @@ func TestSchemeTouchMappingBestEffort(t *testing.T) {
 		t.Fatalf("LAST_DIR = %q, want %q", dir, work)
 	}
 }
+
+func TestUnlinkRemovesCwdPointerAndMapping(t *testing.T) {
+	confdir := t.TempDir()
+	work := t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	s := AzureScheme()
+	if err := s.Use("acme", confdir, work); err != nil {
+		t.Fatal(err)
+	}
+	name, err := s.Unlink(confdir, work)
+	if err != nil || name != "acme" {
+		t.Fatalf("Unlink = %q, %v", name, err)
+	}
+	if _, err := os.Stat(filepath.Join(work, ".azprofile")); !os.IsNotExist(err) {
+		t.Fatal("pointer file should be gone")
+	}
+	for _, m := range ReadMappings(confdir) {
+		if m.Dir == work {
+			t.Fatalf("mapping row should be gone: %+v", m)
+		}
+	}
+}
+
+func TestUnlinkRefusesParentGovernedDir(t *testing.T) {
+	confdir := t.TempDir()
+	parent := t.TempDir()
+	child := filepath.Join(parent, "sub")
+	os.MkdirAll(child, 0o755)
+	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	s := AzureScheme()
+	if err := s.Use("acme", confdir, parent); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Unlink(confdir, child)
+	if err == nil || !strings.Contains(err.Error(), parent) || !strings.Contains(err.Error(), "run unlink there") {
+		t.Fatalf("parent-governed unlink must refuse naming the parent: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(parent, ".azprofile")); statErr != nil {
+		t.Fatal("the parent's pointer must be untouched")
+	}
+}
+
+func TestUnlinkNothingLinked(t *testing.T) {
+	if _, err := AzureScheme().Unlink(t.TempDir(), t.TempDir()); err == nil {
+		t.Fatal("unlink with nothing governing should error")
+	}
+}
+
+func TestLinkedDirsUnlinkAllAndReplace(t *testing.T) {
+	confdir := t.TempDir()
+	d1, d2 := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(confdir, "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	os.WriteFile(filepath.Join(confdir, "other.conf"), []byte("AZ_TENANT=other.com\n"), 0o644)
+	s := AzureScheme()
+	s.Use("acme", confdir, d1)
+	s.Use("acme", confdir, d2)
+
+	dirs := s.LinkedDirs(confdir, "acme")
+	if len(dirs) != 2 {
+		t.Fatalf("LinkedDirs = %v", dirs)
+	}
+
+	if _, err := s.ReplaceLinks(confdir, "acme", "missing"); err == nil {
+		t.Fatal("replace with a nonexistent profile must error")
+	}
+	if _, err := s.ReplaceLinks(confdir, "acme", "acme"); err == nil {
+		t.Fatal("replace with itself must error, not repoint links at a profile about to be deleted")
+	}
+	if got := s.LinkedDirs(confdir, "acme"); len(got) != 2 {
+		t.Fatalf("self-replace must not mutate links: %v", got)
+	}
+	if _, err := s.ReplaceLinks(confdir, "acme", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(d1, ".azprofile")); strings.TrimSpace(string(b)) != "other" {
+		t.Fatalf("d1 pointer not replaced: %q", b)
+	}
+	if got := s.LinkedDirs(confdir, "other"); len(got) != 2 {
+		t.Fatalf("mappings should follow the replace: %v", got)
+	}
+
+	if _, err := s.UnlinkAll(confdir, "other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(d2, ".azprofile")); !os.IsNotExist(err) {
+		t.Fatal("UnlinkAll should remove pointer files")
+	}
+	if got := s.LinkedDirs(confdir, "other"); len(got) != 0 {
+		t.Fatalf("mappings should be gone: %v", got)
+	}
+}

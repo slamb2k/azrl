@@ -26,7 +26,7 @@ func TestAwsViewRendersProfilesAndActions(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	out := nm.(awsView).View()
 
-	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Renew", "Link here", "New profile", "Remove"} {
+	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Renew", "New profile", "Delete…"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("AWS view missing %q:\n%s", want, out)
 		}
@@ -55,7 +55,8 @@ func TestProviderViewEnterOpensActionsEscReturns(t *testing.T) {
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
 	v := newAwsView()
-	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if nm.(awsView).focus != focusActions {
 		t.Fatal("enter on the profile pane did not open the action pane")
 	}
@@ -81,6 +82,7 @@ func TestProviderViewRemoveConfirms(t *testing.T) {
 
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
 	// delete arms the confirm — nothing is removed yet.
 	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDelete})
 	av := nm.(awsView)
@@ -107,9 +109,9 @@ func TestProviderViewRemoveConfirms(t *testing.T) {
 	if !strings.Contains(av.status, "removed") || len(av.profiles) != 0 {
 		t.Fatalf("'y' should remove (status=%q, %d profiles)", av.status, len(av.profiles))
 	}
-	// Removing the last profile shrinks 5 actions down to the 2 bootstrap
-	// verbs; actionCur (left at 4, Remove's index) must clamp into range or
-	// enter goes inert on the empty state.
+	// Removing the last profile shrinks 5 actions down to the 1 bootstrap
+	// verb (Capture); actionCur (left at Remove's index) must clamp into
+	// range or enter goes inert on the empty state.
 	if n := len(av.enabledActions()); av.actionCur >= n {
 		t.Fatalf("actionCur=%d not clamped to the %d empty-state actions", av.actionCur, n)
 	}
@@ -123,7 +125,8 @@ func TestProviderViewBrowserEscClearsStatus(t *testing.T) {
 	os.WriteFile(filepath.Join(ap, "work.conf"),
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
-	v := newAwsView()
+	nm0, _ := newAwsView().Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	v := nm0.(awsView)
 	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	av := nm.(awsView)
 	if av.status == "" {
@@ -162,7 +165,8 @@ func TestBrowserDiscoveryDroppedWhenConfirmArmedMeanwhile(t *testing.T) {
 	os.WriteFile(filepath.Join(ap, "work.conf"),
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
-	v := newAwsView()
+	nm0, _ := newAwsView().Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
+	v := nm0.(awsView)
 	// Kick off browser discovery, then — before it resolves — arm the confirm
 	// dialog (e.g. the user pressed delete during the SSH round-trip).
 	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
@@ -303,11 +307,11 @@ func TestEmptyProviderOffersOnboardingPair(t *testing.T) {
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
 	out := nm.(awsView).View()
-	if !strings.Contains(out, "ACTIONS (2)") ||
-		!strings.Contains(out, "New profile") || !strings.Contains(out, "Capture session") {
-		t.Fatalf("empty provider should offer New profile + Capture session:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (1)") ||
+		!strings.Contains(out, "＋ New profile…") || !strings.Contains(out, "Capture session") {
+		t.Fatalf("empty provider should show the pinned New profile row + a Capture session action:\n%s", out)
 	}
-	for _, hidden := range []string{"Renew", "Link here", "Remove"} {
+	for _, hidden := range []string{"Renew", "Delete…"} {
 		if strings.Contains(out, hidden) {
 			t.Fatalf("%q should not show with zero profiles:\n%s", hidden, out)
 		}
@@ -343,12 +347,14 @@ func TestCaptureAbsentFromNonEmptyActionList(t *testing.T) {
 	if strings.Contains(out, "Capture session") {
 		t.Fatalf("Capture is onboarding-contextual; it must not sit in the everyday list:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (7)") {
-		t.Fatalf("everyday action count should be 7:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (5)") {
+		t.Fatalf("everyday action count should be 5:\n%s", out)
 	}
 }
 
-func TestLinkHereDisabledWhenAlreadyLinked(t *testing.T) {
+// TestLinkHereAbsentFromTabs proves Link here has moved to the dashboard:
+// tabs no longer offer it, disabled or otherwise.
+func TestLinkHereAbsentFromTabs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	clearAmbientEnv(t)
@@ -364,20 +370,11 @@ func TestLinkHereDisabledWhenAlreadyLinked(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
 	av := nm.(awsView)
 	out := av.View()
-	// Never hidden: the verb stays listed, disabled, with its reason.
-	if !strings.Contains(out, "Link here") || !strings.Contains(out, "already linked here") {
-		t.Fatalf("Link here should render disabled with its reason:\n%s", out)
+	if strings.Contains(out, "Link here") || strings.Contains(out, "already linked here") {
+		t.Fatalf("Link here must not appear in the tab's everyday list:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (7)") {
-		t.Fatalf("action count must not drop when a verb is disabled:\n%s", out)
-	}
-	// The accelerator explains instead of running.
-	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
-	if cmd != nil {
-		t.Fatal("disabled accelerator must not run")
-	}
-	if !strings.Contains(nm.(awsView).status, "already linked here") {
-		t.Fatalf("disabled accelerator should surface the reason, got %q", nm.(awsView).status)
+	if !strings.Contains(out, "ACTIONS (5)") {
+		t.Fatalf("everyday action count should be 5:\n%s", out)
 	}
 }
 
@@ -393,6 +390,7 @@ func TestSignInVisibleWithLiveSessionHint(t *testing.T) {
 	v := newAwsView()
 	v.statuses["work"] = provider.Status{ProfileName: "work", Identity: "123/Admin"}
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 120, Height: 34})
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
 	av := nm.(awsView)
 	out := av.View()
 	if !strings.Contains(out, "Renew") || !strings.Contains(out, "re-auth anyway") {
@@ -438,6 +436,7 @@ func TestDetailsShowsLinkedDirs(t *testing.T) {
 
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 160, Height: 34})
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDown}) // off row 0 (＋ New profile…), onto the profile
 	out := nm.(awsView).View()
 	if !strings.Contains(out, "Linked") || !strings.Contains(out, "+ 1 more") {
 		t.Fatalf("DETAILS should list the linked dirs:\n%s", out)

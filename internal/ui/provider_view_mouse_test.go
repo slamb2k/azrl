@@ -3,7 +3,6 @@ package ui
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +46,8 @@ func TestWheelMovesProfileCursor(t *testing.T) {
 
 // TestWheelClampsAtEnds proves wheel-at-top/bottom clamps instead of wrapping
 // or handing focus to the tab bar (unlike the up/down keys at the top row).
+// Valid cursor range is [0..len(profiles)] (row 0 is the pinned new-profile
+// row), so the bottom clamp lands on len(profiles), not len(profiles)-1.
 func TestWheelClampsAtEnds(t *testing.T) {
 	v := twoProfileAwsView(t)
 	nv, cmd := v.providerTabView.update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
@@ -55,8 +56,9 @@ func TestWheelClampsAtEnds(t *testing.T) {
 	}
 	nv, _ = nv.update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
 	nv, _ = nv.update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
-	if nv.cursor != 1 {
-		t.Fatalf("wheel down at the bottom must clamp at len-1, got %d", nv.cursor)
+	nv, _ = nv.update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}) // one past the end — must still clamp
+	if nv.cursor != 2 {
+		t.Fatalf("wheel down at the bottom must clamp at len(profiles), got %d", nv.cursor)
 	}
 }
 
@@ -66,10 +68,14 @@ func TestWheelClampsAtEnds(t *testing.T) {
 // to actions).
 func TestClickProfileSelectsThenFocusesActions(t *testing.T) {
 	v := twoProfileAwsView(t)
-	if v.selected() != "acme" {
-		t.Fatalf("expected acme selected first alphabetically, got %q", v.selected())
+	if v.selected() != "" {
+		t.Fatalf("expected row 0 (＋ New profile…) selected by default, got %q", v.selected())
 	}
-	nv, cmd := v.providerTabView.clickProfile("work")
+	base, _ := v.providerTabView.clickProfile("acme")
+	if base.selected() != "acme" {
+		t.Fatalf("click should select acme, got %q", base.selected())
+	}
+	nv, cmd := base.clickProfile("work")
 	if cmd != nil {
 		t.Fatalf("selecting a different row should not return a command, got %v", cmd)
 	}
@@ -83,30 +89,17 @@ func TestClickProfileSelectsThenFocusesActions(t *testing.T) {
 	}
 }
 
-// TestClickDisabledActionExplains proves clicking a disabled action row
-// surfaces its reason in the status line instead of running.
-func TestClickDisabledActionExplains(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	clearAmbientEnv(t)
-	ap := filepath.Join(home, ".aws-profiles")
-	os.MkdirAll(ap, 0o755)
-	os.WriteFile(filepath.Join(ap, "work.conf"),
-		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
-	linked := t.TempDir()
-	os.WriteFile(filepath.Join(linked, ".awsprofile"), []byte("work\n"), 0o644)
-	t.Chdir(linked)
-
-	v := newAwsView()
-	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
-	av := nm.(awsView)
-
-	nv, cmd := av.providerTabView.clickAction("u") // Link here, disabled: already linked here
+// TestClickUnknownActionKeyIsNoop proves clicking a key with no matching row
+// (e.g. "u" — Link here lives on the dashboard now, not the tabs) is inert
+// rather than running or crashing.
+func TestClickUnknownActionKeyIsNoop(t *testing.T) {
+	v := twoProfileAwsView(t)
+	nv, cmd := v.providerTabView.clickAction("u")
 	if cmd != nil {
-		t.Fatalf("disabled action click must not run, got cmd %v", cmd)
+		t.Fatalf("unknown action key must not run, got cmd %v", cmd)
 	}
-	if !strings.Contains(nv.status, "already linked") {
-		t.Fatalf("disabled action click must surface its reason: %q", nv.status)
+	if nv.status != "" {
+		t.Fatalf("unknown action key must not set a status, got %q", nv.status)
 	}
 }
 
@@ -114,7 +107,8 @@ func TestClickDisabledActionExplains(t *testing.T) {
 // and runs it immediately — the accelerator loop's exact behavior.
 func TestClickEnabledActionRuns(t *testing.T) {
 	v := twoProfileAwsView(t)
-	nv, cmd := v.providerTabView.clickAction("s") // Sign in — always enabled
+	base, _ := v.providerTabView.clickProfile("acme") // row 0 has no runnable actions
+	nv, cmd := base.clickAction("s")                  // Sign in — always enabled once a profile is selected
 	if cmd == nil {
 		t.Fatal("enabled action click should return the handoff command")
 	}
@@ -137,7 +131,8 @@ func TestClickEnabledActionRuns(t *testing.T) {
 // no-ops while a sub-state (confirm dialog, naming prompt, ...) owns input.
 func TestMouseIgnoredWhileCapturingInput(t *testing.T) {
 	v := twoProfileAwsView(t)
-	nv, _ := v.providerTabView.update(tea.KeyMsg{Type: tea.KeyDelete}) // arms the confirm dialog
+	base, _ := v.providerTabView.clickProfile("acme")     // row 0 has no Delete to arm
+	nv, _ := base.update(tea.KeyMsg{Type: tea.KeyDelete}) // arms the confirm dialog
 	if !nv.confirming {
 		t.Fatal("delete should arm the confirm dialog")
 	}

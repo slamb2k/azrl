@@ -155,14 +155,27 @@ Prefer a dashboard? Run **`azrl`** with no arguments — see
 
 ## Usage
 
+**The model:** a **profile** is a container for tokens and intention — you
+sign into it once. A **link** is a per-directory pointer (`.azprofile`,
+`.ghprofile`, …) saying "this directory uses that profile." One profile can
+link many directories; a directory has at most one link (the closest one
+walking up the tree wins). Creating a profile and linking a directory to it
+are separate acts — `login <name>` does both by default, `login <name>
+--no-link` does only the first, and `use <name>` / `unlink` manage the link
+on its own, without touching the profile.
+
 ```bash
 azrl                       # launch the TUI (manage / select / sign in to profiles)
 azrl login [profile]       # sign in via the browser bridge (uses this dir's profile)
                            # login <name> also creates the profile on first use
                            # (Azure discovers the tenant); pass --yes to skip the prompt
+                           # pass --no-link to create without linking this directory
 azrl capture [name]        # record the CURRENT az session as conf + .azprofile
 azrl use <name>            # link this dir to an existing profile
+azrl unlink                # remove this dir's own link (keeps the profile)
 azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
+                           # refuses while other directories still link to it —
+                           # pass --unlink-all or --replace <other> first
 azrl list                  # list configured profiles and their tenants
 azrl status [--json]       # "who am I, everywhere?" — mappings / ambient / unmapped (disk-only)
 azrl browser <name>        # map the profile to a local Edge/Chrome browser profile
@@ -296,6 +309,11 @@ this one), the same green/orange ramp gains two more tiers plus a 🌐 row:
 | `⚠ drift` | your shell's ambient session differs from this directory's link |
 | `managed` / `unmanaged` | the ambient identity is / isn't held by any saved profile |
 
+Every provider tab's PROFILES pane opens with a pinned `＋ New profile…` row
+(select it and press `↵`, or press `n` from anywhere on the tab). Creating
+from there signs the new profile in **without linking any directory** — link
+it afterward with `u` on the dashboard, or `azrl use`.
+
 **Keys:**
 
 | Key | Action |
@@ -305,12 +323,15 @@ this one), the same green/orange ramp gains two more tiers plus a 🌐 row:
 | `↑`/`↓` | select a profile or action |
 | `↵` | run the selected action |
 | `esc` | back to the profile list |
-| `s` | Renew — sign the profile in again (visible even with a live session) |
-| `u` | Link here |
-| `n` | New profile |
-| `b` | Browser profile (async discovery + fuzzy overlay picker, manual-entry fallback) |
-| `delete` | Remove (confirm dialog) |
+| `s` | Renew — sign the profile in again, links unchanged (visible even with a live session) |
+| `t` | Shell as… — subshell as this profile, no link touched |
+| `c` | Open console — web console as this credential, no session mutation |
+| `n` | New profile — opens the naming prompt for the pinned `＋ New profile…` row (creates + signs in, no link) |
+| `b` | Assign browser… (async discovery + fuzzy overlay picker, manual-entry fallback) |
+| `delete` | Delete… (confirm dialog; a profile still linked elsewhere offers to unlink every link or repoint them at another profile first) |
 | `a` | Capture (empty-state onboarding) |
+| `u` | Link here (dashboard only — link the selected row's profile to the cwd) |
+| `U` | Unlink (dashboard only — remove the cwd's governing link; the profile is kept) |
 | `r` / `f5` | refresh |
 | `w` | recheck drift (dashboard) |
 | `?` | full-keymap overlay |
@@ -319,14 +340,16 @@ this one), the same green/orange ramp gains two more tiers plus a 🌐 row:
 | `o` | options · choose which provider tabs to show |
 | `q` / `ctrl+c` | quit |
 
-Every verb is always visible: an action that doesn't apply (e.g. *Link here* on the already-linked profile) renders dimmed with the reason, instead of disappearing.
+Every verb is always visible: an action that doesn't apply (e.g. *Renew* on a
+profile that's already signed in) renders dimmed with the reason, instead of
+disappearing.
 
 The TUI is also mouse-aware: click a row to select it, click again to run it
 (or open its actions); the scroll wheel moves the cursor; clicking outside an
 open popup (options, change-directory, browser picker) closes it. Dashboard
-rows take `s`/`t`/`c`/`u`/`b`/`a` directly, no need to switch tabs first. Hold
-Shift while dragging to select and copy terminal text as usual — azrl won't
-intercept it.
+rows take `s`/`t`/`c`/`u`/`b`/`U`/`a` directly, no need to switch tabs first.
+Hold Shift while dragging to select and copy terminal text as usual — azrl
+won't intercept it.
 
 Renew and New profile run the full interactive flow — browser bridge
 included — directly from the TUI; the tab picks up the result when the flow
@@ -340,11 +363,14 @@ signed in with the browser on your **local** machine.
 
 ```bash
 azrl gh login [name] [--hostname H]  # sign in (github.com, *.ghe.com, or a GHES host)
+                                      # --no-link creates without linking this repo
 azrl gh list                         # list GitHub profiles and their hosts
 azrl gh use <name>                   # pin this repo (.ghprofile) + wire git-HTTPS creds
+azrl gh unlink                       # remove this repo's own link (keeps the profile)
 azrl gh capture <name> [--hostname H]# record the currently signed-in gh session
 azrl gh status                       # show the ambient and repo-pinned accounts
 azrl gh rm <name>                    # remove a GitHub profile and its config dir
+                                      # refuses while linked; --unlink-all or --replace <other>
 azrl gh browser <name>                # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
 
@@ -383,11 +409,14 @@ gitignored `.awsprofile`.
 
 ```bash
 azrl aws login [name]   # sign in via `aws sso login` over the browser bridge
+                         # --no-link creates without linking this dir
 azrl aws list           # list AWS SSO profiles and their start URLs
 azrl aws use <name>     # pin this dir (.awsprofile) + write an .envrc
+azrl aws unlink         # remove this dir's own link (keeps the profile)
 azrl aws capture <name> # record the current SSO session as a profile
 azrl aws status         # disk-only "who am I?" from the SSO token cache
 azrl aws rm <name>      # remove an AWS profile
+                         # refuses while linked; --unlink-all or --replace <other>
 azrl aws browser <name> # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
 
@@ -409,11 +438,14 @@ pinned to a repo with a gitignored `.gcpprofile`.
 
 ```bash
 azrl gcp login [name]   # sign in via `gcloud auth login` over the browser bridge
+                         # --no-link creates without linking this dir
 azrl gcp list           # list GCP profiles and their projects
 azrl gcp use <name>     # pin this dir (.gcpprofile) + write an .envrc
+azrl gcp unlink         # remove this dir's own link (keeps the profile)
 azrl gcp capture <name> # record the current gcloud session as a profile
 azrl gcp status         # disk-only "who am I?" from the gcloud config dir
 azrl gcp rm <name>      # remove a GCP profile
+                         # refuses while linked; --unlink-all or --replace <other>
 azrl gcp browser <name> # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
 
@@ -463,16 +495,27 @@ deeper pins still win — see
   discovers the tenant on first login), then records the live session's tenant
   GUID, subscription, and user to `~/.azure-profiles/<name>.conf` plus a
   `.azprofile` in the current directory. Pass `--yes`/`-y` to create without the
-  confirmation prompt. (This replaces the removed `azrl init` command.)
+  confirmation prompt, or `--no-link` to create the profile without linking
+  this directory — sign in now, link it later with `use`. (This replaces the
+  removed `azrl init` command.)
   **Pin-on-create is uniform across providers**: `gh`/`aws`/`gcp` `login
   <new-name>` also pins the current directory (creation = sign in + use in
-  one), while logging into an *existing* profile never touches your pins.
+  one), while logging into an *existing* profile never touches your pins;
+  `--no-link` on any provider's `login <new-name>` skips that pin too.
 - **`azrl capture [name]`** — same recording step, but for a session you're
-  **already** signed into (no new login).
+  **already** signed into (no new login; capture always links, same as before).
 - **`azrl use <name>`** — links the current directory to an **existing** profile
   (validated `echo <name> > .azprofile`); no login, no new conf.
+- **`azrl unlink`** — removes only the current directory's own link, leaving
+  the profile (and its tokens) untouched. Refuses when the directory is
+  governed by a parent directory's link instead, naming that parent — links
+  are removed where they live.
 - **`azrl rm <name> [-y]`** — deletes the profile's `<name>.conf`, its token dir,
   and `$PWD/.azprofile` when it names `<name>`. Prompts unless you pass `-y`.
+  Refuses outright while any other directory still links to the profile,
+  unless you also pass `--unlink-all` (removes every link first) or
+  `--replace <other>` (repoints every linked directory at another existing
+  profile first) — the two flags are mutually exclusive.
 
 Names default to the sanitized current directory when omitted.
 

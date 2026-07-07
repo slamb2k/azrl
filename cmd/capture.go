@@ -18,7 +18,7 @@ var captureCmd = &cobra.Command{
 			arg = args[0]
 		}
 		name := profile.DefaultName(arg, pwd)
-		if err := captureSession(name, pwd, cmd.OutOrStdout()); err != nil {
+		if err := captureSession(name, pwd, true, cmd.OutOrStdout()); err != nil {
 			return err
 		}
 		offerEnvrc(pwd, cmd.OutOrStdout(), os.Stdin)

@@ -331,6 +331,32 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+		case "U":
+			if m.cursor < 0 || m.cursor >= len(m.items) {
+				return m, nil
+			}
+			if m.cursor >= len(m.ov.Mappings) {
+				m.status = mutedStyle.Render("no directory link on this row")
+				return m, nil
+			}
+			row := m.ov.Mappings[m.cursor]
+			if row.Scope != ScopeCwd {
+				m.status = mutedStyle.Render("links are removed where they live — run unlink in " + displayDir(row.Dir))
+				return m, nil
+			}
+			for _, p := range m.providers {
+				if p.Name() != row.Provider {
+					continue
+				}
+				if _, err := p.Scheme().Unlink(p.ProfilesDir(), row.Dir); err != nil {
+					m.status = failureStyle.Render("✗ " + err.Error())
+				} else {
+					m.status = successStyle.Render("✓ unlinked " + displayDir(row.Dir) + " (profile kept)")
+					m.reload()
+				}
+				return m, nil
+			}
+			return m, nil
 		case "enter":
 			if m.cursor >= 0 && m.cursor < len(m.items) {
 				it := m.items[m.cursor]
@@ -409,7 +435,7 @@ func (m dashboardModel) View() string {
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
 		"📁 "+displayDir(cwd), short)
 	help := keyHelpFit(m.width-4,
-		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/u/b", "act on row"},
+		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/u/b/⇧U", "act on row"},
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
 
 	var body []string

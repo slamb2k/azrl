@@ -34,7 +34,7 @@ func awsConfPath(dir, name string) string {
 
 func newAwsLoginCmd() *cobra.Command {
 	var startURL, region, accountID, roleName string
-	var isolate, device, awsYes bool
+	var isolate, device, awsYes, awsNoLink bool
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to an AWS account via SSO (browser pops on your local machine)",
@@ -99,7 +99,7 @@ func newAwsLoginCmd() *cobra.Command {
 				}
 			}
 			pwd, _ := os.Getwd()
-			if created {
+			if created && !awsNoLink {
 				// Pin-on-create (all providers): creating = Sign in + Use here in
 				// one. Sign-in of an existing profile deliberately never pins.
 				if err := prov.Use(name, dir, pwd); err != nil {
@@ -118,6 +118,7 @@ func newAwsLoginCmd() *cobra.Command {
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own config/credentials files")
 	c.Flags().BoolVar(&device, "use-device-code", false, "Use the device-code flow instead of the PKCE loopback")
 	c.Flags().BoolVarP(&awsYes, "yes", "y", false, "Create a missing profile without prompting.")
+	c.Flags().BoolVar(&awsNoLink, "no-link", false, "Create without claiming this directory (skip the .awsprofile pin).")
 	return c
 }
 
@@ -180,7 +181,9 @@ func newAwsUseCmd() *cobra.Command {
 }
 
 func newAwsRmCmd() *cobra.Command {
-	return &cobra.Command{
+	var unlinkAll bool
+	var replace string
+	c := &cobra.Command{
 		Use:   "rm <name>",
 		Short: "Remove an AWS profile and its isolated config dir",
 		Args:  cobra.ExactArgs(1),
@@ -190,8 +193,15 @@ func newAwsRmCmd() *cobra.Command {
 				return err
 			}
 			prov := aws.NewProvider()
+			dir := prov.ProfilesDir()
+			if err := refuseIfLinked(prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
+			if err := unlinkOrReplace(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
 			pwd, _ := os.Getwd()
-			removed, err := prov.Remove(name, prov.ProfilesDir(), pwd)
+			removed, err := prov.Remove(name, dir, pwd)
 			if err != nil {
 				return err
 			}
@@ -201,6 +211,10 @@ func newAwsRmCmd() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&unlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
+	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
+	c.MarkFlagsMutuallyExclusive("unlink-all", "replace")
+	return c
 }
 
 func newAwsCaptureCmd() *cobra.Command {
@@ -311,6 +325,7 @@ func awsSubcommands() []*cobra.Command {
 		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(), newAwsBrowserCmd(),
 		newShellCmd("aws", "Open a subshell acting as an AWS profile (no link)"),
 		newConsoleCmd("aws", "Open the AWS access portal for a profile"),
+		newUnlinkCmd("aws", "Remove this directory's AWS profile link (keeps the profile)"),
 	}
 }
 

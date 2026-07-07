@@ -27,7 +27,7 @@ func validGhName(name string) error {
 
 func newGhLoginCmd() *cobra.Command {
 	var hostname string
-	var ghYes bool
+	var ghYes, ghNoLink bool
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a GitHub account (browser pops on your local machine)",
@@ -65,7 +65,7 @@ func newGhLoginCmd() *cobra.Command {
 				return err
 			}
 			pwd, _ := os.Getwd()
-			if created {
+			if created && !ghNoLink {
 				// Pin-on-create (all providers): creating = Sign in + Use here in
 				// one. Sign-in of an existing profile deliberately never pins.
 				if err := prov.Use(name, dir, pwd); err != nil {
@@ -82,6 +82,7 @@ func newGhLoginCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host (github.com, a *.ghe.com tenant, or a GHES hostname)")
 	c.Flags().BoolVarP(&ghYes, "yes", "y", false, "Create a missing profile without prompting.")
+	c.Flags().BoolVar(&ghNoLink, "no-link", false, "Create without claiming this directory (skip the .ghprofile pin).")
 	return c
 }
 
@@ -148,7 +149,9 @@ func newGhSwitchStubCmd() *cobra.Command {
 }
 
 func newGhRmCmd() *cobra.Command {
-	return &cobra.Command{
+	var unlinkAll bool
+	var replace string
+	c := &cobra.Command{
 		Use:   "rm <name>",
 		Short: "Remove a GitHub profile and its isolated config dir",
 		Args:  cobra.ExactArgs(1),
@@ -158,8 +161,15 @@ func newGhRmCmd() *cobra.Command {
 				return err
 			}
 			prov := github.NewProvider()
+			dir := prov.ProfilesDir()
+			if err := refuseIfLinked(prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
+			if err := unlinkOrReplace(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
 			pwd, _ := os.Getwd()
-			removed, err := prov.Remove(name, prov.ProfilesDir(), pwd)
+			removed, err := prov.Remove(name, dir, pwd)
 			if err != nil {
 				return err
 			}
@@ -169,6 +179,10 @@ func newGhRmCmd() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&unlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
+	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
+	c.MarkFlagsMutuallyExclusive("unlink-all", "replace")
+	return c
 }
 
 func newGhCaptureCmd() *cobra.Command {
@@ -240,6 +254,7 @@ func githubSubcommands() []*cobra.Command {
 		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(), newGhBrowserCmd(),
 		newShellCmd("github", "Open a subshell acting as a GitHub profile (no link)"),
 		newConsoleCmd("github", "Open GitHub as a profile's account"),
+		newUnlinkCmd("github", "Remove this directory's GitHub profile link (keeps the profile)"),
 	}
 }
 

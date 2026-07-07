@@ -234,6 +234,80 @@ func readOrderedKV(path string) (map[string]string, []string, error) {
 	return m, order, nil
 }
 
+// Unlink removes the calling directory's own pointer file and its mapping
+// row, returning the profile it pointed at. It never reaches into parents:
+// a directory governed from above is refused with the governing path — links
+// are removed where they live.
+func (s Scheme) Unlink(confdir, pwd string) (string, error) {
+	ptr := filepath.Join(pwd, s.Pointer)
+	b, err := os.ReadFile(ptr)
+	if err != nil {
+		if pdir, ok := s.Locate(pwd); ok {
+			name, _ := s.Resolve("", pwd)
+			return "", fmt.Errorf("%s: this directory is governed by %s (profile %s) — run unlink there",
+				s.Prefix, filepath.Join(pdir, s.Pointer), name)
+		}
+		return "", fmt.Errorf("%s: nothing linked in %s", s.Prefix, pwd)
+	}
+	name := strings.TrimSpace(string(b))
+	if err := os.Remove(ptr); err != nil {
+		return "", err
+	}
+	_ = RemoveMapping(confdir, pwd, "pointer")
+	return name, nil
+}
+
+// LinkedDirs lists the directories whose pointer-sourced mappings name the
+// profile — the blast radius of deleting or re-signing it.
+func (s Scheme) LinkedDirs(confdir, name string) []string {
+	var dirs []string
+	for _, m := range s.ReadMappings(confdir) {
+		if m.Profile == name && m.Source == "pointer" {
+			dirs = append(dirs, m.Dir)
+		}
+	}
+	return dirs
+}
+
+// UnlinkAll removes every linked directory's pointer file and mapping row.
+// On a mid-loop error it returns only the dirs actually processed, so
+// callers don't report success for dirs left untouched.
+func (s Scheme) UnlinkAll(confdir, name string) ([]string, error) {
+	dirs := s.LinkedDirs(confdir, name)
+	var done []string
+	for _, d := range dirs {
+		if err := os.Remove(filepath.Join(d, s.Pointer)); err != nil && !os.IsNotExist(err) {
+			return done, err
+		}
+		_ = RemoveMapping(confdir, d, "pointer")
+		done = append(done, d)
+	}
+	return done, nil
+}
+
+// ReplaceLinks repoints every linked directory at another profile — an edge
+// rewrite only; provider-native extras (git credential setup, config sync)
+// happen on the next use/login as usual. On a mid-loop error it returns only
+// the dirs actually processed.
+func (s Scheme) ReplaceLinks(confdir, oldName, newName string) ([]string, error) {
+	if newName == oldName {
+		return nil, fmt.Errorf("%s: cannot replace links with the profile being removed", s.Prefix)
+	}
+	if _, err := os.Stat(filepath.Join(confdir, newName+".conf")); err != nil {
+		return nil, fmt.Errorf("%s: no such profile %q to replace links with", s.Prefix, newName)
+	}
+	dirs := s.LinkedDirs(confdir, oldName)
+	var done []string
+	for _, d := range dirs {
+		if err := os.WriteFile(filepath.Join(d, s.Pointer), []byte(newName+"\n"), 0o644); err != nil {
+			return done, err
+		}
+		_ = RecordMapping(confdir, Mapping{Dir: d, Profile: newName, Source: "pointer"})
+		done = append(done, d)
+	}
+	return done, nil
+}
+
 // writeAtomic writes body to path via a temp file + rename.
 func writeAtomic(path, body string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

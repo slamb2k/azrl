@@ -67,9 +67,13 @@ type providerTabView struct {
 	nameInput   textinput.Model
 	shellName   string // set from AZRL_PROFILE when its provider prefix matches this tab
 
-	confirming    bool
-	pendingDelete string
-	confirm       radio
+	confirming     bool
+	pendingDelete  string
+	confirm        radio
+	confirmKind    []string // one of "cancel"/"remove"/"unlink"/"replace" per v.confirm option, in order
+	linkedDirs     []string // dirs LinkedDirs found for pendingDelete when it was armed; nil for a link-free profile
+	replacePicking bool     // second-level picker: choosing which other profile to repoint linkedDirs at
+	replacePick    radio
 
 	// notice is an optional extra header line (e.g. Azure's drift warning);
 	// identityOverride, when set, replaces the dir-linked profile's disk
@@ -90,12 +94,11 @@ func providerActions(group string) []providerAction {
 	return []providerAction{
 		{key: "s", label: "Renew", hint: "sign in again — links unchanged", run: loginAction(group)},
 		{key: "t", label: "Shell as…", hint: "subshell as this profile — no link", run: shellAction},
-		{key: "u", label: "Link here", hint: "link this dir — no login", run: useAction},
-		{key: "n", label: "New profile", hint: "sign in + link this dir", run: newProfileAction, bootstrap: true},
+		{key: "n", label: "New profile", hint: "token container + sign-in — link it later", run: newProfileAction, bootstrap: true},
 		{key: "a", label: "Capture session", hint: "adopt current CLI session · links this dir", run: captureAction, bootstrap: true},
-		{key: "b", label: "Browser profile", hint: "map to a local browser profile", run: browserAction},
+		{key: "b", label: "Assign browser…", hint: "map to a local browser profile", run: browserAction},
 		{key: "c", label: "Open console", hint: "web console as this credential", run: consoleAction},
-		{key: "delete", label: "Remove…", hint: "delete profile", run: removeAction},
+		{key: "delete", label: "Delete…", hint: "delete profile", run: removeAction},
 	}
 }
 
@@ -147,7 +150,9 @@ func (v *providerTabView) reload() {
 			v.dirScope = ScopeCwd
 		}
 	}
-	if v.cursor >= len(v.profiles) {
+	// v.cursor ranges over [0..len(profiles)]: row 0 is the pinned "＋ New
+	// profile…" row, rows 1..n map to v.profiles[cursor-1].
+	if v.cursor > len(v.profiles) {
 		v.cursor = 0
 	}
 	v.shellName = ""
@@ -166,6 +171,11 @@ func (v providerTabView) enabledActions() []actionState {
 	if len(v.profiles) == 0 {
 		var out []actionState
 		for _, a := range v.actions {
+			if a.key == "n" {
+				// New profile is the PROFILES pane's pinned first row now, not a
+				// listed verb — even in the empty state.
+				continue
+			}
 			if a.bootstrap {
 				out = append(out, actionState{providerAction: a, enabled: true})
 			}
@@ -175,22 +185,20 @@ func (v providerTabView) enabledActions() []actionState {
 	sel := v.selected()
 	out := make([]actionState, 0, len(v.actions))
 	for _, a := range v.actions {
-		if a.key == "a" {
-			// Capture is onboarding-contextual: empty state + dashboard adopt only.
+		if a.key == "a" || a.key == "n" {
+			// Capture is onboarding-contextual (empty state + dashboard adopt
+			// only); New profile lives as the pinned first PROFILES row.
 			continue
 		}
 		st := actionState{providerAction: a, enabled: true}
-		switch a.key {
-		case "u":
-			if sel != "" && sel == v.dirProfile && v.dirScope == ScopeCwd {
-				st.enabled = false
-				st.hint = "already linked here"
-			}
-		case "s":
-			if sel != "" && sessionLive(v.statuses[sel]) {
-				// Still runnable — re-auth is idempotent — but say why it's optional.
-				st.hint = "session live · re-auth anyway"
-			}
+		switch {
+		case sel == "":
+			// Row 0 (＋ New profile…) is selected — nothing to act on.
+			st.enabled = false
+			st.hint = "select a profile first"
+		case a.key == "s" && sessionLive(v.statuses[sel]):
+			// Still runnable — re-auth is idempotent — but say why it's optional.
+			st.hint = "session live · re-auth anyway"
 		}
 		out = append(out, st)
 	}
@@ -250,7 +258,7 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 		// onto it so it's pre-selected. No-op when the profile isn't listed here.
 		for i, p := range v.profiles {
 			if p.Name == msg.profile {
-				v.cursor = i
+				v.cursor = i + 1
 				break
 			}
 		}
@@ -261,25 +269,40 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			return v.dispatch(msg.action)
 		}
 	case tea.KeyMsg:
+		if v.confirming && v.replacePicking {
+			switch msg.String() {
+			case "ctrl+c":
+				return v, tea.Quit
+			case "esc":
+				v.cancelConfirm()
+			case "up", "k", "left":
+				v.replacePick.up()
+			case "down", "j", "right":
+				v.replacePick.down()
+			case "enter":
+				return v.doReplace(v.replacePick.selected().label)
+			}
+			return v, nil
+		}
 		if v.confirming {
 			switch msg.String() {
 			case "ctrl+c":
 				return v, tea.Quit
 			case "esc", "n", "q":
-				v.confirming = false
-				v.pendingDelete = ""
+				v.cancelConfirm()
 			case "y":
+				// Fast path: link-free keeps the historical bare delete; a linked
+				// profile maps 'y' to unlink-all so it can't strand a pointer file.
+				if len(v.linkedDirs) > 0 {
+					return v.doUnlinkAndRemove()
+				}
 				return v.doRemove()
 			case "up", "k", "left":
 				v.confirm.up()
 			case "down", "j", "right":
 				v.confirm.down()
 			case "enter":
-				if v.confirm.cursor == 1 {
-					return v.doRemove()
-				}
-				v.confirming = false
-				v.pendingDelete = ""
+				return v.runConfirmSelection()
 			}
 			return v, nil
 		}
@@ -335,7 +358,9 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				if verb == "capture" {
 					return v, runHandoff(groupArgs(cliGroup(v.prov.Name()), "capture", name))
 				}
-				return v, runHandoff(groupArgs(cliGroup(v.prov.Name()), "login", name, "--yes"))
+				// Created from the pinned PROFILES row: sign in, but don't link
+				// this directory — link is a separate, explicit act now.
+				return v, runHandoff(groupArgs(cliGroup(v.prov.Name()), "login", name, "--yes", "--no-link"))
 			default:
 				var cmd tea.Cmd
 				v.nameInput, cmd = v.nameInput.Update(msg)
@@ -371,13 +396,17 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				if v.actionCur < len(v.enabledActions())-1 {
 					v.actionCur++
 				}
-			} else if v.cursor < len(v.profiles)-1 {
+			} else if v.cursor < len(v.profiles) {
 				v.cursor++
 				v.clampAction()
 			}
 		case "enter":
-			// Selecting a profile opens the action pane; enter there runs the action.
+			// Row 0 (＋ New profile…) opens the naming prompt directly; selecting a
+			// real profile opens the action pane instead, where enter runs the action.
 			if v.focus == focusProfiles {
+				if v.cursor == 0 {
+					return v.dispatch("n")
+				}
 				v.focus = focusActions
 			} else if acts := v.enabledActions(); v.actionCur < len(acts) {
 				a := acts[v.actionCur]
@@ -387,6 +416,10 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				}
 				return v.dispatch(a.key)
 			}
+		case "n":
+			// New profile always opens the naming prompt, from any row or focus —
+			// it no longer has a listed ACTIONS entry (row 0 is its permanent home).
+			return v.dispatch("n")
 		case "f5", "r":
 			v.reload()
 		default:
@@ -455,7 +488,7 @@ func (v providerTabView) handleMouse(msg tea.MouseMsg) (providerTabView, tea.Cmd
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelDown:
-		if v.cursor < len(v.profiles)-1 {
+		if v.cursor < len(v.profiles) {
 			v.cursor++
 			v.clampAction()
 		}
@@ -469,6 +502,9 @@ func (v providerTabView) handleMouse(msg tea.MouseMsg) (providerTabView, tea.Cmd
 	}
 	if !leftRelease(msg) {
 		return v, nil
+	}
+	if z := zone.Get("prof:+new"); z != nil && z.InBounds(msg) {
+		return v.clickNewRow()
 	}
 	for _, p := range v.profiles {
 		if z := zone.Get("prof:" + p.Name); z != nil && z.InBounds(msg) {
@@ -493,12 +529,25 @@ func (v providerTabView) clickProfile(name string) (providerTabView, tea.Cmd) {
 	}
 	for i, p := range v.profiles {
 		if p.Name == name {
-			v.cursor = i
+			v.cursor = i + 1
 			v.focus = focusProfiles
 			v.clampAction()
 			break
 		}
 	}
+	return v, nil
+}
+
+// clickNewRow handles a click on the synthetic "＋ New profile…" row: it has
+// no action pane to focus, so — unlike clickProfile — a second click on the
+// already-selected row opens the naming prompt directly instead.
+func (v providerTabView) clickNewRow() (providerTabView, tea.Cmd) {
+	if v.cursor == 0 {
+		return v.dispatch("n")
+	}
+	v.cursor = 0
+	v.focus = focusProfiles
+	v.clampAction()
 	return v, nil
 }
 
@@ -527,12 +576,13 @@ func (v providerTabView) selectAndRun(key string) (providerTabView, tea.Cmd) {
 	return v, nil
 }
 
-// selected returns the highlighted profile slug, or "".
+// selected returns the highlighted profile slug, or "" on row 0 (＋ New
+// profile…) or an out-of-range cursor.
 func (v providerTabView) selected() string {
-	if v.cursor < 0 || v.cursor >= len(v.profiles) {
+	if v.cursor <= 0 || v.cursor > len(v.profiles) {
 		return ""
 	}
-	return v.profiles[v.cursor].Name
+	return v.profiles[v.cursor-1].Name
 }
 
 // dispatch runs the action bound to key against the selected profile.
@@ -597,7 +647,7 @@ func namingPromptAction(verb string) func(v *providerTabView) tea.Cmd {
 }
 
 // newProfileAction opens the name prompt; confirming execs `login <name>
-// --yes`, whose create path signs in and links the current directory.
+// --yes --no-link`, whose create path signs in but leaves linking for later.
 func newProfileAction(v *providerTabView) tea.Cmd {
 	return namingPromptAction("login")(v)
 }
@@ -608,24 +658,6 @@ func newProfileAction(v *providerTabView) tea.Cmd {
 // only in the empty state (and via the dashboard's adopt flow).
 func captureAction(v *providerTabView) tea.Cmd {
 	return namingPromptAction("capture")(v)
-}
-
-// useAction links the current directory to the selected profile. Shared by all
-// providers.
-func useAction(v *providerTabView) tea.Cmd {
-	name := v.selected()
-	if name == "" {
-		v.status = mutedStyle.Render("no profile selected")
-		return nil
-	}
-	dir := v.prov.ProfilesDir()
-	pwd, _ := os.Getwd()
-	if err := v.prov.Use(name, dir, pwd); err != nil {
-		v.status = failureStyle.Render(err.Error())
-	} else {
-		v.status = successStyle.Render(fmt.Sprintf("linked this dir → %s", name))
-	}
-	return nil
 }
 
 // applyBrowserMapping writes the browser cmd/label keys for browserFor.
@@ -649,28 +681,107 @@ func (v *providerTabView) applyBrowserMapping(cmdVal, labelVal string) {
 }
 
 // removeAction arms the shared confirm dialog for the selected profile —
-// nothing is deleted until the user confirms.
+// nothing is deleted until the user confirms. A profile with linked dirs gets
+// a third option (besides Cancel) to unlink everywhere or repoint the links
+// at another profile before deleting; a link-free profile keeps the original
+// two-option Yes/No dialog untouched.
 func removeAction(v *providerTabView) tea.Cmd {
 	name := v.selected()
 	if name == "" {
 		v.status = mutedStyle.Render("no profile selected")
 		return nil
 	}
+	dir := v.prov.ProfilesDir()
 	v.confirming = true
 	v.pendingDelete = name
-	v.confirm = newRadio([]radioOption{
-		{label: "No, keep it"},
-		{label: "Yes, remove " + name},
-	})
+	v.replacePicking = false
+	v.linkedDirs = v.prov.Scheme().LinkedDirs(dir, name)
+	if len(v.linkedDirs) == 0 {
+		v.confirm = newRadio([]radioOption{
+			{label: "No, keep it"},
+			{label: "Yes, remove " + name},
+		})
+		v.confirmKind = []string{"cancel", "remove"}
+	} else {
+		otherProfiles := 0
+		for _, p := range v.profiles {
+			if p.Name != name {
+				otherProfiles++
+			}
+		}
+		unit := "dir"
+		if len(v.linkedDirs) != 1 {
+			unit = "dirs"
+		}
+		replaceOpt := radioOption{label: "Replace links with…"}
+		if otherProfiles == 0 {
+			replaceOpt.disabled = true
+			replaceOpt.hint = "no other profile to point them at"
+		}
+		v.confirm = newRadio([]radioOption{
+			{label: "Cancel"},
+			{label: fmt.Sprintf("Unlink %d %s + delete", len(v.linkedDirs), unit)},
+			replaceOpt,
+		})
+		v.confirmKind = []string{"cancel", "unlink", "replace"}
+	}
 	v.confirm.focused = true
 	return nil
+}
+
+// cancelConfirm closes the confirm dialog (and any nested replace picker)
+// without touching disk — the single exit used by esc/n/q at either level.
+func (v *providerTabView) cancelConfirm() {
+	v.confirming = false
+	v.replacePicking = false
+	v.pendingDelete = ""
+	v.linkedDirs = nil
+}
+
+// runConfirmSelection dispatches enter on the top-level confirm radio by the
+// semantic kind of the selected row (confirmKind), not its cursor index —
+// the option set differs between the 2-option and 3-option dialogs.
+func (v providerTabView) runConfirmSelection() (providerTabView, tea.Cmd) {
+	kind := "cancel"
+	if v.confirm.cursor < len(v.confirmKind) {
+		kind = v.confirmKind[v.confirm.cursor]
+	}
+	switch kind {
+	case "remove":
+		return v.doRemove()
+	case "unlink":
+		return v.doUnlinkAndRemove()
+	case "replace":
+		if v.confirm.selected().disabled {
+			v.status = mutedStyle.Render(v.confirm.selected().hint)
+			return v, nil
+		}
+		return v.openReplacePicker()
+	default:
+		v.cancelConfirm()
+		return v, nil
+	}
+}
+
+// openReplacePicker arms the second-level radio listing every other profile
+// as a repoint target.
+func (v providerTabView) openReplacePicker() (providerTabView, tea.Cmd) {
+	var opts []radioOption
+	for _, p := range v.profiles {
+		if p.Name != v.pendingDelete {
+			opts = append(opts, radioOption{label: p.Name})
+		}
+	}
+	v.replacePick = newRadio(opts)
+	v.replacePick.focused = true
+	v.replacePicking = true
+	return v, nil
 }
 
 // doRemove deletes the pending profile and reloads the list.
 func (v providerTabView) doRemove() (providerTabView, tea.Cmd) {
 	name := v.pendingDelete
-	v.confirming = false
-	v.pendingDelete = ""
+	v.cancelConfirm()
 	dir := v.prov.ProfilesDir()
 	pwd, _ := os.Getwd()
 	if _, err := v.prov.Remove(name, dir, pwd); err != nil {
@@ -681,6 +792,51 @@ func (v providerTabView) doRemove() (providerTabView, tea.Cmd) {
 		v.clampAction()
 	}
 	return v, nil
+}
+
+// doUnlinkAndRemove drops every linked dir's pointer + mapping row, then
+// deletes the profile itself.
+func (v providerTabView) doUnlinkAndRemove() (providerTabView, tea.Cmd) {
+	name := v.pendingDelete
+	dir := v.prov.ProfilesDir()
+	if _, err := v.prov.Scheme().UnlinkAll(dir, name); err != nil {
+		v.status = failureStyle.Render(err.Error())
+		v.cancelConfirm()
+		return v, nil
+	}
+	return v.doRemove()
+}
+
+// doReplace repoints every linked dir at newName, then deletes the original
+// profile — the dir governed by pwd (if any) now names newName, so
+// prov.Remove no longer finds it a target and leaves it alone.
+func (v providerTabView) doReplace(newName string) (providerTabView, tea.Cmd) {
+	name := v.pendingDelete
+	dir := v.prov.ProfilesDir()
+	if _, err := v.prov.Scheme().ReplaceLinks(dir, name, newName); err != nil {
+		v.status = failureStyle.Render(err.Error())
+		v.cancelConfirm()
+		return v, nil
+	}
+	return v.doRemove()
+}
+
+// formatDirList renders up to the first 3 dirs one per line, display-shortened,
+// plus a "+ n more" trailer when there are more.
+func formatDirList(dirs []string) string {
+	shown := dirs
+	if len(dirs) > 3 {
+		shown = dirs[:3]
+	}
+	lines := make([]string, len(shown))
+	for i, d := range shown {
+		lines[i] = "  " + displayDir(d)
+	}
+	text := strings.Join(lines, "\n")
+	if len(dirs) > 3 {
+		text += fmt.Sprintf("\n  + %d more", len(dirs)-3)
+	}
+	return text
 }
 
 // identityStrip is the standard provider header: icon + title, the current
@@ -730,8 +886,11 @@ func (v providerTabView) View() string {
 	}
 	r := radio{options: opts, cursor: v.actionCur, focused: v.focus == focusActions && !v.suspended}
 	info := mutedStyle.Render("(no profile selected)")
-	if v.cursor >= 0 && v.cursor < len(v.profiles) {
-		pr := v.profiles[v.cursor]
+	if v.cursor == 0 {
+		info = mutedStyle.Render(ansi.Wordwrap("A profile is a container for tokens and intention — sign in once, link it to any number of directories.", rightW, ""))
+	}
+	if v.cursor > 0 && v.cursor <= len(v.profiles) {
+		pr := v.profiles[v.cursor-1]
 		st := v.statuses[pr.Name]
 		note := ""
 		if st.Drifted {
@@ -753,7 +912,7 @@ func (v providerTabView) View() string {
 	}
 	actionsBody := r.view(rightW)
 	if v.namingVerb != "" {
-		prompt, confirmHint := "Name for the new profile:", "create + sign in + link"
+		prompt, confirmHint := "Name for the new profile:", "token container + sign-in — link it later"
 		if v.namingVerb == "capture" {
 			prompt, confirmHint = "Name for the captured profile:", "adopt session + link"
 		}
@@ -769,7 +928,16 @@ func (v providerTabView) View() string {
 	right := paneTitle("DETAILS", v.focus == focusActions) + "\n\n" +
 		info + "\n\n" + rule(rightW) + "\n" +
 		paneTitle(fmt.Sprintf("ACTIONS (%d)", len(acts)), v.focus == focusActions && !v.suspended) + "\n\n" + actionsBody
-	if v.confirming {
+	switch {
+	case v.replacePicking:
+		right = paneTitle("REPLACE WITH", true) + "\n\n" +
+			mutedStyle.Render(fmt.Sprintf("Repoint %d linked dir(s) at:", len(v.linkedDirs))) + "\n\n" +
+			v.replacePick.view(rightW)
+	case v.confirming && len(v.linkedDirs) > 0:
+		right = paneTitle("CONFIRM", true) + "\n\n" +
+			mutedStyle.Render("Linked in:\n"+formatDirList(v.linkedDirs)) + "\n\n" +
+			v.confirm.view(rightW)
+	case v.confirming:
 		right = paneTitle("CONFIRM", true) + "\n\n" +
 			mutedStyle.Render("Removes its conf, token dir,\nand this dir's "+v.prov.Scheme().Pointer+".") + "\n\n" +
 			v.confirm.view(rightW)
@@ -779,7 +947,12 @@ func (v providerTabView) View() string {
 	help := keyHelpFit(contentW,
 		[]string{"↑↓", "select", "↵", "open/run", "esc", "back"},
 		[]string{"q", "quit", "→", "details", "⇥", "tab", "d", "dir", "o", "options"})
-	if v.confirming {
+	switch {
+	case v.replacePicking:
+		help = keyHelp("↑↓", "choose", "↵", "confirm", "esc", "cancel")
+	case v.confirming && len(v.linkedDirs) > 0:
+		help = keyHelp("↑↓", "choose", "↵", "confirm", "y", "unlink+delete", "n/esc", "cancel")
+	case v.confirming:
 		help = keyHelp("↑↓", "choose", "↵", "confirm", "y", "yes", "n/esc", "cancel")
 	}
 	view := renderPaneFrame(v.width, v.height, v.identityStrip(), left, right, scopeLegend(leftW), v.status, help)
