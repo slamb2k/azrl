@@ -17,7 +17,7 @@ type opDoneMsg struct {
 	err error
 }
 
-// runWriteEnvrc pins the shell to this dir's profile by writing an .envrc.
+// runWriteEnvrc links the shell to this dir's profile by writing an .envrc.
 func runWriteEnvrc() tea.Cmd {
 	return func() tea.Msg {
 		pwd, _ := os.Getwd()

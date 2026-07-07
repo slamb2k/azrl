@@ -303,7 +303,7 @@ func TestDashboardHeaderShowsCwdAndHint(t *testing.T) {
 
 func TestDashboardHintPriorities(t *testing.T) {
 	// Empty overview → onboarding nudge in the chip, no notice line.
-	if short, notice := dashboardHints(Overview{}); !strings.Contains(short, "no directories pinned") || notice != "" {
+	if short, notice := dashboardHints(Overview{}); !strings.Contains(short, "no directories linked") || notice != "" {
 		t.Fatalf("empty hints = %q / %q", short, notice)
 	}
 	// An unmanaged mapping outranks the all-good message.
@@ -316,11 +316,11 @@ func TestDashboardHintPriorities(t *testing.T) {
 	ov.Mappings = append([]MappingRow{{Dir: "/y", Profile: "p", Drifted: true}}, ov.Mappings...)
 	ov.Ambient = []AmbientRow{{Provider: "", Identity: ""}}
 	short, notice := dashboardHints(ov)
-	if !strings.Contains(short, "drift") || strings.Contains(short, "pinned to") {
+	if !strings.Contains(short, "drift") || strings.Contains(short, "linked to") {
 		t.Fatalf("drift chip should stay compact: %q", short)
 	}
-	if !strings.Contains(notice, "the pin expects") {
-		t.Fatalf("drift notice should explain the pin side: %q", notice)
+	if !strings.Contains(notice, "the link expects") {
+		t.Fatalf("drift notice should explain the link side: %q", notice)
 	}
 }
 

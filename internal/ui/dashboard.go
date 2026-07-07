@@ -270,7 +270,7 @@ func (m dashboardModel) View() string {
 
 	body = append(body, paneTitleStyle.Render("MAPPINGS"))
 	if len(m.ov.Mappings) == 0 {
-		body = append(body, "  "+mutedStyle.Render("No mappings yet — pin a directory with `azrl use <name>`."))
+		body = append(body, "  "+mutedStyle.Render("No mappings yet — link a directory with `azrl use <name>`."))
 	} else {
 		dirW, tgtW := mappingWidths(m.ov.Mappings)
 		for _, r := range m.ov.Mappings {
@@ -501,10 +501,10 @@ func dashboardHints(ov Overview) (short, notice string) {
 					shell = a.Identity
 				}
 			}
-			side := mutedStyle.Render(" — the shell has no session; the pin expects ") + accentStyle.Render(r.Profile)
+			side := mutedStyle.Render(" — the shell has no session; the link expects ") + accentStyle.Render(r.Profile)
 			if shell != "" {
 				side = mutedStyle.Render(" — the shell would act as ") + accentStyle.Render(shell) +
-					mutedStyle.Render(" but this directory is pinned to ") + accentStyle.Render(r.Profile)
+					mutedStyle.Render(" but this directory is linked to ") + accentStyle.Render(r.Profile)
 			}
 			return failureStyle.Render("⚠ drift in " + shortDir(r.Dir)),
 				failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + side +
@@ -516,7 +516,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 	for _, r := range ov.Mappings {
 		if r.Scope != ScopeNone && expired(r.Expiry) {
 			return failureStyle.Render("⚠ " + r.Provider + ":" + r.Profile + " expired"),
-				accentStyle.Render(r.Provider+":"+r.Profile) + mutedStyle.Render(" is pinned here but its session has expired — ") +
+				accentStyle.Render(r.Provider+":"+r.Profile) + mutedStyle.Render(" is linked here but its session has expired — ") +
 					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
 		}
 	}
@@ -535,7 +535,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 		}
 	}
 	if len(ov.Mappings) == 0 {
-		return mutedStyle.Render("no directories pinned yet"), ""
+		return mutedStyle.Render("no directories linked yet"), ""
 	}
 	return mutedStyle.Render("all good · ") + keycap("↵") + mutedStyle.Render(" drills in · ") + keycap("d") + mutedStyle.Render(" changes dir"), ""
 }

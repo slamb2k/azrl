@@ -60,8 +60,8 @@ func justify(width int, left, mid, right string) string {
 		strings.Repeat(" ", rightStart-midStart-mw) + right
 }
 
-// effectiveIdentity renders the header's 👤 segment: the dir-pinned profile's
-// signed-in identity, the pinned profile's name with a not-signed-in note
+// effectiveIdentity renders the header's 👤 segment: the linked profile's
+// signed-in identity, the linked profile's name with a not-signed-in note
 // when its session is empty (capture is metadata-only — identity appears
 // after login), else the provider's ambient identity, else "".
 func effectiveIdentity(dirProfile, dirIdentity, ambient string) string {

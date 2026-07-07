@@ -105,7 +105,7 @@ func newProviderTabView(prov provider.Provider, actions []providerAction) provid
 }
 
 // reload refreshes the profile list and recomputes the row-icon inputs: which
-// saved profile the current directory resolves to (with its pin's scope) and
+// saved profile the current directory resolves to (with its link's scope) and
 // which one the provider's ambient identity matches (the global default).
 // Disk-only, mirroring the dashboard's aggregation.
 func (v *providerTabView) reload() {
@@ -445,8 +445,7 @@ func (v providerTabView) dispatch(key string) (providerTabView, tea.Cmd) {
 	return v, nil
 }
 
-// loginAction hands off to the provider's interactive `login` flow for the
-// selected profile (browser bridge included) — the recovery verb.
+// loginAction hands off to the provider's interactive login flow for the selected profile (browser bridge included) — the recovery verb.
 func loginAction(group string) func(v *providerTabView) tea.Cmd {
 	return func(v *providerTabView) tea.Cmd {
 		args := groupArgs(group, "login")
@@ -486,7 +485,7 @@ func captureAction(v *providerTabView) tea.Cmd {
 	return namingPromptAction("capture")(v)
 }
 
-// useAction pins the current directory to the selected profile. Shared by all
+// useAction links the current directory to the selected profile. Shared by all
 // providers.
 func useAction(v *providerTabView) tea.Cmd {
 	name := v.selected()
@@ -499,7 +498,7 @@ func useAction(v *providerTabView) tea.Cmd {
 	if err := v.prov.Use(name, dir, pwd); err != nil {
 		v.status = failureStyle.Render(err.Error())
 	} else {
-		v.status = successStyle.Render(fmt.Sprintf("pinned this dir to %q", name))
+		v.status = successStyle.Render(fmt.Sprintf("linked this dir → %s", name))
 	}
 	return nil
 }
