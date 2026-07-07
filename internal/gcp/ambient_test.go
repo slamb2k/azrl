@@ -111,3 +111,31 @@ func TestAmbientZeroOnMissingState(t *testing.T) {
 		t.Fatalf("missing configuration file: got %+v, want zero", a)
 	}
 }
+
+func TestCaptureDefaultsReadsActiveConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLOUDSDK_CONFIG", dir)
+	t.Setenv("CLOUDSDK_ACTIVE_CONFIG_NAME", "")
+	os.WriteFile(filepath.Join(dir, "active_config"), []byte("work\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "configurations"), 0o755)
+	os.WriteFile(filepath.Join(dir, "configurations", "config_work"), []byte(`[core]
+account = dev@example.com
+project = acme-prod
+
+[compute]
+region = australiaeast
+`), 0o644)
+
+	c := gcp.CaptureDefaults()
+	if c.ConfigName != "work" || c.Project != "acme-prod" || c.Region != "australiaeast" {
+		t.Fatalf("ambient config not derived: %+v", c)
+	}
+}
+
+func TestCaptureDefaultsZeroOnMissingState(t *testing.T) {
+	t.Setenv("CLOUDSDK_CONFIG", t.TempDir())
+	t.Setenv("CLOUDSDK_ACTIVE_CONFIG_NAME", "")
+	if c := gcp.CaptureDefaults(); c != (gcp.Conf{}) {
+		t.Fatalf("expected zero Conf, got %+v", c)
+	}
+}
