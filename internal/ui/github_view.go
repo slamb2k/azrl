@@ -6,19 +6,11 @@ import (
 	"github.com/slamb2k/azrl/internal/github"
 )
 
-// githubView is the GitHub provider tab.
+// githubView is the GitHub provider tab — the shared view with the gh CLI group.
 type githubView struct{ providerTabView }
 
 func newGithubView() githubView {
-	header := paneTitleStyle.Render("GitHub") + mutedStyle.Render(" — github.com · *.ghe.com · GHES")
-	actions := []providerAction{
-		{key: "s", label: "Sign in", hint: "session only — no pin", run: loginAction("gh")},
-		{key: "u", label: "Use here", hint: "pin only — no login", run: useAction},
-		{key: "a", label: "New profile", hint: "sign in + pin here", run: newProfileAction},
-		{key: "b", label: "Browser profile", hint: "map to a local browser profile", run: browserAction},
-		{key: "delete", label: "Remove", hint: "delete profile", run: removeAction},
-	}
-	return githubView{newProviderTabView(github.NewProvider(), header, actions)}
+	return githubView{newProviderTabView(github.NewProvider(), providerActions("gh"))}
 }
 
 func (v githubView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

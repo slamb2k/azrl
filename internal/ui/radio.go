@@ -8,9 +8,10 @@ import (
 
 // radioOption is one selectable row in a radio group.
 type radioOption struct {
-	label string // human-facing action name
-	key   string // single-rune hotkey accelerator (e.g. "l"); empty for none
-	hint  string // short trailing note shown muted (optional)
+	label    string // human-facing action name
+	key      string // single-rune hotkey accelerator (e.g. "l"); empty for none
+	hint     string // short trailing note shown muted (optional)
+	disabled bool   // rendered dim; the hint carries the reason it can't apply
 }
 
 // radio is a vertical single-select control rendered with ◉/○ markers.
@@ -71,9 +72,17 @@ func (r radio) view(width int) string {
 			cap = c + strings.Repeat(" ", capW-lipgloss.Width(c))
 		}
 		labelStyle := lipgloss.NewStyle().Foreground(white)
+		if o.disabled {
+			labelStyle = mutedStyle
+		}
 		if i == r.cursor && r.focused {
-			// Selection shows only while this (deepest) level holds focus.
+			// Selection shows only while this (deepest) level holds focus; a
+			// disabled row under the cursor takes the dim parent shade so it
+			// reads as "selected, but not runnable".
 			labelStyle = selBlockActive
+			if o.disabled {
+				labelStyle = selBlockParent
+			}
 		}
 		sep := " "
 		if capW > 0 {

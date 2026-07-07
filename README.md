@@ -234,18 +234,28 @@ It's **live**: besides polling, it watches each provider's token cache *and*
 native config dir via fsnotify, so it updates the moment you sign in — or
 `gh auth switch` — with any CLI outside azrl.
 
-**What the marks mean:**
+**What the marks mean, on a provider tab (Azure/GitHub/AWS/Google Cloud):**
 
 | Mark | Meaning |
 |---|---|
-| ● green | pinned to the current directory — effective here |
-| ● orange | inherited from a parent directory's pin |
-| 🌐 | the provider's global default (its ambient identity matches this profile) |
-| ● dark-white | mapped to some other directory — real, just not relevant here |
-| ● grey | mapped nowhere |
+| ● green | linked to the current directory — effective here |
+| ● orange | inherited from a parent directory's link |
+| `⌁ default` | trailing tag: the provider's global default (its ambient identity matches this profile) |
+| *(no mark)* | linked elsewhere or mapped nowhere — not relevant to this directory |
 | **bold** name | the profile that would be used right now (closest scope wins) |
 | *italic* name | renamed — display label differs from the profile slug |
-| `⚠ drift` | your shell's ambient session differs from this directory's pin |
+
+**On the Dashboard**, which lists every mapping across every directory (not just
+this one), the same green/orange ramp gains two more tiers plus a 🌐 row:
+
+| Mark | Meaning |
+|---|---|
+| ● green | linked to the current directory — effective here |
+| ● orange | inherited from a parent directory's link |
+| ● dark-white | mapped to some other directory — real, just not relevant here |
+| ● grey | mapped nowhere |
+| 🌐 | the provider's global default (its ambient identity matches this profile) |
+| `⚠ drift` | your shell's ambient session differs from this directory's link |
 | `managed` / `unmanaged` | the ambient identity is / isn't held by any saved profile |
 
 **Keys:**
@@ -255,16 +265,23 @@ native config dir via fsnotify, so it updates the moment you sign in — or
 | `⇥`/`⇧⇥` (or `[`/`]`) | switch tabs · `↑` at the top of a list focuses the tab bar (`←`/`→` to pick, `↓` to return) |
 | `→`/`←` | focus the DETAILS pane / back to profiles |
 | `↑`/`↓` | select a profile or action |
-| `↵` | open the detail pane · run the selected action |
+| `↵` | run the selected action |
 | `esc` | back to the profile list |
-| `d` | change directory (fuzzy finder) — the whole app follows |
-| `b` | map the selected profile to a local browser profile (overlay picker, falls back to manual entry) |
-| `o` | options — choose which provider tabs to show (saved to `azrl.conf`; default Azure + GitHub) |
-| `Delete` / `F5` | remove profile / refresh |
-| `a` | adopt an unmanaged identity into a new profile (dashboard) |
+| `s` | Sign in (visible even with a live session) |
+| `u` | Link here |
+| `n` | New profile |
+| `b` | Browser profile (async discovery + fuzzy overlay picker, manual-entry fallback) |
+| `delete` | Remove (confirm dialog) |
+| `a` | Capture (empty-state onboarding) |
+| `r` / `f5` | refresh |
 | `w` | recheck drift (dashboard) |
-| `e` | write `.envrc` to pin the shell (Azure tab) |
+| `?` | full-keymap overlay |
+| `d` | change directory (fuzzy finder) |
+| `e` | write `.envrc` (Azure) |
+| `o` | options · choose which provider tabs to show |
 | `q` / `ctrl+c` | quit |
+
+Every verb is always visible: an action that doesn't apply (e.g. *Link here* on the already-linked profile) renders dimmed with the reason, instead of disappearing.
 
 Sign in and New profile run the full interactive flow — browser bridge
 included — directly from the TUI; the tab picks up the result when the flow

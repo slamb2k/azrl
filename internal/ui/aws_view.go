@@ -6,20 +6,11 @@ import (
 	"github.com/slamb2k/azrl/internal/aws"
 )
 
-// awsView is the AWS provider tab. AWS has no active-profile file (only a cwd pin
-// plus the ambient AWS_PROFILE), so there is no Switch action.
+// awsView is the AWS provider tab — the shared view with the aws CLI group.
 type awsView struct{ providerTabView }
 
 func newAwsView() awsView {
-	header := paneTitleStyle.Render("AWS") + mutedStyle.Render(" — IAM Identity Center · SSO")
-	actions := []providerAction{
-		{key: "s", label: "Sign in", hint: "session only — no pin", run: loginAction("aws")},
-		{key: "u", label: "Use here", hint: "pin only — no login", run: useAction},
-		{key: "a", label: "New profile", hint: "sign in + pin here", run: newProfileAction},
-		{key: "b", label: "Browser profile", hint: "map to a local browser profile", run: browserAction},
-		{key: "delete", label: "Remove", hint: "delete profile", run: removeAction},
-	}
-	return awsView{newProviderTabView(aws.NewProvider(), header, actions)}
+	return awsView{newProviderTabView(aws.NewProvider(), providerActions("aws"))}
 }
 
 func (v awsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

@@ -60,8 +60,8 @@ func justify(width int, left, mid, right string) string {
 		strings.Repeat(" ", rightStart-midStart-mw) + right
 }
 
-// effectiveIdentity renders the header's 👤 segment: the dir-pinned profile's
-// signed-in identity, the pinned profile's name with a not-signed-in note
+// effectiveIdentity renders the header's 👤 segment: the linked profile's
+// signed-in identity, the linked profile's name with a not-signed-in note
 // when its session is empty (capture is metadata-only — identity appears
 // after login), else the provider's ambient identity, else "".
 func effectiveIdentity(dirProfile, dirIdentity, ambient string) string {
@@ -78,8 +78,8 @@ func effectiveIdentity(dirProfile, dirIdentity, ambient string) string {
 
 // profileInfoBlock renders the top of the DETAILS pane for one profile: a
 // key/value sheet with a fixed key column — the conf detail plus the
-// disk-only status (identity, expiry, last-used).
-func profileInfoBlock(pr profile.Listed, st provider.Status, browser, driftNote string, w int) string {
+// disk-only status (identity, linked dirs, expiry, last-used).
+func profileInfoBlock(pr profile.Listed, st provider.Status, browser, linked, driftNote string, w int) string {
 	row := func(k, v string) string {
 		if v == "" {
 			v = mutedStyle.Render("—")
@@ -91,6 +91,7 @@ func profileInfoBlock(pr profile.Listed, st provider.Status, browser, driftNote 
 		row("Identity", st.Identity),
 		row("Detail", pr.Detail),
 		row("Browser", browser),
+		row("Linked", linked),
 		row("Expiry", expiryWord(st.Expiry)),
 		row("Last used", lastUsedWord(st.LastUsed)),
 	}
@@ -143,18 +144,13 @@ const (
 
 // scopeLegend is the one-line-per-tier key rendered under the profiles list
 // (centered), decoding the relevance icons.
+// scopeLegend decodes the row marks, centered under the profiles list: two
+// relevance dots plus the default tag.
 func scopeLegend(w int) string {
-	rows := []string{
-		successStyle.Render("●") + mutedStyle.Render(" this dir   ") +
-			lipgloss.NewStyle().Foreground(goldDeep).Render("●") + mutedStyle.Render(" parent dir"),
-		"🌐" + mutedStyle.Render(" default    ") +
-			lipgloss.NewStyle().Foreground(whiteDim).Render("●") + mutedStyle.Render(" elsewhere  ") +
-			lipgloss.NewStyle().Foreground(grayDeep).Render("●") + mutedStyle.Render(" unmapped"),
-	}
-	for i, r := range rows {
-		rows[i] = lipgloss.PlaceHorizontal(w, lipgloss.Center, truncateLine(r, w))
-	}
-	return strings.Join(rows, "\n")
+	row := successStyle.Render("●") + mutedStyle.Render(" this dir   ") +
+		lipgloss.NewStyle().Foreground(goldDeep).Render("●") + mutedStyle.Render(" parent dir   ") +
+		mutedStyle.Render("⌁ default")
+	return lipgloss.PlaceHorizontal(w, lipgloss.Center, truncateLine(row, w))
 }
 
 // overlayCenter splices box over the middle of bg (a full-width rendered

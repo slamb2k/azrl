@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/slamb2k/azrl/internal/browserpick"
 	"github.com/slamb2k/azrl/internal/profile"
@@ -25,7 +26,7 @@ func TestAwsViewRendersProfilesAndActions(t *testing.T) {
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	out := nm.(awsView).View()
 
-	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Sign in", "Use here", "New profile", "Remove"} {
+	for _, want := range []string{"AWS", "PROFILES", "work", "acme.awsapps.com", "Sign in", "Link here", "New profile", "Remove"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("AWS view missing %q:\n%s", want, out)
 		}
@@ -70,7 +71,7 @@ func TestProviderViewEnterOpensActionsEscReturns(t *testing.T) {
 	}
 }
 
-func TestProviderViewDeleteKeyRemoves(t *testing.T) {
+func TestProviderViewRemoveConfirms(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	ap := filepath.Join(home, ".aws-profiles")
@@ -79,13 +80,38 @@ func TestProviderViewDeleteKeyRemoves(t *testing.T) {
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
 	v := newAwsView()
-	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyDelete})
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	// delete arms the confirm — nothing is removed yet.
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyDelete})
 	av := nm.(awsView)
-	if !strings.Contains(av.status, "removed") {
-		t.Fatalf("delete key did not remove the profile: %q", av.status)
+	if !av.confirming || av.pendingDelete != "work" {
+		t.Fatalf("delete should arm the confirm (confirming=%v pending=%q)", av.confirming, av.pendingDelete)
 	}
-	if len(av.profiles) != 0 {
-		t.Fatalf("profile list not reloaded after remove: %+v", av.profiles)
+	out := av.View()
+	if !strings.Contains(out, "CONFIRM") || !strings.Contains(out, "work") || !strings.Contains(out, ".awsprofile") {
+		t.Fatalf("confirm pane should name the profile and its pointer file:\n%s", out)
+	}
+	if len(av.profiles) != 1 {
+		t.Fatal("arming the confirm must not delete")
+	}
+	// 'n' cancels.
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	av = nm.(awsView)
+	if av.confirming || len(av.profiles) != 1 {
+		t.Fatal("'n' should cancel without deleting")
+	}
+	// delete + 'y' removes.
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyDelete})
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	av = nm.(awsView)
+	if !strings.Contains(av.status, "removed") || len(av.profiles) != 0 {
+		t.Fatalf("'y' should remove (status=%q, %d profiles)", av.status, len(av.profiles))
+	}
+	// Removing the last profile shrinks 5 actions down to the 2 bootstrap
+	// verbs; actionCur (left at 4, Remove's index) must clamp into range or
+	// enter goes inert on the empty state.
+	if n := len(av.enabledActions()); av.actionCur >= n {
+		t.Fatalf("actionCur=%d not clamped to the %d empty-state actions", av.actionCur, n)
 	}
 }
 
@@ -127,24 +153,102 @@ func TestProviderViewBrowserEscClearsStatus(t *testing.T) {
 	}
 }
 
-func TestRenderProfilePaneScopeGlyphs(t *testing.T) {
+func TestBrowserDiscoveryDroppedWhenConfirmArmedMeanwhile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+
+	v := newAwsView()
+	// Kick off browser discovery, then — before it resolves — arm the confirm
+	// dialog (e.g. the user pressed delete during the SSH round-trip).
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	av := nm.(awsView)
+	if av.browserFor != "work" {
+		t.Fatalf("expected browser discovery armed for work, got %q", av.browserFor)
+	}
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyDelete})
+	av = nm.(awsView)
+	if !av.confirming || av.pendingDelete != "work" {
+		t.Fatalf("delete should arm the confirm while discovery is in flight (confirming=%v pending=%q)", av.confirming, av.pendingDelete)
+	}
+
+	// The stale discovery result now lands.
+	nm, _ = av.Update(browserProfilesMsg{forProfile: "work", profiles: []browserpick.Profile{
+		{Browser: "edge", OS: "linux", Dir: "Profile 2", Name: "Work", Email: "simon@acme.com"},
+	}})
+	av = nm.(awsView)
+	if av.browserPick != nil || av.browserManual {
+		t.Fatalf("late browser discovery must not open the picker over an armed confirm (pick=%v manual=%v)", av.browserPick != nil, av.browserManual)
+	}
+	if !av.confirming || av.pendingDelete != "work" {
+		t.Fatalf("the confirm dialog must survive the late discovery message (confirming=%v pending=%q)", av.confirming, av.pendingDelete)
+	}
+	// 'y' still removes — the confirm state wasn't corrupted.
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	av = nm.(awsView)
+	if !strings.Contains(av.status, "removed") || len(av.profiles) != 0 {
+		t.Fatalf("'y' should still remove work (status=%q, %d profiles)", av.status, len(av.profiles))
+	}
+}
+
+func TestRenderProfilePaneScopeMarks(t *testing.T) {
 	profiles := []profile.Listed{
 		{Name: "work", Detail: "acme.awsapps.com"},
 		{Name: "staging", Detail: "acme.awsapps.com"},
 		{Name: "personal", Detail: "personal.awsapps.com"},
 		{Name: "idle", Detail: "idle.awsapps.com"},
 	}
-	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal, "idle": scopeElsewhere}
-	out := renderProfilePane(profiles, 0, selActive, true, 40, scopes)
+	scopes := map[string]string{"work": ScopeCwd, "staging": ScopeAncestor, "personal": scopeGlobal}
+	out := renderProfilePane(profiles, 0, selActive, true, 44, scopes)
+	// Linked-here and linked-via-parent carry the dot.
 	if !strings.Contains(out, "●  work") || !strings.Contains(out, "●  staging") {
-		t.Fatalf("dir-pinned profiles missing leading ● icon:\n%s", out)
+		t.Fatalf("linked profiles missing leading ● icon:\n%s", out)
 	}
-	// Only the global default carries 🌐; not-applicable rows get a grey ●.
-	if !strings.Contains(out, "🌐 personal") {
-		t.Fatalf("global-default profile missing 🌐 icon:\n%s", out)
+	// The ambient default is a tag, not a scope glyph.
+	if !strings.Contains(out, "personal") || !strings.Contains(out, "⌁ default") || strings.Contains(out, "🌐") {
+		t.Fatalf("default should render as a trailing tag, never 🌐:\n%s", out)
 	}
-	if !strings.Contains(out, "●  idle") || strings.Contains(out, "🌐 idle") {
-		t.Fatalf("mapped-elsewhere profile should carry the ● icon:\n%s", out)
+	// Everything else gets a calm empty slot — no grey dots.
+	if strings.Contains(out, "●  idle") || strings.Contains(out, "●  personal") {
+		t.Fatalf("non-linked rows must not carry a dot:\n%s", out)
+	}
+	if !strings.Contains(out, "   idle") {
+		t.Fatalf("non-linked row should keep the aligned empty slot:\n%s", out)
+	}
+}
+
+func TestRenderProfilePaneDefaultTagStaysWithinLeftWidth(t *testing.T) {
+	profiles := []profile.Listed{
+		{Name: "a-very-long-profile-name-that-would-overflow", Detail: "acme.awsapps.com"},
+	}
+	scopes := map[string]string{"a-very-long-profile-name-that-would-overflow": scopeGlobal}
+	const leftW = 18 // the narrowest pane paneDims ever hands out
+	out := renderProfilePane(profiles, 0, selActive, true, leftW, scopes)
+	for _, line := range strings.Split(out, "\n") {
+		if w := lipgloss.Width(line); w > leftW {
+			t.Fatalf("tagged row exceeds leftW (%d > %d): %q", w, leftW, line)
+		}
+	}
+	if !strings.Contains(out, "⌁ default") {
+		t.Fatalf("expected the default tag to still render:\n%s", out)
+	}
+}
+
+func TestScopeLegendIsTwoDotsAndATag(t *testing.T) {
+	l := scopeLegend(60)
+	for _, want := range []string{"this dir", "parent dir", "⌁ default"} {
+		if !strings.Contains(l, want) {
+			t.Fatalf("legend missing %q: %q", want, l)
+		}
+	}
+	for _, gone := range []string{"elsewhere", "unmapped", "🌐"} {
+		if strings.Contains(l, gone) {
+			t.Fatalf("legend still shows retired tier %q: %q", gone, l)
+		}
 	}
 }
 
@@ -158,35 +262,6 @@ func TestGroupArgs(t *testing.T) {
 	}
 }
 
-func TestUseHereHiddenWhenSelectedProfilePinsCwd(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	clearAmbientEnv(t)
-	ap := filepath.Join(home, ".aws-profiles")
-	os.MkdirAll(ap, 0o755)
-	os.WriteFile(filepath.Join(ap, "work.conf"),
-		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
-	pinned := t.TempDir()
-	os.WriteFile(filepath.Join(pinned, ".awsprofile"), []byte("work\n"), 0o644)
-	t.Chdir(pinned)
-
-	v := newAwsView()
-	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
-	av := nm.(awsView)
-	out := av.View()
-	if strings.Contains(out, "Use here") {
-		t.Fatalf("Use here should be hidden for the cwd-pinned selection:\n%s", out)
-	}
-	if !strings.Contains(out, "ACTIONS (4)") {
-		t.Fatalf("action count should drop to 4:\n%s", out)
-	}
-	// The 'u' accelerator is inert for this selection.
-	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
-	if cmd != nil || nm.(awsView).status != "" {
-		t.Fatalf("hidden accelerator must be inert (status=%q)", nm.(awsView).status)
-	}
-}
-
 func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -197,10 +272,10 @@ func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
 	v := newAwsView()
-	nm, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	nm, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	av := nm.(awsView)
-	if !av.naming || cmd != nil {
-		t.Fatalf("'a' should open the name prompt (naming=%v)", av.naming)
+	if av.namingVerb == "" || cmd != nil {
+		t.Fatalf("'n' should open the name prompt (namingVerb=%q)", av.namingVerb)
 	}
 	for _, r := range "fresh" {
 		nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
@@ -208,18 +283,52 @@ func TestNewProfilePromptsForNameThenExecsCreate(t *testing.T) {
 	}
 	nm, cmd = av.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	av = nm.(awsView)
-	if av.naming || cmd == nil {
-		t.Fatalf("enter should close the prompt and exec the create login (naming=%v cmd=%v)", av.naming, cmd)
+	if av.namingVerb != "" || cmd == nil {
+		t.Fatalf("enter should close the prompt and exec the create login (namingVerb=%q cmd=%v)", av.namingVerb, cmd)
 	}
 	// esc cancels a fresh prompt without exec.
-	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	nm, _ = av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	nm, cmd = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if nm.(awsView).naming || cmd != nil {
+	if nm.(awsView).namingVerb != "" || cmd != nil {
 		t.Fatal("esc should cancel the prompt without exec")
 	}
 }
 
-func TestSignInHiddenWhenSessionLive(t *testing.T) {
+func TestEmptyProviderOffersOnboardingPair(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	os.MkdirAll(filepath.Join(home, ".aws-profiles"), 0o755)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	out := nm.(awsView).View()
+	if !strings.Contains(out, "ACTIONS (2)") ||
+		!strings.Contains(out, "New profile") || !strings.Contains(out, "Capture session") {
+		t.Fatalf("empty provider should offer New profile + Capture session:\n%s", out)
+	}
+	for _, hidden := range []string{"Sign in", "Link here", "Remove"} {
+		if strings.Contains(out, hidden) {
+			t.Fatalf("%q should not show with zero profiles:\n%s", hidden, out)
+		}
+	}
+	// 'a' opens the capture name prompt with an adopt-flavored confirm hint.
+	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	av := nm.(awsView)
+	if av.namingVerb != "capture" {
+		t.Fatalf("'a' should open the capture prompt, namingVerb=%q", av.namingVerb)
+	}
+	if !strings.Contains(av.View(), "adopt session + link") {
+		t.Fatalf("capture prompt missing its confirm hint:\n%s", av.View())
+	}
+	// enter with the placeholder name execs the capture handoff.
+	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if nm.(awsView).namingVerb != "" || cmd == nil {
+		t.Fatal("enter should close the prompt and exec the capture handoff")
+	}
+}
+
+func TestCaptureAbsentFromNonEmptyActionList(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	clearAmbientEnv(t)
@@ -229,39 +338,108 @@ func TestSignInHiddenWhenSessionLive(t *testing.T) {
 		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
 
 	v := newAwsView()
-	// Inject a live session for the selected profile (disk-only fixtures for
-	// the SSO cache are heavyweight; the predicate is what matters here).
-	v.statuses["work"] = provider.Status{ProfileName: "work", Identity: "123/Admin"}
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
 	out := nm.(awsView).View()
-	if strings.Contains(out, "Sign in") {
-		t.Fatalf("Sign in should hide for a live session:\n%s", out)
+	if strings.Contains(out, "Capture session") {
+		t.Fatalf("Capture is onboarding-contextual; it must not sit in the everyday list:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTIONS (4)") {
-		t.Fatalf("action count should drop to 4:\n%s", out)
+	if !strings.Contains(out, "ACTIONS (5)") {
+		t.Fatalf("everyday action count should be 5:\n%s", out)
 	}
 }
 
-func TestEmptyProviderShowsOnlyBootstrapAction(t *testing.T) {
+func TestLinkHereDisabledWhenAlreadyLinked(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	clearAmbientEnv(t)
-	os.MkdirAll(filepath.Join(home, ".aws-profiles"), 0o755)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+	linked := t.TempDir()
+	os.WriteFile(filepath.Join(linked, ".awsprofile"), []byte("work\n"), 0o644)
+	t.Chdir(linked)
 
 	v := newAwsView()
 	nm, _ := v.Update(tea.WindowSizeMsg{Width: 110, Height: 34})
+	av := nm.(awsView)
+	out := av.View()
+	// Never hidden: the verb stays listed, disabled, with its reason.
+	if !strings.Contains(out, "Link here") || !strings.Contains(out, "already linked here") {
+		t.Fatalf("Link here should render disabled with its reason:\n%s", out)
+	}
+	if !strings.Contains(out, "ACTIONS (5)") {
+		t.Fatalf("action count must not drop when a verb is disabled:\n%s", out)
+	}
+	// The accelerator explains instead of running.
+	nm, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if cmd != nil {
+		t.Fatal("disabled accelerator must not run")
+	}
+	if !strings.Contains(nm.(awsView).status, "already linked here") {
+		t.Fatalf("disabled accelerator should surface the reason, got %q", nm.(awsView).status)
+	}
+}
+
+func TestSignInVisibleWithLiveSessionHint(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+
+	v := newAwsView()
+	v.statuses["work"] = provider.Status{ProfileName: "work", Identity: "123/Admin"}
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 120, Height: 34})
+	av := nm.(awsView)
+	out := av.View()
+	if !strings.Contains(out, "Sign in") || !strings.Contains(out, "re-auth anyway") {
+		t.Fatalf("Sign in must stay visible for a live session, with the swapped hint:\n%s", out)
+	}
+	// Still runnable — re-auth is idempotent.
+	_, cmd := av.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if cmd == nil {
+		t.Fatal("Sign in on a live session must still return the handoff command")
+	}
+}
+
+func TestRefreshKeysReload(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+
+	v := newAwsView()
+	os.WriteFile(filepath.Join(ap, "late.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+	nm, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if len(nm.(awsView).profiles) != 1 {
+		t.Fatal("'r' did not reload the profile list")
+	}
+}
+
+func TestDetailsShowsLinkedDirs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	clearAmbientEnv(t)
+	ap := filepath.Join(home, ".aws-profiles")
+	os.MkdirAll(ap, 0o755)
+	os.WriteFile(filepath.Join(ap, "work.conf"),
+		[]byte("AWS_SSO_START_URL=https://acme.awsapps.com/start\n"), 0o644)
+	// Two linked dirs, each with a live pointer so ReadMappings keeps them.
+	d1, d2 := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(d1, ".awsprofile"), []byte("work\n"), 0o644)
+	os.WriteFile(filepath.Join(d2, ".awsprofile"), []byte("work\n"), 0o644)
+	os.WriteFile(filepath.Join(ap, "mappings"),
+		[]byte(d1+"\twork\tpointer\n"+d2+"\twork\tpointer\n"), 0o644)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 160, Height: 34})
 	out := nm.(awsView).View()
-	if !strings.Contains(out, "ACTIONS (1)") || !strings.Contains(out, "New profile") {
-		t.Fatalf("empty provider should offer exactly New profile:\n%s", out)
-	}
-	for _, hidden := range []string{"Sign in", "Use here", "Remove"} {
-		if strings.Contains(out, hidden) {
-			t.Fatalf("%q should hide with zero profiles:\n%s", hidden, out)
-		}
-	}
-	// The bootstrap action works: 'a' opens the name prompt.
-	nm, _ = nm.(awsView).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	if !nm.(awsView).naming {
-		t.Fatal("'a' should open the new-profile prompt on an empty provider")
+	if !strings.Contains(out, "Linked") || !strings.Contains(out, "+ 1 more") {
+		t.Fatalf("DETAILS should list the linked dirs:\n%s", out)
 	}
 }

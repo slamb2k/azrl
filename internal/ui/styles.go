@@ -78,32 +78,24 @@ func keycap(key string) string { return keycapChipStyle.Render(" " + keyGlyph(ke
 // replacing the old "*" footnote legend.
 var renamedStyle = lipgloss.NewStyle().Foreground(whiteDim).Italic(true)
 
-// scopeGlobal and scopeElsewhere extend the overview's Scope values for
-// profile rows: the provider's global default (ambient identity match), and a
-// profile mapped to some directory that doesn't govern this one.
-const (
-	scopeGlobal    = "global"
-	scopeElsewhere = "elsewhere"
-)
+// scopeGlobal extends the overview's Scope values for profile rows: the
+// provider's global default (ambient identity match). It renders as a
+// trailing "⌁ default" tag, never as a scope glyph — the icon slot means
+// exactly one thing: relevance to this directory.
+const scopeGlobal = "global"
 
 // scopeSlot renders a profile row's leading icon as a fixed-width slot so
-// names align regardless of glyph (🌐 is double-width). Relevance grades the
-// colour: ● green when a pin in the current dir makes the profile effective,
-// ● orange when the pin is inherited from a parent dir, 🌐 only for the
-// provider's global default, ● dark-white for identities mapped elsewhere
-// (irrelevant here), and ● deep-grey for profiles mapped nowhere at all.
+// names align. ● green: a link in the current dir makes this profile
+// effective. ● orange: the link is inherited from a parent dir. Everything
+// else gets an empty slot — no marker means not in play here.
 func scopeSlot(scope string) string {
 	switch scope {
 	case ScopeCwd:
 		return successStyle.Render("●") + "  "
 	case ScopeAncestor:
 		return lipgloss.NewStyle().Foreground(goldDeep).Render("●") + "  "
-	case scopeGlobal:
-		return "🌐 "
-	case scopeElsewhere:
-		return lipgloss.NewStyle().Foreground(whiteDim).Render("●") + "  "
 	}
-	return lipgloss.NewStyle().Foreground(grayDeep).Render("●") + "  "
+	return "   "
 }
 
 // keyHelp renders alternating key/label pairs as keycap chips with muted
