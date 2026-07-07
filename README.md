@@ -234,17 +234,27 @@ It's **live**: besides polling, it watches each provider's token cache *and*
 native config dir via fsnotify, so it updates the moment you sign in — or
 `gh auth switch` — with any CLI outside azrl.
 
-**What the marks mean:**
+**What the marks mean, on a provider tab (Azure/GitHub/AWS/Google Cloud):**
 
 | Mark | Meaning |
 |---|---|
 | ● green | linked to the current directory — effective here |
 | ● orange | inherited from a parent directory's link |
-| 🌐 | the provider's global default (its ambient identity matches this profile) |
-| ● dark-white | mapped to some other directory — real, just not relevant here |
-| ● grey | mapped nowhere |
+| `⌁ default` | trailing tag: the provider's global default (its ambient identity matches this profile) |
+| *(no mark)* | linked elsewhere or mapped nowhere — not relevant to this directory |
 | **bold** name | the profile that would be used right now (closest scope wins) |
 | *italic* name | renamed — display label differs from the profile slug |
+
+**On the Dashboard**, which lists every mapping across every directory (not just
+this one), the same green/orange ramp gains two more tiers plus a 🌐 row:
+
+| Mark | Meaning |
+|---|---|
+| ● green | linked to the current directory — effective here |
+| ● orange | inherited from a parent directory's link |
+| ● dark-white | mapped to some other directory — real, just not relevant here |
+| ● grey | mapped nowhere |
+| 🌐 | the provider's global default (its ambient identity matches this profile) |
 | `⚠ drift` | your shell's ambient session differs from this directory's link |
 | `managed` / `unmanaged` | the ambient identity is / isn't held by any saved profile |
 
