@@ -211,8 +211,11 @@ func TestStatusCmdMappingExpiry(t *testing.T) {
 
 	statusJSON = false
 	out := runRoot(t, "status")
-	if !strings.Contains(out, "azure:acme") || !strings.Contains(out, "expired") {
-		t.Fatalf("plain mapping row missing expired note:\n%s", out)
+	if !strings.Contains(out, "azure:acme") {
+		t.Fatalf("mapping row missing:\n%s", out)
+	}
+	if strings.Contains(out, "expired") {
+		t.Fatalf("azure mapping must not carry the expired note (AWS-only guidance):\n%s", out)
 	}
 
 	out = runRoot(t, "status", "--json")

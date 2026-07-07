@@ -413,8 +413,13 @@ func mappingLine(r MappingRow, dirW, tgtW int) string {
 	if r.Drifted {
 		line += "  " + failureStyle.Render("⚠ drift")
 	}
-	if expired(r.Expiry) {
-		line += "  " + failureStyle.Render("⚠ expired")
+	if ExpiryActionable(r.Provider) {
+		switch {
+		case expired(r.Expiry):
+			line += "  " + failureStyle.Render("⚠ expired")
+		case expiringSoon(r.Expiry):
+			line += "  " + accentStyle.Render("⚠ expires in "+shortDur(time.Until(*r.Expiry)))
+		}
 	}
 	if r.Unmanaged != "" {
 		line += "  " + accentStyle.Render("unmanaged") + mutedStyle.Render(" · [a]dopt")
@@ -453,12 +458,13 @@ func ambientLine(r AmbientRow, titleW, idW, srcW int) string {
 }
 
 // unmappedLine renders one muted UNMAPPED PROFILES row: provider:name ·
-// identity · expiry (the expiry keeps its warning styling).
+// identity. Unmapped profiles aren't in play (no directory governs them), so
+// no expiry display regardless of provider.
 func unmappedLine(r UnmappedRow) string {
 	st := r.Status
 	// The deep-grey ● matches the profile tabs' mapped-nowhere tier.
 	return lipgloss.NewStyle().Foreground(grayDeep).Render("●") + " " +
-		mutedStyle.Render(r.Provider+":"+st.ProfileName+" · "+orDash(st.Identity)+" · ") + expiryText(st.Expiry)
+		mutedStyle.Render(r.Provider+":"+st.ProfileName+" · "+orDash(st.Identity))
 }
 
 // frame assembles the dashboard content and fills it to the full terminal width
@@ -503,21 +509,16 @@ func shortDir(dir string) string {
 	return dir
 }
 
-// expiryText renders a relative expiry ("in 42m" / "expired") with no network.
-func expiryText(exp *time.Time) string {
-	if exp == nil {
-		return "—"
-	}
-	if expired(exp) {
-		return failureStyle.Render("expired")
-	}
-	return "in " + shortDur(time.Until(*exp))
-}
-
 // expired reports whether a cached expiry timestamp is in the past; a nil
 // (none/unknown) expiry is never expired.
 func expired(exp *time.Time) bool {
 	return exp != nil && time.Until(*exp) <= 0
+}
+
+// expiringSoon reports whether a live expiry is inside the amber window —
+// close enough that the next longish task would hit the wall.
+func expiringSoon(exp *time.Time) bool {
+	return exp != nil && !expired(exp) && time.Until(*exp) < 15*time.Minute
 }
 
 func shortDur(d time.Duration) string {
@@ -567,7 +568,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 	// An expired link that governs the cwd means the next CLI command here will
 	// hit a wall — more urgent than adoptable identities, less than conflict/drift.
 	for _, r := range ov.Mappings {
-		if r.Scope != ScopeNone && expired(r.Expiry) {
+		if ExpiryActionable(r.Provider) && r.Scope != ScopeNone && expired(r.Expiry) {
 			return failureStyle.Render("⚠ " + r.Provider + ":" + r.Profile + " expired"),
 				accentStyle.Render(r.Provider+":"+r.Profile) + mutedStyle.Render(" is linked here but its session has expired — ") +
 					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")
@@ -581,7 +582,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 		}
 	}
 	for _, u := range ov.Unmapped {
-		if expired(u.Status.Expiry) {
+		if ExpiryActionable(u.Provider) && expired(u.Status.Expiry) {
 			return failureStyle.Render("⚠ " + u.Provider + ":" + u.Status.ProfileName + " expired"),
 				accentStyle.Render(u.Provider+":"+u.Status.ProfileName) + mutedStyle.Render(" has expired — ") +
 					keycap("↵") + mutedStyle.Render(" opens its tab to sign in")

@@ -66,6 +66,13 @@ type Overview struct {
 	Unmapped []UnmappedRow
 }
 
+// ExpiryActionable reports whether a provider's tracked expiry is guidance
+// the user must act on. Only AWS qualifies: its SSO session genuinely dies
+// and `aws sso login` is required. Azure and GCP track the access token,
+// which az/gcloud refresh silently on next use, and GitHub has no expiry —
+// their rows never show expiry (the DETAILS pane tells the truth on demand).
+func ExpiryActionable(provider string) bool { return provider == "aws" }
+
 // hasProfiles reports whether any saved profile exists anywhere in the
 // overview (mapped or not), so empty states can distinguish "fresh machine"
 // from "everything mapped".
