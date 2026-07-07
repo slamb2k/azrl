@@ -93,6 +93,7 @@ func providerActions(group string) []providerAction {
 		{key: "n", label: "New profile", hint: "sign in + link this dir", run: newProfileAction, bootstrap: true},
 		{key: "a", label: "Capture session", hint: "adopt current CLI session · links this dir", run: captureAction, bootstrap: true},
 		{key: "b", label: "Browser profile", hint: "map to a local browser profile", run: browserAction},
+		{key: "c", label: "Open console", hint: "web console as this credential", run: consoleAction},
 		{key: "delete", label: "Remove…", hint: "delete profile", run: removeAction},
 	}
 }
@@ -479,6 +480,17 @@ func shellAction(v *providerTabView) tea.Cmd {
 	}
 	args := append(groupArgs(cliGroup(v.prov.Name()), "shell"), name)
 	return runShellHandoff(args)
+}
+
+// consoleAction hands off to the provider's web console deep link for the
+// selected profile — returns immediately, no session mutation.
+func consoleAction(v *providerTabView) tea.Cmd {
+	name := v.selected()
+	if name == "" {
+		return nil
+	}
+	args := append(groupArgs(cliGroup(v.prov.Name()), "console"), name)
+	return runHandoff(args)
 }
 
 // namingPromptAction opens the name input with the given verb ("login" or "capture").
