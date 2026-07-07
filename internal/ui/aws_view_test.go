@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/slamb2k/azrl/internal/browserpick"
 	"github.com/slamb2k/azrl/internal/profile"
@@ -169,6 +170,23 @@ func TestRenderProfilePaneScopeMarks(t *testing.T) {
 	}
 	if !strings.Contains(out, "   idle") {
 		t.Fatalf("non-linked row should keep the aligned empty slot:\n%s", out)
+	}
+}
+
+func TestRenderProfilePaneDefaultTagStaysWithinLeftWidth(t *testing.T) {
+	profiles := []profile.Listed{
+		{Name: "a-very-long-profile-name-that-would-overflow", Detail: "acme.awsapps.com"},
+	}
+	scopes := map[string]string{"a-very-long-profile-name-that-would-overflow": scopeGlobal}
+	const leftW = 18 // the narrowest pane paneDims ever hands out
+	out := renderProfilePane(profiles, 0, selActive, true, leftW, scopes)
+	for _, line := range strings.Split(out, "\n") {
+		if w := lipgloss.Width(line); w > leftW {
+			t.Fatalf("tagged row exceeds leftW (%d > %d): %q", w, leftW, line)
+		}
+	}
+	if !strings.Contains(out, "⌁ default") {
+		t.Fatalf("expected the default tag to still render:\n%s", out)
 	}
 }
 

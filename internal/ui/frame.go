@@ -92,7 +92,7 @@ func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touc
 		textW = 1
 	}
 	// The most-active profile — the one that would be used right now — renders
-	// bold: the dir-pinned row when one exists, else the global default.
+	// bold: the dir-linked row when one exists, else the global default.
 	emph := ""
 	for _, p := range profiles {
 		switch scopes[p.Name] {
@@ -133,10 +133,15 @@ func renderProfilePane(profiles []profile.Listed, cursor int, mode selMode, touc
 		if p.Name == emph {
 			nameStyle = nameStyle.Bold(true)
 		}
-		line := scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), textW))
+		nameW := textW
+		tag := ""
 		if scopes[p.Name] == scopeGlobal {
-			line += "  " + mutedStyle.Render("⌁ default")
+			// Shrink the name budget so name+tag together stay within textW —
+			// otherwise the padded row overflows leftW and shifts the seam.
+			tag = "  " + mutedStyle.Render("⌁ default")
+			nameW = textW - lipgloss.Width(tag)
 		}
+		line := scopeSlot(scopes[p.Name]) + nameStyle.Render(truncateLine(p.Display(), nameW)) + tag
 		b.WriteString(line + "\n")
 		b.WriteString("   " + detailStyle.Render(truncateLine(p.Detail, textW)) + "\n")
 	}
