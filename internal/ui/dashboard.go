@@ -421,9 +421,9 @@ func (m dashboardModel) View() string {
 	cwd, _ := os.Getwd()
 	// Top-bar anatomy: title left, dir centered, the d·change-directory chip
 	// right (pinned here — the footer's fit-to-width logic would drop it
-	// first on narrow terminals). The status zone is the centered line
-	// directly under the directory: one place for "all good", warnings, and
-	// action results, with long messages word-wrapping downward in place.
+	// first on narrow terminals). Beneath a rule sits the status band — the
+	// centered zone for health summaries, warnings, and action results, with
+	// long messages word-wrapping downward in place.
 	contentW := m.width - 4
 	if contentW < 1 {
 		contentW = 1
@@ -441,6 +441,7 @@ func (m dashboardModel) View() string {
 	}
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
 		"📁 "+displayDir(cwd), keyHelp("d", "change directory"))
+	header += "\n" + rule(contentW)
 	for _, l := range strings.Split(ansi.Wordwrap(status, contentW, ""), "\n") {
 		header += "\n" + lipgloss.PlaceHorizontal(contentW, lipgloss.Center, l)
 	}
@@ -753,8 +754,12 @@ func dashboardHints(ov Overview) (short, notice string) {
 		}
 	}
 	if len(ov.Mappings) == 0 {
-		return mutedStyle.Render("no directories mapped yet"), ""
+		return mutedStyle.Render("No directories mapped yet — map one below to start tracking it."), ""
 	}
-	// The footer already teaches ↵ and d — the chip just reports state.
-	return mutedStyle.Render("all good"), ""
+	// Healthy default: report what is being watched, not just a mood.
+	unit := "directory"
+	if len(ov.Mappings) != 1 {
+		unit = "directories"
+	}
+	return mutedStyle.Render(fmt.Sprintf("%d %s mapped · sessions healthy · nothing needs attention", len(ov.Mappings), unit)), ""
 }
