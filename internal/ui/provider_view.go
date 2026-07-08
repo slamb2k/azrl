@@ -92,10 +92,10 @@ type providerTabView struct {
 // Azure's top-level verbs).
 func providerActions(group string) []providerAction {
 	return []providerAction{
-		{key: "s", label: "Renew", hint: "sign in again — links unchanged", run: loginAction(group)},
-		{key: "t", label: "Shell as…", hint: "subshell as this profile — no link", run: shellAction},
-		{key: "n", label: "New profile", hint: "token container + sign-in — link it later", run: newProfileAction, bootstrap: true},
-		{key: "a", label: "Capture session", hint: "adopt current CLI session · links this dir", run: captureAction, bootstrap: true},
+		{key: "s", label: "Renew", hint: "sign in again — mappings unchanged", run: loginAction(group)},
+		{key: "t", label: "Shell as…", hint: "subshell as this profile — no mapping", run: shellAction},
+		{key: "n", label: "New profile", hint: "token container + sign-in — map it later", run: newProfileAction, bootstrap: true},
+		{key: "a", label: "Capture session", hint: "adopt current CLI session · maps this dir", run: captureAction, bootstrap: true},
 		{key: "b", label: "Assign browser…", hint: "map to a local browser profile", run: browserAction},
 		{key: "c", label: "Open console", hint: "web console as this credential", run: consoleAction},
 		{key: "delete", label: "Delete…", hint: "delete profile", run: removeAction},
@@ -355,7 +355,7 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 				}
 				// Created from the pinned PROFILES row: sign in, but don't link
 				// this directory — link is a separate, explicit act now.
-				return v, runHandoff(groupArgs(cliGroup(v.prov.Name()), "login", name, "--yes", "--no-link"))
+				return v, runHandoff(groupArgs(cliGroup(v.prov.Name()), "login", name, "--yes", "--no-map"))
 			default:
 				var cmd tea.Cmd
 				v.nameInput, cmd = v.nameInput.Update(msg)
@@ -591,7 +591,7 @@ func loginAction(group string) func(v *providerTabView) tea.Cmd {
 }
 
 // shellAction hands off to a subshell impersonating the selected profile —
-// exports its env for the shell's lifetime, no link recorded.
+// exports its env for the shell's lifetime, no mapping recorded.
 func shellAction(v *providerTabView) tea.Cmd {
 	name := v.selected()
 	if name == "" {
@@ -693,14 +693,14 @@ func removeAction(v *providerTabView) tea.Cmd {
 		if len(v.linkedDirs) != 1 {
 			unit = "dirs"
 		}
-		replaceOpt := radioOption{label: "Replace links with…"}
+		replaceOpt := radioOption{label: "Replace mappings with…"}
 		if otherProfiles == 0 {
 			replaceOpt.disabled = true
 			replaceOpt.hint = "no other profile to point them at"
 		}
 		v.confirm = newRadio([]radioOption{
 			{label: "Cancel"},
-			{label: fmt.Sprintf("Unlink %d %s + delete", len(v.linkedDirs), unit)},
+			{label: fmt.Sprintf("Unmap %d %s + delete", len(v.linkedDirs), unit)},
 			replaceOpt,
 		})
 		v.confirmKind = []string{"cancel", "unlink", "replace"}
@@ -889,10 +889,10 @@ func (v providerTabView) View() string {
 	}
 	actionsBody := r.view(rightW)
 	if v.namingVerb != "" {
-		prompt, confirmHint := "Name for the new profile:", "token container + sign-in — link it later"
+		prompt, confirmHint := "Name for the new profile:", "token container + sign-in — map it later"
 		// The create prompt carries the entity blurb — the education moment now
 		// that NEW ＋ is a title-bar button with no selectable row of its own.
-		intro := mutedStyle.Render(ansi.Wordwrap("A profile is a container for tokens and intention — sign in once, link it to any number of directories.", rightW, "")) + "\n\n"
+		intro := mutedStyle.Render(ansi.Wordwrap("A profile is a container for tokens and intention — sign in once, map it to any number of directories.", rightW, "")) + "\n\n"
 		if v.namingVerb == "capture" {
 			prompt, confirmHint = "Name for the captured profile:", "adopt session + link"
 			intro = ""
@@ -912,11 +912,11 @@ func (v providerTabView) View() string {
 	switch {
 	case v.replacePicking:
 		right = paneTitle("REPLACE WITH", true) + "\n\n" +
-			mutedStyle.Render(fmt.Sprintf("Repoint %d linked dir(s) at:", len(v.linkedDirs))) + "\n\n" +
+			mutedStyle.Render(fmt.Sprintf("Repoint %d mapped dir(s) at:", len(v.linkedDirs))) + "\n\n" +
 			v.replacePick.view(rightW)
 	case v.confirming && len(v.linkedDirs) > 0:
 		right = paneTitle("CONFIRM", true) + "\n\n" +
-			mutedStyle.Render("Linked in:\n"+formatDirList(v.linkedDirs)) + "\n\n" +
+			mutedStyle.Render("Mapped in:\n"+formatDirList(v.linkedDirs)) + "\n\n" +
 			v.confirm.view(rightW)
 	case v.confirming:
 		right = paneTitle("CONFIRM", true) + "\n\n" +
@@ -927,12 +927,12 @@ func (v providerTabView) View() string {
 	contentW, _, _ := paneDims(v.width)
 	help := keyHelpFit(contentW,
 		[]string{"↑↓", "select", "↵", "open/run", "n", "new profile", "esc", "back"},
-		[]string{"q", "quit", "→", "details", "⇥", "tab", "d", "dir", "o", "options"})
+		[]string{"q", "quit", "→", "details", "⇥", "tab", "o", "options", "d", "change directory"})
 	switch {
 	case v.replacePicking:
 		help = keyHelp("↑↓", "choose", "↵", "confirm", "esc", "cancel")
 	case v.confirming && len(v.linkedDirs) > 0:
-		help = keyHelp("↑↓", "choose", "↵", "confirm", "y", "unlink+delete", "n/esc", "cancel")
+		help = keyHelp("↑↓", "choose", "↵", "confirm", "y", "unmap+delete", "n/esc", "cancel")
 	case v.confirming:
 		help = keyHelp("↑↓", "choose", "↵", "confirm", "y", "yes", "n/esc", "cancel")
 	}

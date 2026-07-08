@@ -80,11 +80,11 @@ func TestCreatePromptShowsEntityBlurb(t *testing.T) {
 	v := twoProfileAwsView(t)
 	nv, _ := v.providerTabView.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	norm := strings.Join(strings.Fields(strings.ReplaceAll(nv.View(), "│", " ")), " ")
-	const blurb = "A profile is a container for tokens and intention — sign in once, link it to any number of directories."
+	const blurb = "A profile is a container for tokens and intention — sign in once, map it to any number of directories."
 	if !strings.Contains(norm, blurb) {
 		t.Fatalf("create prompt should show the entity blurb:\n%s", nv.View())
 	}
-	if !strings.Contains(nv.View(), "token container + sign-in — link it later") {
+	if !strings.Contains(nv.View(), "token container + sign-in — map it later") {
 		t.Fatalf("create prompt missing its confirm hint:\n%s", nv.View())
 	}
 }

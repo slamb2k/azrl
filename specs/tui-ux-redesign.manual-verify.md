@@ -40,24 +40,24 @@ console, mouse) have shipped.
 
 - [ ] **Delete-with-links round-trip:** link a profile to two real
       directories, then `delete` it from its tab. Confirm both dirs are
-      listed and the three-option radio appears. Pick `Unlink N dir(s) +
+      listed and the three-option radio appears. Pick `Unmap N dir(s) +
       delete`: both `.azprofile`/`.ghprofile`/etc pointers are gone, the
       profile's conf and token dir are gone, and `azrl status` no longer
-      lists either directory. Repeat picking `Replace links with…` against a
+      lists either directory. Repeat picking `Replace mappings with…` against a
       second profile instead: both directories now point at the replacement
       (`cat .azprofile` in each) and the original profile is gone.
 - [ ] **Unlink refusal on a parent-governed dir:** `cd` into a subdirectory
       of a directory that's linked (no pointer of its own), run `azrl
-      unlink` (or `gh`/`aws`/`gcp unlink`). It refuses, naming the parent
-      directory and profile exactly ("run unlink there"); the parent's
-      pointer is untouched. Now `cd` to the parent itself and `azrl unlink`
+      unmap` (or `gh`/`aws`/`gcp unmap`). It refuses, naming the parent
+      directory and profile exactly ("run unmap there"); the parent's
+      pointer is untouched. Now `cd` to the parent itself and `azrl unmap`
       — the link is removed, the profile is untouched.
 - [ ] **No-link create then dashboard link:** from an unlinked directory,
       use the TUI's `NEW ＋` title-bar button / `n` key (or `azrl login
-      <name> --no-link`) to create and sign in. Confirm no `.azprofile` was written
+      <name> --no-map`) to create and sign in. Confirm no `.azprofile` was written
       here and the profile doesn't show as linked on this tab. Open the
-      Dashboard, find the new profile's UNMAPPED row, press `u` to link it
+      Dashboard, find the new profile's UNMAPPED row, press `m` to map it
       to the cwd — the row moves to MAPPINGS and `azrl status` now shows the
-      directory mapped to it. Press `U` on that same row afterward and
-      confirm it unlinks cleanly (profile kept, dashboard status line
+      directory mapped to it. Press `⇧M` on that same row afterward and
+      confirm it unmaps cleanly (profile kept, dashboard status line
       confirms).

@@ -9,7 +9,20 @@ import (
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+// normalizeLegacyFlags keeps the pre-map-vocabulary flag spellings working:
+// --unlink-all and --no-link parse as their unmap-era names.
+func normalizeLegacyFlags(f *pflag.FlagSet, name string) pflag.NormalizedName {
+	switch name {
+	case "unlink-all":
+		name = "unmap-all"
+	case "no-link":
+		name = "no-map"
+	}
+	return pflag.NormalizedName(name)
+}
 
 var rmYes bool
 var rmUnlinkAll bool
@@ -73,10 +86,10 @@ func validProfileName(name string) error {
 	return nil
 }
 
-// refuseIfLinked is the read-only half of a rm command's link-awareness:
-// with no linked dirs it's a no-op; with links and neither flag it refuses,
-// listing each dir and both flags; with --unlink-all or --replace it
-// approves without mutating anything — the actual unlink/repoint happens in
+// refuseIfLinked is the read-only half of a rm command's mapping-awareness:
+// with no mapped dirs it's a no-op; with mappings and neither flag it
+// refuses, listing each dir and both flags; with --unmap-all or --replace it
+// approves without mutating anything — the actual unmap/repoint happens in
 // unlinkOrReplace, called only after any confirmation prompt.
 func refuseIfLinked(scheme profile.Scheme, confdir, name string, unlinkAll bool, replace string) error {
 	if unlinkAll || replace != "" {
@@ -87,23 +100,23 @@ func refuseIfLinked(scheme profile.Scheme, confdir, name string, unlinkAll bool,
 		return nil
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s: profile %q is linked from:\n", scheme.Prefix, name)
+	fmt.Fprintf(&b, "%s: profile %q is mapped from:\n", scheme.Prefix, name)
 	for _, d := range dirs {
 		fmt.Fprintf(&b, "  %s\n", d)
 	}
-	b.WriteString("use --unlink-all to remove the links, or --replace <profile> to repoint them")
+	b.WriteString("use --unmap-all to remove the mappings, or --replace <profile> to repoint them")
 	return fmt.Errorf("%s", b.String())
 }
 
-// unlinkOrReplace is the mutating half: --unlink-all removes every link;
-// --replace repoints every link at the given profile (erroring if that
+// unlinkOrReplace is the mutating half: --unmap-all removes every mapping;
+// --replace repoints every mapping at the given profile (erroring if that
 // profile doesn't exist, or is the profile being removed). No-op otherwise.
 func unlinkOrReplace(cmd *cobra.Command, scheme profile.Scheme, confdir, name string, unlinkAll bool, replace string) error {
 	switch {
 	case unlinkAll:
 		unlinked, err := scheme.UnlinkAll(confdir, name)
 		for _, d := range unlinked {
-			cmd.Printf("unlinked %s\n", d)
+			cmd.Printf("unmapped %s\n", d)
 		}
 		return err
 	case replace != "":
@@ -119,8 +132,9 @@ func unlinkOrReplace(cmd *cobra.Command, scheme profile.Scheme, confdir, name st
 
 func init() {
 	rmCmd.Flags().BoolVarP(&rmYes, "yes", "y", false, "Skip the confirmation prompt")
-	rmCmd.Flags().BoolVar(&rmUnlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
-	rmCmd.Flags().StringVar(&rmReplace, "replace", "", "Repoint every directory link at this profile before deleting")
-	rmCmd.MarkFlagsMutuallyExclusive("unlink-all", "replace")
+	rmCmd.Flags().BoolVar(&rmUnlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
+	rmCmd.Flags().StringVar(&rmReplace, "replace", "", "Repoint every directory mapping at this profile before deleting")
+	rmCmd.Flags().SetNormalizeFunc(normalizeLegacyFlags)
+	rmCmd.MarkFlagsMutuallyExclusive("unmap-all", "replace")
 	RootCmd.AddCommand(rmCmd)
 }

@@ -91,7 +91,7 @@ func profileInfoBlock(prov string, pr profile.Listed, st provider.Status, browse
 		row("Identity", st.Identity),
 		row("Detail", pr.Detail),
 		row("Browser", browser),
-		row("Linked", linked),
+		row("Mapped", linked),
 		row("Expiry", expiryWord(prov, st.Expiry)),
 		row("Last used", lastUsedWord(st.LastUsed)),
 	}

@@ -118,7 +118,8 @@ func newAwsLoginCmd() *cobra.Command {
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own config/credentials files")
 	c.Flags().BoolVar(&device, "use-device-code", false, "Use the device-code flow instead of the PKCE loopback")
 	c.Flags().BoolVarP(&awsYes, "yes", "y", false, "Create a missing profile without prompting.")
-	c.Flags().BoolVar(&awsNoLink, "no-link", false, "Create without claiming this directory (skip the .awsprofile pin).")
+	c.Flags().BoolVar(&awsNoLink, "no-map", false, "Create without claiming this directory (skip the .awsprofile pin).")
+	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	return c
 }
 
@@ -211,9 +212,10 @@ func newAwsRmCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().BoolVar(&unlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
+	c.Flags().BoolVar(&unlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
 	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
-	c.MarkFlagsMutuallyExclusive("unlink-all", "replace")
+	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
+	c.MarkFlagsMutuallyExclusive("unmap-all", "replace")
 	return c
 }
 
@@ -323,9 +325,9 @@ func awsSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newAwsLoginCmd(), newAwsListCmd(), newAwsUseCmd(),
 		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(), newAwsBrowserCmd(),
-		newShellCmd("aws", "Open a subshell acting as an AWS profile (no link)"),
+		newShellCmd("aws", "Open a subshell acting as an AWS profile (no mapping)"),
 		newConsoleCmd("aws", "Open the AWS access portal for a profile"),
-		newUnlinkCmd("aws", "Remove this directory's AWS profile link (keeps the profile)"),
+		newUnlinkCmd("aws", "Remove this directory's AWS profile mapping (keeps the profile)"),
 	}
 }
 

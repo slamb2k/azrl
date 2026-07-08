@@ -295,7 +295,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "s", "t", "c", "u", "b":
+		case "s", "t", "c", "m", "b":
 			if m.cursor < 0 || m.cursor >= len(m.items) {
 				return m, nil
 			}
@@ -315,7 +315,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return switchTabMsg{provider: it.provider, profile: it.profile, action: "b"}
 				}
-			case "u":
+			case "m":
 				pwd, _ := os.Getwd()
 				for _, p := range m.providers {
 					if p.Name() != it.provider {
@@ -324,24 +324,24 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if err := p.Use(it.profile, p.ProfilesDir(), pwd); err != nil {
 						m.status = failureStyle.Render("✗ " + err.Error())
 					} else {
-						m.status = successStyle.Render("✓ linked " + displayDir(pwd) + " → " + it.profile)
+						m.status = successStyle.Render("✓ mapped " + displayDir(pwd) + " → " + it.profile)
 						m.reload()
 					}
 					return m, nil
 				}
 				return m, nil
 			}
-		case "U":
+		case "M":
 			if m.cursor < 0 || m.cursor >= len(m.items) {
 				return m, nil
 			}
 			if m.cursor >= len(m.ov.Mappings) {
-				m.status = mutedStyle.Render("no directory link on this row")
+				m.status = mutedStyle.Render("no directory mapping on this row")
 				return m, nil
 			}
 			row := m.ov.Mappings[m.cursor]
 			if row.Scope != ScopeCwd {
-				m.status = mutedStyle.Render("links are removed where they live — run unlink in " + displayDir(row.Dir))
+				m.status = mutedStyle.Render("mappings are removed where they live — run unmap in " + displayDir(row.Dir))
 				return m, nil
 			}
 			for _, p := range m.providers {
@@ -351,7 +351,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if _, err := p.Scheme().Unlink(p.ProfilesDir(), row.Dir); err != nil {
 					m.status = failureStyle.Render("✗ " + err.Error())
 				} else {
-					m.status = successStyle.Render("✓ unlinked " + displayDir(row.Dir) + " (profile kept)")
+					m.status = successStyle.Render("✓ unmapped " + displayDir(row.Dir) + " (profile kept)")
 					m.reload()
 				}
 				return m, nil
@@ -419,8 +419,9 @@ func (m dashboardModel) clickRow(i int) (dashboardModel, tea.Cmd) {
 
 func (m dashboardModel) View() string {
 	cwd, _ := os.Getwd()
-	// The same top-line anatomy as the provider tabs: title left, dir centered,
-	// the next-action hint right — justified, not dot-separated.
+	// The same top-line anatomy as the provider tabs: title left, dir centered.
+	// The next-action hint / status chip gets its own line beneath the header
+	// rule instead of crowding the top line's right zone.
 	contentW := m.width - 4
 	if contentW < 1 {
 		contentW = 1
@@ -433,19 +434,20 @@ func (m dashboardModel) View() string {
 		short = m.status
 	}
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
-		"📁 "+displayDir(cwd), short)
+		"📁 "+displayDir(cwd), "")
 	help := keyHelpFit(m.width-4,
-		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/u/b/⇧U", "act on row"},
-		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
+		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/m/b/⇧M", "act on row"},
+		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "o", "options", "d", "change directory"})
 
 	var body []string
+	body = append(body, lipgloss.PlaceHorizontal(contentW, lipgloss.Right, short), "")
 	if m.naming {
 		body = append(body,
 			mutedStyle.Render("Name for the adopted profile:"),
 			"",
 			m.nameInput.View(),
 			"",
-			keyHelp("↵", "adopt session + link", "esc", "cancel"),
+			keyHelp("↵", "adopt session + map", "esc", "cancel"),
 			"")
 	}
 	if notice != "" {
@@ -472,7 +474,7 @@ func (m dashboardModel) View() string {
 
 	body = append(body, paneTitleStyle.Render("MAPPINGS"))
 	if len(m.ov.Mappings) == 0 {
-		body = append(body, "  "+mutedStyle.Render("No mappings yet — link a directory with `azrl use <name>`."))
+		body = append(body, "  "+mutedStyle.Render("No mappings yet — map a directory with `azrl use <name>`."))
 	} else {
 		dirW, tgtW := mappingWidths(m.ov.Mappings)
 		for _, r := range m.ov.Mappings {
@@ -713,10 +715,10 @@ func dashboardHints(ov Overview) (short, notice string) {
 					shell = a.Identity
 				}
 			}
-			side := mutedStyle.Render(" — the shell has no session; the link expects ") + accentStyle.Render(r.Profile)
+			side := mutedStyle.Render(" — the shell has no session; the mapping expects ") + accentStyle.Render(r.Profile)
 			if shell != "" {
 				side = mutedStyle.Render(" — the shell would act as ") + accentStyle.Render(shell) +
-					mutedStyle.Render(" but this directory is linked to ") + accentStyle.Render(r.Profile)
+					mutedStyle.Render(" but this directory is mapped to ") + accentStyle.Render(r.Profile)
 			}
 			return failureStyle.Render("⚠ drift in " + shortDir(r.Dir)),
 				failureStyle.Render("⚠ drift in "+shortDir(r.Dir)) + side +
@@ -728,7 +730,7 @@ func dashboardHints(ov Overview) (short, notice string) {
 	for _, r := range ov.Mappings {
 		if ExpiryActionable(r.Provider) && r.Scope != ScopeNone && expired(r.Expiry) {
 			return failureStyle.Render("⚠ " + r.Provider + ":" + r.Profile + " expired"),
-				accentStyle.Render(r.Provider+":"+r.Profile) + mutedStyle.Render(" is linked here but its session has expired — ") +
+				accentStyle.Render(r.Provider+":"+r.Profile) + mutedStyle.Render(" is mapped here but its session has expired — ") +
 					keycap("↵") + mutedStyle.Render(" opens its tab to renew")
 		}
 	}
@@ -747,7 +749,8 @@ func dashboardHints(ov Overview) (short, notice string) {
 		}
 	}
 	if len(ov.Mappings) == 0 {
-		return mutedStyle.Render("no directories linked yet"), ""
+		return mutedStyle.Render("no directories mapped yet"), ""
 	}
-	return mutedStyle.Render("all good · ") + keycap("↵") + mutedStyle.Render(" drills in · ") + keycap("d") + mutedStyle.Render(" changes dir"), ""
+	// The footer already teaches ↵ and d — the chip just reports state.
+	return mutedStyle.Render("all good"), ""
 }

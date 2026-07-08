@@ -244,10 +244,10 @@ func (s Scheme) Unlink(confdir, pwd string) (string, error) {
 	if err != nil {
 		if pdir, ok := s.Locate(pwd); ok {
 			name, _ := s.Resolve("", pwd)
-			return "", fmt.Errorf("%s: this directory is governed by %s (profile %s) — run unlink there",
+			return "", fmt.Errorf("%s: this directory is governed by %s (profile %s) — run unmap there",
 				s.Prefix, filepath.Join(pdir, s.Pointer), name)
 		}
-		return "", fmt.Errorf("%s: nothing linked in %s", s.Prefix, pwd)
+		return "", fmt.Errorf("%s: nothing mapped in %s", s.Prefix, pwd)
 	}
 	name := strings.TrimSpace(string(b))
 	if err := os.Remove(ptr); err != nil {

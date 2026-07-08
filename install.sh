@@ -10,10 +10,12 @@ echo "azrl: building..."
 ( cd "$ROOT" && go build -o "$BIN_DIR/azrl" . )
 echo "azrl: installed $BIN_DIR/azrl"
 
-# Globally gitignore .azprofile so it is never committed.
+# Globally gitignore the per-directory pointer files so they are never committed.
 GI="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
 mkdir -p "$(dirname "$GI")"
-grep -qxF '.azprofile' "$GI" 2>/dev/null || echo '.azprofile' >> "$GI"
+for p in .azprofile .ghprofile .awsprofile .gcpprofile; do
+  grep -qxF "$p" "$GI" 2>/dev/null || echo "$p" >> "$GI"
+done
 
 # Bootstrap the global config if absent. Environment detection lives once in Go
 # (internal/envdetect); `azrl setup --yes` writes the recommended azrl.conf

@@ -82,7 +82,8 @@ func newGhLoginCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host (github.com, a *.ghe.com tenant, or a GHES hostname)")
 	c.Flags().BoolVarP(&ghYes, "yes", "y", false, "Create a missing profile without prompting.")
-	c.Flags().BoolVar(&ghNoLink, "no-link", false, "Create without claiming this directory (skip the .ghprofile pin).")
+	c.Flags().BoolVar(&ghNoLink, "no-map", false, "Create without claiming this directory (skip the .ghprofile pin).")
+	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	return c
 }
 
@@ -179,9 +180,10 @@ func newGhRmCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().BoolVar(&unlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
+	c.Flags().BoolVar(&unlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
 	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
-	c.MarkFlagsMutuallyExclusive("unlink-all", "replace")
+	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
+	c.MarkFlagsMutuallyExclusive("unmap-all", "replace")
 	return c
 }
 
@@ -252,9 +254,9 @@ func githubSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newGhLoginCmd(), newGhListCmd(), newGhUseCmd(), newGhSwitchStubCmd(),
 		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(), newGhBrowserCmd(),
-		newShellCmd("github", "Open a subshell acting as a GitHub profile (no link)"),
+		newShellCmd("github", "Open a subshell acting as a GitHub profile (no mapping)"),
 		newConsoleCmd("github", "Open GitHub as a profile's account"),
-		newUnlinkCmd("github", "Remove this directory's GitHub profile link (keeps the profile)"),
+		newUnlinkCmd("github", "Remove this directory's GitHub profile mapping (keeps the profile)"),
 	}
 }
 

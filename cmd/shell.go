@@ -213,5 +213,5 @@ func newShellCmd(providerName, short string) *cobra.Command {
 }
 
 func init() {
-	RootCmd.AddCommand(newShellCmd("azure", "Open a subshell acting as an Azure profile (no link)"))
+	RootCmd.AddCommand(newShellCmd("azure", "Open a subshell acting as an Azure profile (no mapping)"))
 }

@@ -123,7 +123,8 @@ func newGcpLoginCmd() *cobra.Command {
 	c.Flags().StringVar(&region, "region", "", "Default compute region to bind")
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own CLOUDSDK_CONFIG dir")
 	c.Flags().BoolVarP(&gcpYes, "yes", "y", false, "Create a missing profile without prompting.")
-	c.Flags().BoolVar(&gcpNoLink, "no-link", false, "Create without claiming this directory (skip the .gcpprofile pin).")
+	c.Flags().BoolVar(&gcpNoLink, "no-map", false, "Create without claiming this directory (skip the .gcpprofile pin).")
+	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	return c
 }
 
@@ -219,9 +220,10 @@ func newGcpRmCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().BoolVar(&unlinkAll, "unlink-all", false, "Remove every directory link before deleting the profile")
+	c.Flags().BoolVar(&unlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
 	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
-	c.MarkFlagsMutuallyExclusive("unlink-all", "replace")
+	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
+	c.MarkFlagsMutuallyExclusive("unmap-all", "replace")
 	return c
 }
 
@@ -328,9 +330,9 @@ func gcpSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newGcpLoginCmd(), newGcpListCmd(), newGcpUseCmd(),
 		newGcpRmCmd(), newGcpCaptureCmd(), newGcpStatusCmd(), newGcpBrowserCmd(),
-		newShellCmd("gcp", "Open a subshell acting as a GCP profile (no link)"),
+		newShellCmd("gcp", "Open a subshell acting as a GCP profile (no mapping)"),
 		newConsoleCmd("gcp", "Open the GCP console for a profile's project"),
-		newUnlinkCmd("gcp", "Remove this directory's GCP profile link (keeps the profile)"),
+		newUnlinkCmd("gcp", "Remove this directory's GCP profile mapping (keeps the profile)"),
 	}
 }
 

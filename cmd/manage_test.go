@@ -99,15 +99,39 @@ func TestUnlinkCmd(t *testing.T) {
 func TestUnlinkVerbRegisteredOnAllSurfaces(t *testing.T) {
 	find := func(cmds []*cobra.Command) bool {
 		for _, c := range cmds {
-			if strings.HasPrefix(c.Use, "unlink") {
+			if strings.HasPrefix(c.Use, "unmap") {
 				return true
 			}
 		}
 		return false
 	}
 	if !find(RootCmd.Commands()) || !find(githubSubcommands()) || !find(awsSubcommands()) || !find(gcpSubcommands()) {
-		t.Fatal("unlink missing from a surface")
+		t.Fatal("unmap missing from a surface")
 	}
+}
+
+// The pre-map-vocabulary spellings must keep parsing: `unlink` as a command
+// alias, and --unlink-all / --no-link normalized to their unmap-era names.
+func TestLegacyLinkSpellingsStillParse(t *testing.T) {
+	c, _, err := RootCmd.Find([]string{"unlink"})
+	if err != nil || c == nil || c.Use != "unmap" {
+		t.Fatalf("`unlink` should resolve to the unmap command, got %v (%v)", c, err)
+	}
+	resetRmFlags(t)
+	rm, _, _ := RootCmd.Find([]string{"rm"})
+	if err := rm.Flags().Set("unlink-all", "true"); err != nil || !rmUnlinkAll {
+		t.Fatalf("--unlink-all should normalize to --unmap-all: err=%v val=%v", err, rmUnlinkAll)
+	}
+	login, _, _ := RootCmd.Find([]string{"login"})
+	if err := login.Flags().Set("no-link", "true"); err != nil {
+		t.Fatalf("--no-link should normalize to --no-map: %v", err)
+	}
+	t.Cleanup(func() {
+		if f := login.Flags().Lookup("no-map"); f != nil {
+			f.Value.Set("false")
+			f.Changed = false
+		}
+	})
 }
 
 // resetRmFlags restores the azure rm command's flag state on the RootCmd

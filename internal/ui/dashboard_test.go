@@ -340,7 +340,7 @@ func TestDashboardHeaderShowsCwdAndHint(t *testing.T) {
 
 func TestDashboardHintPriorities(t *testing.T) {
 	// Empty overview → onboarding nudge in the chip, no notice line.
-	if short, notice := dashboardHints(Overview{}); !strings.Contains(short, "no directories linked") || notice != "" {
+	if short, notice := dashboardHints(Overview{}); !strings.Contains(short, "no directories mapped") || notice != "" {
 		t.Fatalf("empty hints = %q / %q", short, notice)
 	}
 	// An unmanaged mapping outranks the all-good message.
@@ -356,8 +356,8 @@ func TestDashboardHintPriorities(t *testing.T) {
 	if !strings.Contains(short, "drift") || strings.Contains(short, "linked to") {
 		t.Fatalf("drift chip should stay compact: %q", short)
 	}
-	if !strings.Contains(notice, "the link expects") {
-		t.Fatalf("drift notice should explain the link side: %q", notice)
+	if !strings.Contains(notice, "the mapping expects") {
+		t.Fatalf("drift notice should explain the mapping side: %q", notice)
 	}
 }
 
@@ -559,12 +559,12 @@ func TestDashboardLinkHereUsesProviderInProcess(t *testing.T) {
 		t.Fatalf("no azure:acme item: %+v", m.items)
 	}
 	m.cursor = idx
-	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
 	m = mod.(dashboardModel)
 	if b, err := os.ReadFile(filepath.Join(work, ".azprofile")); err != nil || strings.TrimSpace(string(b)) != "acme" {
-		t.Fatalf("u should link the cwd to acme: %q, %v", b, err)
+		t.Fatalf("m should map the cwd to acme: %q, %v", b, err)
 	}
-	if !strings.Contains(m.status, "linked") {
+	if !strings.Contains(m.status, "mapped") {
 		t.Fatalf("status should confirm the link: %q", m.status)
 	}
 }
@@ -588,20 +588,20 @@ func TestDashboardUnlinkCwdRowRemovesLink(t *testing.T) {
 		t.Fatalf("no azure:acme item: %+v", m.items)
 	}
 	m.cursor = idx
-	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")}) // link cwd first
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")}) // map cwd first
 	m = mod.(dashboardModel)
 	idx = findAcme()
 	if idx < 0 {
 		t.Fatalf("no azure:acme item after link: %+v", m.items)
 	}
 	m.cursor = idx
-	mod, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	mod, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
 	m = mod.(dashboardModel)
 	if _, err := os.Stat(filepath.Join(work, ".azprofile")); !os.IsNotExist(err) {
 		t.Fatalf(".azprofile should be gone after U: err=%v", err)
 	}
-	if !strings.Contains(m.status, "unlinked "+displayDir(work)) || !strings.Contains(m.status, "profile kept") {
-		t.Fatalf("status should confirm the unlink: %q", m.status)
+	if !strings.Contains(m.status, "unmapped "+displayDir(work)) || !strings.Contains(m.status, "profile kept") {
+		t.Fatalf("status should confirm the unmap: %q", m.status)
 	}
 }
 
@@ -610,12 +610,12 @@ func TestDashboardUnlinkOtherDirRowExplains(t *testing.T) {
 	other := filepath.Join(cwd, "elsewhere")
 	ov := Overview{Mappings: []MappingRow{{Provider: "azure", Dir: other, Profile: "acme", Scope: ScopeNone}}}
 	m := dashboardModel{width: 100, ov: ov, items: overviewItems(ov)}
-	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
 	m = mod.(dashboardModel)
 	if cmd != nil {
 		t.Fatal("U on a mapping row for another dir should not exec")
 	}
-	if !strings.Contains(m.status, "links are removed where they live — run unlink in "+displayDir(other)) {
+	if !strings.Contains(m.status, "mappings are removed where they live — run unmap in "+displayDir(other)) {
 		t.Fatalf("status should point at the governing dir: %q", m.status)
 	}
 }
@@ -623,19 +623,19 @@ func TestDashboardUnlinkOtherDirRowExplains(t *testing.T) {
 func TestDashboardUnlinkNonMappingRowExplains(t *testing.T) {
 	// Zero-value ov.Mappings: any row is ambient/unmapped from U's perspective.
 	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", profile: "prod"}}}
-	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
 	m = mod.(dashboardModel)
 	if cmd != nil {
 		t.Fatal("U on an ambient/unmapped row should not exec")
 	}
-	if !strings.Contains(m.status, "no directory link on this row") {
+	if !strings.Contains(m.status, "no directory mapping on this row") {
 		t.Fatalf("status = %q", m.status)
 	}
 }
 
 func TestDashboardUnlinkIgnoredWhileNaming(t *testing.T) {
 	m := dashboardModel{width: 100, naming: true, items: []dashItem{{provider: "aws", profile: "prod"}}}
-	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
 	m = mod.(dashboardModel)
 	if cmd != nil {
 		t.Fatal("U while naming should not exec")
@@ -648,7 +648,7 @@ func TestDashboardUnlinkIgnoredWhileNaming(t *testing.T) {
 func TestDashboardFooterListsUnlinkChip(t *testing.T) {
 	seedDashHome(t)
 	v := sizedDashboard(t).View()
-	if !strings.Contains(v, "S/T/C/U/B/⇧U") { // keyGlyph upper-cases the chip label; ⇧U stays distinct from U
+	if !strings.Contains(v, "S/T/C/M/B/⇧M") { // keyGlyph upper-cases the chip label; ⇧M stays distinct from M
 		t.Fatalf("footer should list the U chip:\n%s", v)
 	}
 }
