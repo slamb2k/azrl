@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 func TestListCmd(t *testing.T) {
@@ -93,6 +95,29 @@ func TestUnlinkCmd(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(work, ".azprofile")); !os.IsNotExist(err) {
 		t.Fatal("unlink should remove .azprofile")
+	}
+}
+
+// Unmapping a dir that still carries a provider-steering .envrc surfaces the
+// direnv caution alongside the success line.
+func TestUnmapWarnsAboutStaleEnvrc(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	chdir(t, work)
+	RootCmd.SetArgs([]string{"use", "acme"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(work, ".envrc"), []byte(profile.EnvrcContent), 0o644)
+	var out bytes.Buffer
+	if err := runUnlink("azure", &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "unmapped") || !strings.Contains(out.String(), "still exports this provider's env") {
+		t.Fatalf("unmap output should carry the .envrc caution:\n%s", out.String())
 	}
 }
 
