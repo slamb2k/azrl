@@ -419,28 +419,36 @@ func (m dashboardModel) clickRow(i int) (dashboardModel, tea.Cmd) {
 
 func (m dashboardModel) View() string {
 	cwd, _ := os.Getwd()
-	// The same top-line anatomy as the provider tabs: title left, dir centered.
-	// The next-action hint / status chip gets its own line beneath the header
-	// rule instead of crowding the top line's right zone.
+	// Top-bar anatomy: title left, dir centered, the d·change-directory chip
+	// right (pinned here — the footer's fit-to-width logic would drop it
+	// first on narrow terminals). The status zone is the centered line
+	// directly under the directory: one place for "all good", warnings, and
+	// action results, with long messages word-wrapping downward in place.
 	contentW := m.width - 4
 	if contentW < 1 {
 		contentW = 1
 	}
 	short, notice := dashboardHints(m.ov)
+	status := short
+	if notice != "" {
+		// The full explanation subsumes its own compact chip.
+		status = notice
+	}
 	if m.naming {
-		short = accentStyle.Render("adopt " + m.adoptItem.provider)
-		notice = ""
+		status = accentStyle.Render("adopt " + m.adoptItem.provider)
 	} else if m.status != "" {
-		short = m.status
+		status = m.status
 	}
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
-		"📁 "+displayDir(cwd), "")
+		"📁 "+displayDir(cwd), keyHelp("d", "change directory"))
+	for _, l := range strings.Split(ansi.Wordwrap(status, contentW, ""), "\n") {
+		header += "\n" + lipgloss.PlaceHorizontal(contentW, lipgloss.Center, l)
+	}
 	help := keyHelpFit(m.width-4,
 		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/m/b/⇧M", "act on row"},
-		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "o", "options", "d", "change directory"})
+		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "o", "options"})
 
 	var body []string
-	body = append(body, lipgloss.PlaceHorizontal(contentW, lipgloss.Right, short), "")
 	if m.naming {
 		body = append(body,
 			mutedStyle.Render("Name for the adopted profile:"),
@@ -449,12 +457,6 @@ func (m dashboardModel) View() string {
 			"",
 			keyHelp("↵", "adopt session + map", "esc", "cancel"),
 			"")
-	}
-	if notice != "" {
-		// The full explanation wraps beneath the header — the right zone only
-		// carries the compact chip.
-		body = append(body, strings.Split(ansi.Wordwrap(notice, contentW, ""), "\n")...)
-		body = append(body, "")
 	}
 	idx := 0
 	marker := func() string {
@@ -636,7 +638,9 @@ func (m dashboardModel) frame(header string, body []string, footer string) strin
 	if m.width <= 0 || contentW < 1 {
 		contentW = 1
 	}
-	lines := append([]string{header, rule(contentW), ""}, body...)
+	// The header may span several lines (the status zone wraps downward).
+	lines := append(strings.Split(header, "\n"), rule(contentW), "")
+	lines = append(lines, body...)
 	// Reserve the frame border (2 rows) and the footer row, then pad the middle so
 	// the footer lands at the bottom instead of a short box with dead space below.
 	for len(lines) < m.height-2-1 {

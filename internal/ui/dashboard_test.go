@@ -338,6 +338,34 @@ func TestDashboardHeaderShowsCwdAndHint(t *testing.T) {
 	}
 }
 
+// Top-bar anatomy: the d·change-directory chip is pinned to the title line's
+// right zone (never dropped by footer width fitting), and the status zone is
+// the centered line directly beneath — long messages wrap downward there.
+func TestDashboardTopBarChipAndCenteredStatus(t *testing.T) {
+	m := dashboardModel{width: 100, height: 30}
+	lines := strings.Split(m.View(), "\n")
+	titleIdx := -1
+	for i, l := range lines {
+		if strings.Contains(l, "Dashboard") {
+			titleIdx = i
+			break
+		}
+	}
+	if titleIdx < 0 || !strings.Contains(lines[titleIdx], "change directory") {
+		t.Fatalf("d · change directory should sit on the title line:\n%s", m.View())
+	}
+	statusLine := lines[titleIdx+1]
+	if !strings.Contains(statusLine, "no directories mapped yet") {
+		t.Fatalf("status zone should sit directly under the title line, got %q", statusLine)
+	}
+	if lead := strings.Index(statusLine, "no directories"); lead < 10 {
+		t.Fatalf("status should be centered, got leading offset %d in %q", lead, statusLine)
+	}
+	if strings.Contains(m.View(), "drills in") {
+		t.Fatalf("the retired drills-in coaching resurfaced:\n%s", m.View())
+	}
+}
+
 func TestDashboardHintPriorities(t *testing.T) {
 	// Empty overview → onboarding nudge in the chip, no notice line.
 	if short, notice := dashboardHints(Overview{}); !strings.Contains(short, "no directories mapped") || notice != "" {
