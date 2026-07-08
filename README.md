@@ -232,6 +232,25 @@ browser (falling back to the global `BROWSER_CMD`; remote setups launch it on
 `BROWSER_HOST` over SSH). If no browser is configured or the launch fails, the
 URL is printed instead.
 
+### Bridge any command's sign-in
+
+`azrl bridge <command…>` runs any command with `$BROWSER` wired to azrl's
+smart shim, so its sign-in page opens on your local machine and the OAuth
+callback is tunnelled back — without azrl touching where the command stores
+its session. The main use is renewing the **native (default)** session that
+unmapped directories fall back to:
+
+```bash
+azrl bridge az login --tenant velrada.com   # renew the global az session in ~/.azure
+azrl bridge gcloud auth login               # same for gcloud's native default
+```
+
+Under the hood it writes a tiny single-word shim and points `$BROWSER` at
+it — sidestepping the launcher conventions that make hand-rolled values
+fragile (python's `webbrowser` needs `%s` for arguments and a trailing `&`
+to avoid blocking the callback listener). The child's exit status passes
+through.
+
 ## Mapping a local browser profile
 
 `browser <name>` is available on every provider (`azrl browser`, `azrl gh
