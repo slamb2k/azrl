@@ -534,46 +534,33 @@ func TestExpiredHintGatedToAws(t *testing.T) {
 	}
 }
 
-func TestDashboardRowVerbsBuildHandoffs(t *testing.T) {
+// The dashboard owns only the directory↔profile edges: persona verbs
+// (renew/shell/console/browser) are inert here — the tabs own them.
+func TestDashboardPersonaVerbsAreInert(t *testing.T) {
 	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", profile: "prod"}}}
-	for _, key := range []string{"s", "t", "c"} {
-		mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
-		m = mod.(dashboardModel)
-		if cmd == nil {
-			t.Fatalf("%q on a managed row should hand off", key)
-		}
-	}
-}
-
-func TestDashboardBRoutesToTab(t *testing.T) {
-	m := dashboardModel{width: 100, items: []dashItem{{provider: "github", profile: "oss"}}}
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
-	if cmd == nil {
-		t.Fatal("b should emit a switchTabMsg")
-	}
-	msg := cmd()
-	sw, ok := msg.(switchTabMsg)
-	if !ok || sw.provider != "github" || sw.profile != "oss" || sw.action != "b" {
-		t.Fatalf("switchTabMsg = %+v", msg)
-	}
-}
-
-func TestDashboardRowVerbsExplainOnUnmanagedRow(t *testing.T) {
-	// An ambient row with no managed profile can't sign in/shell/console/link/browser.
-	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", adopt: true}}}
-	for _, key := range []string{"s", "t", "c", "u", "b"} {
+	for _, key := range []string{"s", "t", "c", "b"} {
 		mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 		m = mod.(dashboardModel)
 		if cmd != nil {
-			t.Fatalf("%q on an unmanaged row must not exec", key)
+			t.Fatalf("%q should be inert on the dashboard now", key)
 		}
-	}
-	if m.status == "" || !strings.Contains(m.status, "adopt") {
-		t.Fatalf("unmanaged-row verb should explain itself in the status line: %q", m.status)
 	}
 }
 
-func TestDashboardLinkHereUsesProviderInProcess(t *testing.T) {
+func TestDashboardMapWithNoProfilesExplains(t *testing.T) {
+	// No providers/profiles at all: m explains instead of opening an empty form.
+	m := dashboardModel{width: 100, items: []dashItem{{provider: "aws", adopt: true}}}
+	mod, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	m = mod.(dashboardModel)
+	if cmd != nil || m.mapForm != nil {
+		t.Fatal("m with nothing to map must not open the form or exec")
+	}
+	if m.status == "" || !strings.Contains(m.status, "no profiles yet") {
+		t.Fatalf("m with nothing to map should explain itself: %q", m.status)
+	}
+}
+
+func TestDashboardMapFormPreselectsAndApplies(t *testing.T) {
 	seedDashHome(t)
 	work := filepath.Join(os.Getenv("HOME"), "work")
 	os.MkdirAll(work, 0o755)
@@ -592,11 +579,104 @@ func TestDashboardLinkHereUsesProviderInProcess(t *testing.T) {
 	m.cursor = idx
 	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
 	m = mod.(dashboardModel)
-	if b, err := os.ReadFile(filepath.Join(work, ".azprofile")); err != nil || strings.TrimSpace(string(b)) != "acme" {
-		t.Fatalf("m should map the cwd to acme: %q, %v", b, err)
+	if m.mapForm == nil || !m.capturesInput() {
+		t.Fatal("m should open the map form and capture input")
 	}
-	if !strings.Contains(m.status, "mapped") {
-		t.Fatalf("status should confirm the link: %q", m.status)
+	r := m.mapForm.rows[m.mapForm.cursor]
+	if r.prov.Name() != "azure" || r.sel == 0 || r.profiles[r.sel-1] != "acme" {
+		t.Fatalf("opening from the acme row should pre-pick azure:acme, got %+v", r)
+	}
+	if v := m.View(); !strings.Contains(v, "MAP THIS DIRECTORY") {
+		t.Fatalf("form overlay missing:\n%s", v)
+	}
+	mod, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mod.(dashboardModel)
+	if m.mapForm != nil {
+		t.Fatal("enter should close the form")
+	}
+	if b, err := os.ReadFile(filepath.Join(work, ".azprofile")); err != nil || strings.TrimSpace(string(b)) != "acme" {
+		t.Fatalf("applying the form should map the cwd to acme: %q, %v", b, err)
+	}
+	if !strings.Contains(m.status, "mapped azure:acme") {
+		t.Fatalf("status should confirm the mapping: %q", m.status)
+	}
+}
+
+func TestDashboardMapFormNoneClearsCwdPointer(t *testing.T) {
+	seedDashHome(t)
+	work := filepath.Join(os.Getenv("HOME"), "work")
+	os.MkdirAll(work, 0o755)
+	os.WriteFile(filepath.Join(work, ".azprofile"), []byte("acme\n"), 0o644)
+	t.Chdir(work)
+	m := newDashboard(provider.All())
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	m = mod.(dashboardModel)
+	if m.mapForm == nil {
+		t.Fatal("m should open the map form")
+	}
+	// Walk to the azure row and cycle its pre-filled pick back to (none).
+	for i, r := range m.mapForm.rows {
+		if r.prov.Name() == "azure" {
+			m.mapForm.cursor = i
+			if r.sel == 0 || r.profiles[r.sel-1] != "acme" {
+				t.Fatalf("azure row should open pre-filled with the cwd pointer, got %+v", r)
+			}
+		}
+	}
+	for m.mapForm.rows[m.mapForm.cursor].sel != 0 {
+		m.mapForm.cycle(1)
+	}
+	mod, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mod.(dashboardModel)
+	if _, err := os.Stat(filepath.Join(work, ".azprofile")); !os.IsNotExist(err) {
+		t.Fatalf("(none) should clear the cwd's own pointer: err=%v", err)
+	}
+	if !strings.Contains(m.status, "unmapped azure") {
+		t.Fatalf("status should confirm the unmap: %q", m.status)
+	}
+}
+
+func TestDashboardMapFormEscAndInheritedAreNoops(t *testing.T) {
+	seedDashHome(t)
+	home := os.Getenv("HOME")
+	parent := filepath.Join(home, "work")
+	child := filepath.Join(parent, "sub")
+	os.MkdirAll(child, 0o755)
+	os.WriteFile(filepath.Join(parent, ".azprofile"), []byte("acme\n"), 0o644)
+	t.Chdir(child)
+	m := newDashboard(provider.All())
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	m = mod.(dashboardModel)
+	if m.mapForm == nil {
+		t.Fatal("m should open the map form")
+	}
+	// The inherited azure mapping shows as (none — inherits acme), not a pick.
+	found := false
+	for _, r := range m.mapForm.rows {
+		if r.prov.Name() == "azure" {
+			found = true
+			if r.sel != 0 || r.parentProfile != "acme" {
+				t.Fatalf("inherited mapping should render as (none — inherits acme), got %+v", r)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no azure row in the form")
+	}
+	if v := m.View(); !strings.Contains(v, "inherits acme") {
+		t.Fatalf("form should name the inherited profile:\n%s", v)
+	}
+	// Esc closes without touching anything.
+	mod, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mod.(dashboardModel)
+	if m.mapForm != nil {
+		t.Fatal("esc should close the form")
+	}
+	if _, err := os.Stat(filepath.Join(parent, ".azprofile")); err != nil {
+		t.Fatal("esc must leave the parent pointer untouched")
+	}
+	if _, err := os.Stat(filepath.Join(child, ".azprofile")); !os.IsNotExist(err) {
+		t.Fatal("esc must not create a cwd pointer")
 	}
 }
 
@@ -619,7 +699,9 @@ func TestDashboardUnlinkCwdRowRemovesLink(t *testing.T) {
 		t.Fatalf("no azure:acme item: %+v", m.items)
 	}
 	m.cursor = idx
-	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")}) // map cwd first
+	mod, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")}) // map cwd first (form + apply)
+	m = mod.(dashboardModel)
+	mod, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = mod.(dashboardModel)
 	idx = findAcme()
 	if idx < 0 {
@@ -676,11 +758,14 @@ func TestDashboardUnlinkIgnoredWhileNaming(t *testing.T) {
 	}
 }
 
-func TestDashboardFooterListsUnlinkChip(t *testing.T) {
+func TestDashboardFooterListsMapUnmapChips(t *testing.T) {
 	seedDashHome(t)
 	v := sizedDashboard(t).View()
-	if !strings.Contains(v, "S/T/C/M/B/⇧M") { // keyGlyph upper-cases the chip label; ⇧M stays distinct from M
-		t.Fatalf("footer should list the U chip:\n%s", v)
+	if !strings.Contains(v, "map here") || !strings.Contains(v, "⇧M") {
+		t.Fatalf("footer should carry the m·map here and ⇧M·unmap chips:\n%s", v)
+	}
+	if strings.Contains(v, "S/T/C") {
+		t.Fatalf("the retired combined verb chip resurfaced:\n%s", v)
 	}
 }
 

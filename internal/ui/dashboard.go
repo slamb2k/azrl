@@ -34,14 +34,11 @@ type dashboardTickMsg struct{}
 // az/gh/aws/gcloud token cache write), driving an immediate re-aggregate.
 type fsEventMsg struct{}
 
-// switchTabMsg asks the tab container to jump to a provider's tab with a profile
-// pre-selected; emitted when the user presses Enter (action "") or an
-// accelerator key like `b` (action set) on a dashboard row — the container
-// dispatches action on the target tab after selecting the profile.
+// switchTabMsg asks the tab container to jump to a provider's tab with a
+// profile pre-selected; emitted when the user presses Enter on a dashboard row.
 type switchTabMsg struct {
 	provider string
 	profile  string
-	action   string
 }
 
 // dashboardModel is the landing view: MAPPINGS (directory→profile associations
@@ -61,6 +58,7 @@ type dashboardModel struct {
 	nameInput textinput.Model
 	adoptItem dashItem
 	status    string
+	mapForm   *mapForm
 }
 
 // newDashboard builds the dashboard over provs, reading the poll interval from
@@ -193,7 +191,7 @@ func (m dashboardModel) Close() error {
 
 // capturesInput reports whether the dashboard is in a text-entry state, so
 // the tab container routes runes here instead of its global keymap.
-func (m dashboardModel) capturesInput() bool { return m.naming }
+func (m dashboardModel) capturesInput() bool { return m.naming || m.mapForm != nil }
 
 // captureArgs maps a provider to the azrl subcommand that captures the
 // current session into profile <name> (Azure's capture is top-level; the
@@ -238,6 +236,18 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		if m.mapForm != nil {
+			nf, done, status := m.mapForm.update(msg)
+			*m.mapForm = nf
+			if done {
+				m.mapForm = nil
+				if status != "" {
+					m.status = status
+					m.reload()
+				}
+			}
+			return m, nil
+		}
 		if m.naming {
 			switch msg.String() {
 			case "esc":
@@ -295,42 +305,24 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "s", "t", "c", "m", "b":
-			if m.cursor < 0 || m.cursor >= len(m.items) {
+		case "m":
+			// The dashboard owns only the directory↔profile edges. m opens the
+			// map form — one pick (or none) per provider for the cwd; opening
+			// from a managed row offers that row's profile pre-picked. Persona
+			// verbs (renew/shell/console/browser) live on the tabs.
+			pwd, _ := os.Getwd()
+			f := newMapForm(m.providers, pwd)
+			if len(f.rows) == 0 {
+				m.status = mutedStyle.Render("no profiles yet — create one on a provider tab first")
 				return m, nil
 			}
-			it := m.items[m.cursor]
-			if it.profile == "" {
-				m.status = mutedStyle.Render("no managed profile on this row — a adopts it first")
-				return m, nil
-			}
-			switch msg.String() {
-			case "s":
-				return m, runHandoff(append(groupArgs(cliGroup(it.provider), "login"), it.profile))
-			case "t":
-				return m, runShellHandoff(append(groupArgs(cliGroup(it.provider), "shell"), it.profile))
-			case "c":
-				return m, runHandoff(append(groupArgs(cliGroup(it.provider), "console"), it.profile))
-			case "b":
-				return m, func() tea.Msg {
-					return switchTabMsg{provider: it.provider, profile: it.profile, action: "b"}
+			if m.cursor >= 0 && m.cursor < len(m.items) {
+				if it := m.items[m.cursor]; it.profile != "" {
+					f.preselect(it.provider, it.profile)
 				}
-			case "m":
-				pwd, _ := os.Getwd()
-				for _, p := range m.providers {
-					if p.Name() != it.provider {
-						continue
-					}
-					if err := p.Use(it.profile, p.ProfilesDir(), pwd); err != nil {
-						m.status = failureStyle.Render("✗ " + err.Error())
-					} else {
-						m.status = successStyle.Render("✓ mapped " + displayDir(pwd) + " → " + it.profile)
-						m.reload()
-					}
-					return m, nil
-				}
-				return m, nil
 			}
+			m.mapForm = &f
+			return m, nil
 		case "M":
 			if m.cursor < 0 || m.cursor >= len(m.items) {
 				return m, nil
@@ -374,6 +366,27 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // ↑ at the top row), left-release hit-tests the "dash:<i>" zones marked in
 // View. Mouse is a no-op while the adopt name prompt owns input.
 func (m dashboardModel) handleMouse(msg tea.MouseMsg) (dashboardModel, tea.Cmd) {
+	if m.mapForm != nil {
+		// The form owns the mouse: a row click selects it (click-again cycles
+		// its pick); a click outside the box cancels.
+		if !leftRelease(msg) {
+			return m, nil
+		}
+		for i := range m.mapForm.rows {
+			if z := zone.Get(fmt.Sprintf("mapf:%d", i)); z != nil && z.InBounds(msg) {
+				if m.mapForm.cursor != i {
+					m.mapForm.cursor = i
+				} else {
+					m.mapForm.cycle(1)
+				}
+				return m, nil
+			}
+		}
+		if z := zone.Get("box:mapform"); z != nil && !z.InBounds(msg) {
+			m.mapForm = nil
+		}
+		return m, nil
+	}
 	if m.naming {
 		return m, nil
 	}
@@ -446,7 +459,7 @@ func (m dashboardModel) View() string {
 		header += "\n" + lipgloss.PlaceHorizontal(contentW, lipgloss.Center, l)
 	}
 	help := keyHelpFit(m.width-4,
-		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/m/b/⇧M", "act on row"},
+		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "m", "map here", "⇧M", "unmap"},
 		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "o", "options"})
 
 	var body []string
@@ -507,7 +520,11 @@ func (m dashboardModel) View() string {
 		body = append(body, "  "+mutedStyle.Render("No profiles yet. Create one with `azrl login <name>` or `ghrl login <name>`."))
 	}
 
-	return m.frame(header, body, help)
+	view := m.frame(header, body, help)
+	if m.mapForm != nil {
+		return overlayCenter(view, m.mapForm.view(), m.width)
+	}
+	return view
 }
 
 // scopeMarker renders the mapping's cwd relationship with the same colour
