@@ -79,7 +79,7 @@ func TestRemoveConfirmWithLinks_ListsDirsAndUnlinks(t *testing.T) {
 		t.Fatalf("linked-profile confirm should have 3 options, got %d", len(av.confirm.options))
 	}
 	out := av.View()
-	for _, want := range []string{"Unlink 2 dirs + delete", "Replace links with", displayDir(d1), displayDir(d2)} {
+	for _, want := range []string{"Unmap 2 dirs + delete", "Replace mappings with", displayDir(d1), displayDir(d2)} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("confirm view missing %q:\n%s", want, out)
 		}

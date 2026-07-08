@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runUnlink removes the cwd's directory→profile link for one provider. The
-// profile itself — tokens and all — is untouched; only the edge dies.
+// runUnlink removes the cwd's directory→profile mapping for one provider.
+// The profile itself — tokens and all — is untouched; only the edge dies.
 func runUnlink(providerName string, out io.Writer) error {
 	pwd, _ := os.Getwd()
 	for _, p := range provider.All() {
@@ -21,7 +21,7 @@ func runUnlink(providerName string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "%s: unlinked %s from %s (profile kept)\n", providerName, pwd, name)
+		fmt.Fprintf(out, "%s: unmapped %s from %s (profile kept)\n", providerName, pwd, name)
 		return nil
 	}
 	return fmt.Errorf("azrl: unknown provider %q", providerName)
@@ -29,7 +29,8 @@ func runUnlink(providerName string, out io.Writer) error {
 
 func newUnlinkCmd(providerName, short string) *cobra.Command {
 	return &cobra.Command{
-		Use:          "unlink",
+		Use:          "unmap",
+		Aliases:      []string{"unlink"}, // the pre-map-vocabulary spelling
 		Short:        short,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
@@ -40,5 +41,5 @@ func newUnlinkCmd(providerName, short string) *cobra.Command {
 }
 
 func init() {
-	RootCmd.AddCommand(newUnlinkCmd("azure", "Remove this directory's Azure profile link (keeps the profile)"))
+	RootCmd.AddCommand(newUnlinkCmd("azure", "Remove this directory's Azure profile mapping (keeps the profile)"))
 }

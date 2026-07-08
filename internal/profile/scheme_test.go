@@ -294,7 +294,7 @@ func TestUnlinkRefusesParentGovernedDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := s.Unlink(confdir, child)
-	if err == nil || !strings.Contains(err.Error(), parent) || !strings.Contains(err.Error(), "run unlink there") {
+	if err == nil || !strings.Contains(err.Error(), parent) || !strings.Contains(err.Error(), "run unmap there") {
 		t.Fatalf("parent-governed unlink must refuse naming the parent: %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(parent, ".azprofile")); statErr != nil {
