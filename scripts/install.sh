@@ -64,10 +64,12 @@ if [ ! -f "$profiles/azrl.conf" ]; then
   echo "azrl-install: run 'azrl setup' to review or change the detected config"
 fi
 
-# --- globally gitignore .azprofile so it is never committed ---
+# --- globally gitignore the per-directory pointer files so they are never committed ---
 gi="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
 mkdir -p "$(dirname "$gi")"
-grep -qxF '.azprofile' "$gi" 2>/dev/null || echo '.azprofile' >> "$gi"
+for p in .azprofile .ghprofile .awsprofile .gcpprofile; do
+  grep -qxF "$p" "$gi" 2>/dev/null || echo "$p" >> "$gi"
+done
 
 case ":$PATH:" in
   *":$bindir:"*) : ;;
