@@ -42,13 +42,15 @@ func writeBridgeShim() (string, func(), error) {
 	return p, func() { os.RemoveAll(dir) }, nil
 }
 
-// runBridge execs the command with $BROWSER wired to the shim, streaming its
-// stdio and passing the child's exit status through. azrl never touches
-// where the command stores its session — this is plumbing only (PAT-002).
-func runBridge(args []string, out io.Writer) error {
+// bridgeRun execs the command with $BROWSER wired to the shim, streaming its
+// stdio. It returns the child's exit code (0 on success) so callers can react
+// (e.g. gh default's switch→login fallback); a non-ExitError failure to start
+// is the returned error. azrl never touches where the command stores its
+// session — this is plumbing only (PAT-002).
+func bridgeRun(args []string, out io.Writer) (int, error) {
 	shim, cleanup, err := writeBridgeShim()
 	if err != nil {
-		return fmt.Errorf("azrl: bridge: %w", err)
+		return 0, fmt.Errorf("azrl: bridge: %w", err)
 	}
 	defer cleanup()
 	c := exec.Command(args[0], args[1:]...)
@@ -57,10 +59,21 @@ func runBridge(args []string, out io.Writer) error {
 	if err := c.Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			shellExit(ee.ExitCode())
-			return nil
+			return ee.ExitCode(), nil
 		}
-		return fmt.Errorf("azrl: bridge: %w", err)
+		return 0, fmt.Errorf("azrl: bridge: %w", err)
+	}
+	return 0, nil
+}
+
+// runBridge is bridgeRun with the child's exit status passed through.
+func runBridge(args []string, out io.Writer) error {
+	code, err := bridgeRun(args, out)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		shellExit(code)
 	}
 	return nil
 }
