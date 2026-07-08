@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 	"github.com/spf13/cobra"
 )
@@ -22,6 +23,9 @@ func runUnlink(providerName string, out io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(out, "%s: unmapped %s from %s (profile kept)\n", providerName, pwd, name)
+		if w := profile.EnvrcWarning(providerName, pwd); w != "" {
+			fmt.Fprintln(out, w)
+		}
 		return nil
 	}
 	return fmt.Errorf("azrl: unknown provider %q", providerName)

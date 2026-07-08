@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 
+	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 )
 
@@ -135,6 +136,9 @@ func (f mapForm) apply() string {
 				parts, failed = append(parts, err.Error()), true
 			} else {
 				parts = append(parts, "unmapped "+r.prov.Name())
+				if w := profile.EnvrcWarning(r.prov.Name(), f.dir); w != "" {
+					parts = append(parts, w)
+				}
 			}
 			continue
 		}

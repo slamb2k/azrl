@@ -344,6 +344,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.status = failureStyle.Render("✗ " + err.Error())
 				} else {
 					m.status = successStyle.Render("✓ unmapped " + displayDir(row.Dir) + " (profile kept)")
+					if w := profile.EnvrcWarning(row.Provider, row.Dir); w != "" {
+						m.status += mutedStyle.Render(" · " + w)
+					}
 					m.reload()
 				}
 				return m, nil
