@@ -927,7 +927,7 @@ func (v providerTabView) View() string {
 	contentW, _, _ := paneDims(v.width)
 	help := keyHelpFit(contentW,
 		[]string{"↑↓", "select", "↵", "open/run", "n", "new profile", "esc", "back"},
-		[]string{"q", "quit", "→", "details", "⇥", "tab", "d", "dir", "o", "options"})
+		[]string{"q", "quit", "→", "details", "⇥", "tab", "o", "options", "d", "change directory"})
 	switch {
 	case v.replacePicking:
 		help = keyHelp("↑↓", "choose", "↵", "confirm", "esc", "cancel")

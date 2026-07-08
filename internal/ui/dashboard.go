@@ -419,8 +419,9 @@ func (m dashboardModel) clickRow(i int) (dashboardModel, tea.Cmd) {
 
 func (m dashboardModel) View() string {
 	cwd, _ := os.Getwd()
-	// The same top-line anatomy as the provider tabs: title left, dir centered,
-	// the next-action hint right — justified, not dot-separated.
+	// The same top-line anatomy as the provider tabs: title left, dir centered.
+	// The next-action hint / status chip gets its own line beneath the header
+	// rule instead of crowding the top line's right zone.
 	contentW := m.width - 4
 	if contentW < 1 {
 		contentW = 1
@@ -433,12 +434,13 @@ func (m dashboardModel) View() string {
 		short = m.status
 	}
 	header := justify(contentW, "🧭 "+paneTitleStyle.Render("Dashboard"),
-		"📁 "+displayDir(cwd), short)
+		"📁 "+displayDir(cwd), "")
 	help := keyHelpFit(m.width-4,
 		[]string{"↑↓", "select", "↵", "open tab", "a", "adopt", "s/t/c/m/b/⇧M", "act on row"},
-		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "d", "dir", "o", "options"})
+		[]string{"q", "quit", "f5", "refresh", "w", "recheck drift", "⇥", "tab", "o", "options", "d", "change directory"})
 
 	var body []string
+	body = append(body, lipgloss.PlaceHorizontal(contentW, lipgloss.Right, short), "")
 	if m.naming {
 		body = append(body,
 			mutedStyle.Render("Name for the adopted profile:"),
@@ -749,5 +751,6 @@ func dashboardHints(ov Overview) (short, notice string) {
 	if len(ov.Mappings) == 0 {
 		return mutedStyle.Render("no directories mapped yet"), ""
 	}
-	return mutedStyle.Render("all good · ") + keycap("↵") + mutedStyle.Render(" drills in · ") + keycap("d") + mutedStyle.Render(" changes dir"), ""
+	// The footer already teaches ↵ and d — the chip just reports state.
+	return mutedStyle.Render("all good"), ""
 }
