@@ -1,0 +1,9 @@
+# <type>(<scope>): <subject>  — imperative, ≤72 chars
+#
+# feat | fix | docs | refactor | test | chore | ci | perf
+# scope: ui, cmd, envrc, azure, github, aws, gcp, bridge, profile, install, …
+#
+# Body: what and why (wrap at 72). The diff shows how.
+#
+# Merges to main auto-release: feat → minor bump, fix → patch,
+# feat!/BREAKING CHANGE → major.
