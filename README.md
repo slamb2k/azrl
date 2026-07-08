@@ -330,7 +330,7 @@ directory** — map it afterward with `m` on the dashboard, or `azrl use`.
 | `b` | Assign browser… (async discovery + fuzzy overlay picker, manual-entry fallback) |
 | `delete` | Delete… (confirm dialog; a profile still mapped elsewhere offers to unmap every mapping or repoint them at another profile first) |
 | `a` | Capture (empty-state onboarding) |
-| `m` | Map here (dashboard only — map the selected row's profile to the cwd) |
+| `m` | Map… (dashboard only — popup form: one profile (or none) per provider for the cwd; ↵ applies the diff) |
 | `⇧M` | Unmap (dashboard only — remove the cwd's governing mapping; the profile is kept) |
 | `r` / `f5` | refresh |
 | `w` | recheck drift (dashboard) |
@@ -347,7 +347,11 @@ disappearing.
 The TUI is also mouse-aware: click a row to select it, click again to run it
 (or open its actions); the scroll wheel moves the cursor; clicking outside an
 open popup (options, change-directory, browser picker) closes it. Dashboard
-rows take `s`/`t`/`c`/`m`/`b`/`⇧M`/`a` directly, no need to switch tabs first.
+rows take the edge verbs directly: `m` opens the **map form** — a popup
+offering one pick (or none) per provider for the current directory, applied
+as a diff on ↵ — `⇧M` unmaps the cwd's own pointer, and `a` adopts an
+unmanaged identity. Persona verbs (renew/shell/console/browser) live on the
+provider tabs; ↵ on a row opens its tab with the profile pre-selected.
 Hold Shift while dragging to select and copy terminal text as usual — azrl
 won't intercept it.
 
