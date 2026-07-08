@@ -354,11 +354,14 @@ func TestDashboardTopBarChipAndCenteredStatus(t *testing.T) {
 	if titleIdx < 0 || !strings.Contains(lines[titleIdx], "change directory") {
 		t.Fatalf("d · change directory should sit on the title line:\n%s", m.View())
 	}
-	statusLine := lines[titleIdx+1]
-	if !strings.Contains(statusLine, "no directories mapped yet") {
-		t.Fatalf("status zone should sit directly under the title line, got %q", statusLine)
+	if !strings.Contains(lines[titleIdx+1], "─") {
+		t.Fatalf("a rule should separate the title line from the status band, got %q", lines[titleIdx+1])
 	}
-	if lead := strings.Index(statusLine, "no directories"); lead < 10 {
+	statusLine := lines[titleIdx+2]
+	if !strings.Contains(statusLine, "No directories mapped yet") {
+		t.Fatalf("status band should sit directly under the rule, got %q", statusLine)
+	}
+	if lead := strings.Index(statusLine, "No directories"); lead < 10 {
 		t.Fatalf("status should be centered, got leading offset %d in %q", lead, statusLine)
 	}
 	if strings.Contains(m.View(), "drills in") {
@@ -368,7 +371,7 @@ func TestDashboardTopBarChipAndCenteredStatus(t *testing.T) {
 
 func TestDashboardHintPriorities(t *testing.T) {
 	// Empty overview → onboarding nudge in the chip, no notice line.
-	if short, notice := dashboardHints(Overview{}); !strings.Contains(short, "no directories mapped") || notice != "" {
+	if short, notice := dashboardHints(Overview{}); !strings.Contains(short, "No directories mapped") || notice != "" {
 		t.Fatalf("empty hints = %q / %q", short, notice)
 	}
 	// An unmanaged mapping outranks the all-good message.
