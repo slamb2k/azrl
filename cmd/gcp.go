@@ -333,6 +333,7 @@ func gcpSubcommands() []*cobra.Command {
 		newShellCmd("gcp", "Open a subshell acting as a GCP profile (no mapping)"),
 		newConsoleCmd("gcp", "Open the GCP console for a profile's project"),
 		newUnlinkCmd("gcp", "Remove this directory's GCP profile mapping (keeps the profile)"),
+		newDefaultCmd("gcp", "Sign the native gcloud session in as this profile's account via the bridge"),
 	}
 }
 

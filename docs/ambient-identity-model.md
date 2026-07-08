@@ -1,6 +1,6 @@
 # The Ambient Identity Model
 
-**Status:** Accepted (2026-07-03)
+**Status:** Accepted (2026-07-03) · Amended (2026-07-08 — the `default` verb, see below)
 **Context:** [`specs/resolution-strategies.md`](../specs/resolution-strategies.md)
 §1–3 and §7 (v0.7.0). This note records the identity-model definitions and the
 ownership boundary settled after v0.7.0 shipped, including the decision *not*
@@ -36,14 +36,44 @@ to build "ambient-backed profiles."
 
 azrl owns **mappings, guardrails, isolation, the browser bridge, and the
 mirror**. The native default pointer is user-and-provider territory. azrl
-gains no `default` verb, no `use --home` flag, no GCP auto-activation, no
-GitHub env wiring, and no nagging about unmanaged ambient identities.
+gains no `use --home` flag, no GCP auto-activation, no GitHub env wiring,
+and no nagging about unmanaged ambient identities. (The original decision
+also barred a `default` verb; the 2026-07-08 amendment below carves out a
+narrow, user-invoked version.)
 
 The reasoning: azrl's guarantees are trustworthy because it only makes claims
 about state it owns. A mapped directory's pointer stays true until azrl
 changes it. The global default is legitimately mutated by anything — another
 CLI, an editor extension, a setup script — so expectations recorded against it
 would rot constantly, and noisy guardrails train users to ignore guardrails.
+
+## Amendment (2026-07-08): the `default` verb
+
+`azrl default [name]` (and `gh|aws|gcp default [name]`) makes a profile's
+identity the provider's **native default** — the account plain CLI commands
+use in unmapped directories. The boundary holds because of what the verb is
+allowed to be:
+
+- **The profile is a template, not a source.** Its conf targets the action;
+  tokens are never copied between stores. Azure/GCP exec the provider's own
+  interactive sign-in (`az login --tenant …`, `gcloud auth login [account]`)
+  through the browser bridge, writing the native store the same way a hand-
+  typed login would. GitHub tries the native `gh auth switch` and falls back
+  to a bridged `gh auth login --web`. AWS rewrites the `[default]` stanza of
+  the native config to the profile's SSO coordinates (legacy inline keys, no
+  sso-session indirection) and runs `aws sso login`.
+- **User-invoked only.** Nothing in azrl calls `default` on its own; the
+  mirror never becomes an actor uninvited. The AWS stanza rewrite and the gh
+  switch are the two deliberate native-state mutations in azrl, both behind
+  this one explicit verb.
+- **Expectations still attach to mappings, not the default.** `default` sets
+  the ambient state once; azrl goes back to mirroring it immediately and
+  records no claim about it.
+
+Rationale for amending: the "one default account + a few mapped exceptions"
+pattern proved to be the everyday shape (2026-07-08 cohabitation work), and
+the raw recipe (`azrl bridge az login --tenant …`) demanded tenant GUIDs the
+profile conf already knows. Discoverability won.
 
 ## Rejected alternatives
 

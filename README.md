@@ -251,6 +251,22 @@ fragile (python's `webbrowser` needs `%s` for arguments and a trailing `&`
 to avoid blocking the callback listener). The child's exit status passes
 through.
 
+### Set the native default from a profile
+
+`azrl default [name]` (and `gh|aws|gcp default [name]`) makes a profile's
+identity the provider's **native default** — the account plain CLI commands
+use in unmapped directories. The profile is a template only: azure/gcp run
+the provider's own interactive sign-in through the bridge targeted by the
+profile's tenant/account; github switches the native gh account (bridged web
+login if it isn't signed in yet); aws points the native `[default]` profile
+at the profile's SSO coordinates and runs `aws sso login`. Tokens are never
+copied between stores. With no name, a numbered picker lists your profiles.
+
+```bash
+azrl default work---velrada   # plain `az` everywhere now acts as this account
+azrl aws default prod
+```
+
 ## Mapping a local browser profile
 
 `browser <name>` is available on every provider (`azrl browser`, `azrl gh

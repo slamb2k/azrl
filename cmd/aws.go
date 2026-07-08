@@ -328,6 +328,7 @@ func awsSubcommands() []*cobra.Command {
 		newShellCmd("aws", "Open a subshell acting as an AWS profile (no mapping)"),
 		newConsoleCmd("aws", "Open the AWS access portal for a profile"),
 		newUnlinkCmd("aws", "Remove this directory's AWS profile mapping (keeps the profile)"),
+		newDefaultCmd("aws", "Point the native default profile at this profile's SSO and sign in via the bridge"),
 	}
 }
 
