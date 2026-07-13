@@ -11,8 +11,8 @@ import (
 	"github.com/slamb2k/azrl/internal/provider"
 )
 
-// providerIcon returns the brand-coloured emoji for a provider tab header.
-func providerIcon(name string) string {
+// ProviderIcon returns the brand-coloured emoji for a provider tab header.
+func ProviderIcon(name string) string {
 	switch name {
 	case "azure":
 		return "🔷"

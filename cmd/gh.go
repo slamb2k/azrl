@@ -97,9 +97,11 @@ func newGhListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			for _, p := range profs {
-				cmd.Printf("%-24s %s\n", p.Display(), p.Detail)
+			pairs := make([][2]string, len(profs))
+			for i, p := range profs {
+				pairs[i] = [2]string{p.Display(), p.Detail}
 			}
+			printList(cmd.OutOrStdout(), pairs)
 			return nil
 		},
 	}

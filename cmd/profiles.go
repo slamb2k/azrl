@@ -123,67 +123,79 @@ var profilesCmd = &cobra.Command{
 	},
 }
 
-// printProfilesSections renders the plain-text three-section view: non-TTY safe,
-// no colour, no interactive elements.
+// printProfilesSections renders the three-section view. Columns size to
+// their content and shrink to the terminal; colour reuses the TUI's language
+// (green ● this dir, orange ↑ parent dir) and vanishes on pipes and files.
 func printProfilesSections(w io.Writer, ov ui.Overview, rep profilesReport) {
 	if rep.ShellOverride != "" {
 		_, prof, ok := strings.Cut(rep.ShellOverride, ":")
 		if !ok {
 			prof = rep.ShellOverride
 		}
-		fmt.Fprintf(w, "shell override: %s — this terminal acts as %s\n\n", rep.ShellOverride, prof)
+		fmt.Fprintf(w, "%s shell override: %s — this terminal acts as %s\n\n",
+			cliAccent.Render("⌁"), rep.ShellOverride, cliBold.Render(prof))
 	}
-	fmt.Fprintln(w, "MAPPINGS")
+	fmt.Fprintln(w, cliBold.Render("MAPPINGS"))
 	if len(ov.Mappings) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, cliDim.Render("  (none)"))
 	}
+	rows := [][]string{}
 	for _, m := range ov.Mappings {
 		mark := " "
 		switch m.Scope {
 		case ui.ScopeCwd:
-			mark = "●"
+			mark = cliGood.Render("●")
 		case ui.ScopeAncestor:
-			mark = "↑"
+			mark = cliParent.Render("↑")
 		}
 		src := m.Pointer
 		if m.Source == "gitconfig" {
 			src = "(git)"
 		}
-		target := m.Provider + ":" + m.Profile
-		note := ""
+		target := m.Provider + ":" + cliBold.Render(m.Profile)
+		var notes []string
 		if m.Unmanaged != "" {
 			target = m.Provider + ": " + m.Unmanaged
-			note = "  unmanaged"
+			notes = append(notes, cliDim.Render("unmanaged"))
 		}
 		if m.Conflict != nil {
-			note += fmt.Sprintf("  conflict: %s → %s (git config wins)", m.Pointer, m.Conflict.PointerProfile)
+			notes = append(notes, cliBad.Render(fmt.Sprintf("conflict: %s → %s (git config wins)", m.Pointer, m.Conflict.PointerProfile)))
 		}
 		if m.Drifted {
-			note += "  drift"
+			notes = append(notes, cliParent.Render("⚠ drift"))
 		}
 		if ui.ExpiryActionable(m.Provider) && m.Expiry != nil && time.Until(*m.Expiry) <= 0 {
-			note += "  expired"
+			notes = append(notes, cliBad.Render("⚠ expired"))
 		}
-		fmt.Fprintf(w, "  %s %s → %s  %s%s\n", mark, m.Dir, target, src, note)
+		rows = append(rows, []string{mark + " " + tildePath(m.Dir), "→ " + target, cliDim.Render(src), strings.Join(notes, " ")})
 	}
-	fmt.Fprintln(w, "AMBIENT")
+	renderAligned(w, "  ", rows)
+	fmt.Fprintln(w, cliBold.Render("AMBIENT"))
 	if len(ov.Ambient) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, cliDim.Render("  (none)"))
 	}
+	rows = rows[:0]
 	for _, a := range ov.Ambient {
-		target := "unmanaged"
+		target := cliDim.Render("unmanaged")
 		if a.Profile != "" {
-			target = "managed"
+			target = "managed → " + cliBold.Render(a.Profile)
 		}
-		fmt.Fprintf(w, "  %s  %s  %s  %s\n", a.Provider, a.Identity, a.Source, target)
+		rows = append(rows, []string{ui.ProviderIcon(a.Provider) + " " + a.Provider, a.Identity, cliDim.Render(a.Source), target})
 	}
-	fmt.Fprintln(w, "UNMAPPED PROFILES")
+	renderAligned(w, "  ", rows)
+	fmt.Fprintln(w, cliBold.Render("UNMAPPED PROFILES"))
 	if len(rep.Unmapped) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, cliDim.Render("  (none)"))
 	}
+	rows = rows[:0]
 	for _, r := range rep.Unmapped {
-		fmt.Fprintf(w, "  %s:%s · %s · %s\n", r.Provider, r.ProfileName, dash(r.Identity), plainExpiry(r.Expiry))
+		exp := plainExpiry(r.Expiry)
+		if exp == "expired" {
+			exp = cliBad.Render("⚠ expired")
+		}
+		rows = append(rows, []string{r.Provider + ":" + cliBold.Render(r.ProfileName), cliDim.Render(dash(r.Identity)), exp})
 	}
+	renderAligned(w, "  ", rows)
 }
 
 // plainExpiry renders a relative expiry for the plain table, styling-free.
