@@ -178,6 +178,7 @@ azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azpr
                            # pass --unmap-all or --replace <other> first
 azrl list                  # list configured profiles and their tenants
 azrl whoami [--json]       # "who am I, here?" — governing profile + effective browser per provider
+                           # --explain prints the full resolution ladder (why each winner won)
 azrl profiles [--json]     # "who am I, everywhere?" — mappings / ambient / unmapped (disk-only)
 azrl browser <name>        # map the profile to a local Edge/Chrome browser profile
 azrl --help                # usage; azrl --version prints the version

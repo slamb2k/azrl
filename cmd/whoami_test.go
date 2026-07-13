@@ -132,6 +132,73 @@ func TestWhoamiJSON(t *testing.T) {
 	}
 }
 
+func TestWhoamiExplainShowsLadder(t *testing.T) {
+	home := seedWhoamiHome(t)
+	work := filepath.Join(home, "work")
+	mapAcme(t, home, work)
+	// A native default that loses to the pointer: must render as shadowed.
+	os.MkdirAll(filepath.Join(home, ".azure"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure", "azureProfile.json"),
+		[]byte(`{"subscriptions":[{"user":{"name":"other@corp.com"},"isDefault":true,"tenantId":"g2"}]}`), 0o644)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "azrl.conf"),
+		[]byte("BROWSER_CMD=wslview\n"), 0o644)
+	sub := filepath.Join(work, "sub")
+	os.MkdirAll(sub, 0o755)
+	t.Chdir(sub)
+
+	out := runRoot(t, "whoami", "--explain")
+	whoamiExplain = false
+	for _, want := range []string{
+		"$AZRL_PROFILE not set",
+		"nearest ancestor " + filepath.Join(work, ".azprofile") + ` names "acme"  → in effect`,
+		"other@corp.com",
+		"(shadowed)",
+		`AZ_BROWSER_CMD=chrome-work on profile "acme"  → in effect`,
+		"$AZRL_BROWSER_CMD not set",
+		"azrl.conf BROWSER_CMD=wslview",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("explain missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestWhoamiExplainShellOverrideShadowsMapping(t *testing.T) {
+	home := seedWhoamiHome(t)
+	work := filepath.Join(home, "work")
+	mapAcme(t, home, work)
+	t.Chdir(work)
+	t.Setenv("AZRL_PROFILE", "azure:other")
+
+	out := runRoot(t, "whoami", "--explain")
+	whoamiExplain = false
+	if !strings.Contains(out, "$AZRL_PROFILE=azure:other  → in effect") {
+		t.Fatalf("shell rung should win:\n%s", out)
+	}
+	if !strings.Contains(out, `.azprofile in this directory names "acme"  (shadowed)`) {
+		t.Fatalf("mapping rung should be shadowed:\n%s", out)
+	}
+}
+
+func TestWhoamiExplainJSONTrace(t *testing.T) {
+	home := seedWhoamiHome(t)
+	work := filepath.Join(home, "work")
+	mapAcme(t, home, work)
+	t.Chdir(work)
+
+	out := runRoot(t, "whoami", "--explain", "--json")
+	whoamiExplain, whoamiJSON = false, false
+	var rep whoamiReport
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("bad JSON: %v\n%s", err, out)
+	}
+	for _, r := range rep.Providers {
+		if len(r.Trace) == 0 {
+			t.Fatalf("provider %s has no trace: %+v", r.Provider, r)
+		}
+	}
+}
+
 func TestStatusStubPointsAtReplacements(t *testing.T) {
 	seedWhoamiHome(t)
 	RootCmd.SetArgs([]string{"status", "--json"})
