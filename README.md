@@ -177,7 +177,9 @@ azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azpr
                            # refuses while other directories still link to it —
                            # pass --unmap-all or --replace <other> first
 azrl list                  # list configured profiles and their tenants
-azrl status [--json]       # "who am I, everywhere?" — mappings / ambient / unmapped (disk-only)
+azrl whoami [--json]       # "who am I, here?" — governing profile + effective browser per provider
+                           # --explain prints the full resolution ladder (why each winner won)
+azrl profiles [--json]     # "who am I, everywhere?" — mappings / ambient / unmapped (disk-only)
 azrl browser <name>        # map the profile to a local Edge/Chrome browser profile
 azrl --help                # usage; azrl --version prints the version
 ```
@@ -190,10 +192,16 @@ processes (same user, parent process dead) left behind by earlier attempts —
 zombies that would otherwise steal the OAuth browser callback — and prints a
 note about any *live* `az login` it finds, without killing it.
 
-Bare `azrl` opens the tabbed TUI (below). `azrl status` prints the same
+Bare `azrl` opens the tabbed TUI (below). `azrl profiles` prints the same
 three-section overview on the CLI; `--json` emits
-`{"mappings":[…],"ambient":[…],"unmapped":[…]}`, plus a `shell_override` field
-when the terminal is inside an `azrl shell`.
+`{"mappings":[…],"ambient":[…],"unmapped":[…]}` (profile-backed rows carry the
+assigned `browser`/`browserLabel`), plus a `shell_override` field when the
+terminal is inside an `azrl shell`. `azrl whoami` answers the narrower
+question — what is in effect *in this directory*: per provider, the governing
+profile (shell override > pointer > ancestor > git config > ambient) and the
+browser command a sign-in would launch right now (profile override >
+`$AZRL_BROWSER_CMD` > global `BROWSER_CMD`). The old `azrl status` is a hidden
+stub pointing at both.
 
 ### Shell as a profile
 
@@ -623,7 +631,7 @@ numbered phases behind the shared `Provider` interface (see `specs/`):
 - **Richer auditability — "who am I, everywhere?"** *(shipped — Phase 5.5,
   `specs/status-dashboard.md`; restructured in v0.7.0,
   `specs/resolution-strategies.md`)*. A cross-provider overview is the default
-  landing view of the TUI (and `azrl status [--json]` on the CLI): directory →
+  landing view of the TUI (and `azrl profiles [--json]` on the CLI): directory →
   profile mappings with drift, each CLI's ambient identity read from its own
   config on disk, and unmapped profiles with their expiry — refreshed from local
   cache only (no network). A per-directory *history* beyond a single last-used

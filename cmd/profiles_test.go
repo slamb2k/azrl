@@ -20,7 +20,8 @@ func seedStatusHome(t *testing.T) {
 	az := filepath.Join(home, ".azure-profiles")
 	os.MkdirAll(filepath.Join(az, "acme"), 0o755)
 	os.WriteFile(filepath.Join(az, "acme.conf"),
-		[]byte("AZ_TENANT=acme.com\nLAST_USED=2026-06-30T10:00:00Z\nLAST_DIR=/work/acme\n"), 0o644)
+		[]byte("AZ_TENANT=acme.com\nLAST_USED=2026-06-30T10:00:00Z\nLAST_DIR=/work/acme\n"+
+			"AZ_BROWSER_CMD=chrome-work\nAZ_BROWSER_LABEL=Edge — Work\n"), 0o644)
 	os.WriteFile(filepath.Join(az, "acme", "azureProfile.json"),
 		[]byte(`{"subscriptions":[{"user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"g1"}]}`), 0o644)
 	gh := filepath.Join(home, ".github-profiles")
@@ -28,10 +29,10 @@ func seedStatusHome(t *testing.T) {
 	os.WriteFile(filepath.Join(gh, "work.conf"), []byte("GH_HOST=github.com\n"), 0o644)
 }
 
-func TestStatusCmdPlainSections(t *testing.T) {
+func TestProfilesCmdPlainSections(t *testing.T) {
 	seedStatusHome(t)
-	statusJSON = false
-	out := runRoot(t, "status")
+	profilesJSON = false
+	out := runRoot(t, "profiles")
 	for _, want := range []string{"MAPPINGS", "AMBIENT", "UNMAPPED PROFILES",
 		"azure:acme", "u@acme.com", "github:work"} {
 		if !strings.Contains(out, want) {
@@ -40,7 +41,7 @@ func TestStatusCmdPlainSections(t *testing.T) {
 	}
 }
 
-func TestStatusCmdPlainShowsMappingWithScope(t *testing.T) {
+func TestProfilesCmdPlainShowsMappingWithScope(t *testing.T) {
 	seedStatusHome(t)
 	home := os.Getenv("HOME")
 	work := filepath.Join(home, "work")
@@ -49,8 +50,8 @@ func TestStatusCmdPlainShowsMappingWithScope(t *testing.T) {
 	os.WriteFile(filepath.Join(home, ".azure-profiles", "mappings"),
 		[]byte(work+"\tacme\tpointer\n"), 0o644)
 	t.Chdir(work)
-	statusJSON = false
-	out := runRoot(t, "status")
+	profilesJSON = false
+	out := runRoot(t, "profiles")
 	if !strings.Contains(out, "● "+work+" → azure:acme") || !strings.Contains(out, ".azprofile") {
 		t.Fatalf("mapping row with cwd marker missing:\n%s", out)
 	}
@@ -82,22 +83,22 @@ func captureRealStdout(t *testing.T, fn func()) string {
 	return string(b)
 }
 
-func TestStatusCmdJSONWritesToStdout(t *testing.T) {
+func TestProfilesCmdJSONWritesToStdout(t *testing.T) {
 	seedStatusHome(t)
 	errBuf := new(bytes.Buffer)
 	out := captureRealStdout(t, func() {
 		RootCmd.SetOut(nil) // clear any injected outWriter so OutOrStdout hits os.Stdout
 		RootCmd.SetErr(errBuf)
-		RootCmd.SetArgs([]string{"status", "--json"})
+		RootCmd.SetArgs([]string{"profiles", "--json"})
 		if err := RootCmd.Execute(); err != nil {
 			t.Fatal(err)
 		}
 	})
-	statusJSON = false
+	profilesJSON = false
 	if out == "" {
 		t.Fatalf("status --json wrote nothing to stdout (err buffer=%q)", errBuf.String())
 	}
-	var rep statusReport
+	var rep profilesReport
 	if err := json.Unmarshal([]byte(out), &rep); err != nil {
 		t.Fatalf("stdout is not the three-section JSON object: %v\n%s", err, out)
 	}
@@ -106,14 +107,14 @@ func TestStatusCmdJSONWritesToStdout(t *testing.T) {
 	}
 }
 
-func TestStatusCmdPlainTableWritesToStdout(t *testing.T) {
+func TestProfilesCmdPlainTableWritesToStdout(t *testing.T) {
 	seedStatusHome(t)
-	statusJSON = false
+	profilesJSON = false
 	errBuf := new(bytes.Buffer)
 	out := captureRealStdout(t, func() {
 		RootCmd.SetOut(nil)
 		RootCmd.SetErr(errBuf)
-		RootCmd.SetArgs([]string{"status"})
+		RootCmd.SetArgs([]string{"profiles"})
 		if err := RootCmd.Execute(); err != nil {
 			t.Fatal(err)
 		}
@@ -123,7 +124,7 @@ func TestStatusCmdPlainTableWritesToStdout(t *testing.T) {
 	}
 }
 
-func TestStatusCmdJSON(t *testing.T) {
+func TestProfilesCmdJSON(t *testing.T) {
 	seedStatusHome(t)
 	home := os.Getenv("HOME")
 	work := filepath.Join(home, "work")
@@ -138,11 +139,11 @@ func TestStatusCmdJSON(t *testing.T) {
 	buf := new(bytes.Buffer)
 	RootCmd.SetOut(buf)
 	RootCmd.SetErr(buf)
-	RootCmd.SetArgs([]string{"status", "--json"})
+	RootCmd.SetArgs([]string{"profiles", "--json"})
 	if err := RootCmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	statusJSON = false
+	profilesJSON = false
 
 	// The exact three-section object shape (AC-012): no extra top-level keys.
 	var top map[string]json.RawMessage
@@ -158,7 +159,7 @@ func TestStatusCmdJSON(t *testing.T) {
 		t.Fatalf("want exactly 3 top-level keys, got %d:\n%s", len(top), buf.String())
 	}
 
-	var rep statusReport
+	var rep profilesReport
 	if err := json.Unmarshal(buf.Bytes(), &rep); err != nil {
 		t.Fatal(err)
 	}
@@ -170,6 +171,10 @@ func TestStatusCmdJSON(t *testing.T) {
 		m.Source != "pointer" || m.Scope != "cwd" || m.Drifted {
 		t.Fatalf("mapping = %+v", m)
 	}
+	// The assigned browser rides along on profile-backed rows.
+	if m.Browser != "chrome-work" || m.BrowserLabel != "Edge — Work" {
+		t.Fatalf("mapping browser = %q / %q", m.Browser, m.BrowserLabel)
+	}
 	// Ambient rows carry profile:null when unmanaged; none exist in this fixture.
 	if rep.Ambient == nil {
 		t.Fatalf("ambient must be an empty array, not null:\n%s", buf.String())
@@ -180,15 +185,15 @@ func TestStatusCmdJSON(t *testing.T) {
 	}
 }
 
-func TestStatusCmdJSONEmptySectionsAreArrays(t *testing.T) {
+func TestProfilesCmdJSONEmptySectionsAreArrays(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME"} {
 		t.Setenv(k, "")
 	}
-	statusJSON = false
-	out := runRoot(t, "status", "--json")
-	statusJSON = false
+	profilesJSON = false
+	out := runRoot(t, "profiles", "--json")
+	profilesJSON = false
 	for _, want := range []string{`"mappings": []`, `"ambient": []`, `"unmapped": []`} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("empty section not an array (%q):\n%s", want, out)
@@ -196,7 +201,7 @@ func TestStatusCmdJSONEmptySectionsAreArrays(t *testing.T) {
 	}
 }
 
-func TestStatusCmdMappingExpiry(t *testing.T) {
+func TestProfilesCmdMappingExpiry(t *testing.T) {
 	seedStatusHome(t)
 	home := os.Getenv("HOME")
 	work := filepath.Join(home, "work")
@@ -209,8 +214,8 @@ func TestStatusCmdMappingExpiry(t *testing.T) {
 		[]byte(`{"AccessToken":{"k":{"expires_on":"1000000"}}}`), 0o644)
 	t.Chdir(work)
 
-	statusJSON = false
-	out := runRoot(t, "status")
+	profilesJSON = false
+	out := runRoot(t, "profiles")
 	if !strings.Contains(out, "azure:acme") {
 		t.Fatalf("mapping row missing:\n%s", out)
 	}
@@ -218,9 +223,9 @@ func TestStatusCmdMappingExpiry(t *testing.T) {
 		t.Fatalf("azure mapping must not carry the expired note (AWS-only guidance):\n%s", out)
 	}
 
-	out = runRoot(t, "status", "--json")
-	statusJSON = false
-	var rep statusReport
+	out = runRoot(t, "profiles", "--json")
+	profilesJSON = false
+	var rep profilesReport
 	if err := json.Unmarshal([]byte(out), &rep); err != nil {
 		t.Fatalf("bad JSON: %v\n%s", err, out)
 	}
@@ -238,45 +243,45 @@ func TestStatusCmdMappingExpiry(t *testing.T) {
 	}
 }
 
-func TestStatusReportsShellOverride(t *testing.T) {
+func TestProfilesReportsShellOverride(t *testing.T) {
 	seedStatusHome(t)
 	t.Setenv("AZRL_PROFILE", "azure:work")
 
-	statusJSON = false
-	out := runRoot(t, "status")
+	profilesJSON = false
+	out := runRoot(t, "profiles")
 	if !strings.Contains(out, "shell override: azure:work") {
 		t.Fatalf("plain status missing shell override line:\n%s", out)
 	}
 
-	out = runRoot(t, "status", "--json")
-	statusJSON = false
+	out = runRoot(t, "profiles", "--json")
+	profilesJSON = false
 	if !strings.Contains(out, `"shell_override": "azure:work"`) {
 		t.Fatalf("json status missing shell_override:\n%s", out)
 	}
 }
 
-func TestStatusOmitsShellOverrideWhenUnset(t *testing.T) {
+func TestProfilesOmitsShellOverrideWhenUnset(t *testing.T) {
 	seedStatusHome(t)
 	t.Setenv("AZRL_PROFILE", "")
 
-	statusJSON = false
-	out := runRoot(t, "status")
+	profilesJSON = false
+	out := runRoot(t, "profiles")
 	if strings.Contains(out, "shell override") {
 		t.Fatalf("no override line expected:\n%s", out)
 	}
-	out = runRoot(t, "status", "--json")
-	statusJSON = false
+	out = runRoot(t, "profiles", "--json")
+	profilesJSON = false
 	if strings.Contains(out, "shell_override") {
 		t.Fatalf("omitempty field leaked into JSON:\n%s", out)
 	}
 }
 
-func TestStatusShellOverrideMalformedMarkerFallsBackToRawValue(t *testing.T) {
+func TestProfilesShellOverrideMalformedMarkerFallsBackToRawValue(t *testing.T) {
 	seedStatusHome(t)
 	t.Setenv("AZRL_PROFILE", "garbled")
 
-	statusJSON = false
-	out := runRoot(t, "status")
+	profilesJSON = false
+	out := runRoot(t, "profiles")
 	if !strings.Contains(out, "shell override: garbled — this terminal acts as garbled") {
 		t.Fatalf("malformed marker should fall back to the raw value, not an empty name:\n%s", out)
 	}

@@ -33,7 +33,7 @@ type ProviderStatus struct {
 }
 
 // Collect gathers each provider's profiles into disk-only Status snapshots for
-// the cross-provider dashboard and `azrl status`. A provider whose ListProfiles
+// the cross-provider dashboard and `azrl profiles`. A provider whose ListProfiles
 // fails is skipped; a per-profile Status error is surfaced on that profile's own
 // snapshot rather than aborting the whole scan. It never makes a network call.
 func Collect(provs []Provider) []ProviderStatus {
