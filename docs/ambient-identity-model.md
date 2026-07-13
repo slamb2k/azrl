@@ -11,7 +11,7 @@ to build "ambient-backed profiles."
 - **Ambient identity** — the account a provider CLI would use *right now* with
   no azrl involvement: whatever its native default state plus the process
   environment selects. azrl **mirrors** it (the dashboard's AMBIENT rows and
-  `azrl status`) and never mutates it (PAT-002). Its definition — which
+  `azrl profiles`) and never mutates it (PAT-002). Its definition — which
   account is "the default" — is controlled entirely outside azrl (`gh auth
   switch`, `az login`, `AWS_PROFILE`, gcloud's `active_config`), and it is of
   informational value only.
