@@ -52,7 +52,7 @@ func TestProfilesCmdPlainShowsMappingWithScope(t *testing.T) {
 	t.Chdir(work)
 	profilesJSON = false
 	out := runRoot(t, "profiles")
-	if !strings.Contains(out, "● "+work+" → azure:acme") || !strings.Contains(out, ".azprofile") {
+	if !strings.Contains(out, "● ~/work") || !strings.Contains(out, "azure:acme") || !strings.Contains(out, ".azprofile") {
 		t.Fatalf("mapping row with cwd marker missing:\n%s", out)
 	}
 	// Mapped profiles leave the unmapped section.

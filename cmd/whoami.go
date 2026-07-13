@@ -134,16 +134,16 @@ func traceLadder(p provider.Provider, cwd, override string, shellWins bool, m *u
 	}
 
 	if m == nil {
-		t = append(t, fmt.Sprintf("2. directory mapping no mapping governs %s (cwd or any parent)", cwd))
+		t = append(t, fmt.Sprintf("2. directory mapping no mapping governs %s (cwd or any parent)", tildePath(cwd)))
 	} else {
 		var what string
 		switch {
 		case m.Source == "gitconfig" && m.Profile == "":
 			what = fmt.Sprintf("repo git config names %q (unmanaged — no profile has that identity)", m.Unmanaged)
 		case m.Source == "gitconfig":
-			what = fmt.Sprintf("repo git config in %s maps to %q", m.Dir, m.Profile)
+			what = fmt.Sprintf("repo git config in %s maps to %q", tildePath(m.Dir), m.Profile)
 		case m.Scope == ui.ScopeAncestor:
-			what = fmt.Sprintf("nearest ancestor %s names %q", filepath.Join(m.Dir, m.Pointer), m.Profile)
+			what = fmt.Sprintf("nearest ancestor %s names %q", tildePath(filepath.Join(m.Dir, m.Pointer)), m.Profile)
 		default:
 			what = fmt.Sprintf("%s in this directory names %q", m.Pointer, m.Profile)
 		}
@@ -247,34 +247,53 @@ func effectiveBrowser(p provider.Provider, name string) (cmd, label, source stri
 	return "", "", ""
 }
 
-// printWhoami renders the per-provider table: non-TTY safe, no colour.
+// printWhoami renders the per-provider table. Columns size to their content
+// and shrink to the terminal; colour and the ●/⌁ marks reuse the TUI's
+// language (green = this dir, orange = parent, ⌁ = shell/ambient) and vanish
+// on pipes and files.
 func printWhoami(w io.Writer, rep whoamiReport) {
-	fmt.Fprintln(w, rep.Dir)
+	fmt.Fprintln(w, cliBold.Render("📁 "+tildePath(rep.Dir)))
+	rows := make([][]string, 0, len(rep.Providers))
 	for _, r := range rep.Providers {
-		via := "—"
+		mark, via := " ", cliDim.Render("—")
 		switch r.Via {
 		case "shell":
-			via = "shell override"
+			mark, via = cliAccent.Render("⌁"), "shell override"
 		case "pointer":
-			via = "via " + r.Pointer
+			mark, via = cliGood.Render("●"), "via "+r.Pointer
 		case "ancestor":
-			via = "via ancestor " + r.Dir
+			mark, via = cliParent.Render("●"), "via ancestor "+tildePath(r.Dir)
 		case "gitconfig":
-			via = "via git config"
+			mark, via = cliGood.Render("●"), "via git config"
 		case "ambient":
-			via = "ambient"
+			mark, via = cliDim.Render("⌁"), "ambient"
 		}
-		browser := "—"
+		browser := cliDim.Render("—")
 		if r.Browser != "" {
 			b := r.Browser
 			if r.BrowserLabel != "" {
 				b = r.BrowserLabel
 			}
-			browser = fmt.Sprintf("%s (%s)", b, r.BrowserSource)
+			browser = b + " " + cliDim.Render("("+r.BrowserSource+")")
 		}
-		fmt.Fprintf(w, "  %-8s %-16s %-24s %-32s browser: %s\n",
-			r.Provider, dash(r.Profile), dash(r.Identity), via, browser)
+		profile := dash(r.Profile)
+		if r.Profile != "" {
+			profile = cliBold.Render(r.Profile)
+		}
+		rows = append(rows, []string{
+			mark + " " + ui.ProviderIcon(r.Provider) + " " + r.Provider,
+			profile, cliDim.Render(dash(r.Identity)), via, "browser: " + browser,
+		})
+	}
+	renderAligned(w, "  ", rows)
+	for _, r := range rep.Providers {
+		if len(r.Trace) == 0 {
+			continue
+		}
+		fmt.Fprintln(w, "  "+ui.ProviderIcon(r.Provider)+" "+cliBold.Render(r.Provider))
 		for _, line := range r.Trace {
+			line = strings.ReplaceAll(line, "→ in effect", cliGood.Render("→ in effect"))
+			line = strings.ReplaceAll(line, "(shadowed)", cliDim.Render("(shadowed)"))
 			fmt.Fprintf(w, "      %s\n", line)
 		}
 	}

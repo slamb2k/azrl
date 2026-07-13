@@ -47,7 +47,7 @@ func TestWhoamiAncestorGovernsSubdir(t *testing.T) {
 	t.Chdir(sub)
 
 	out := runRoot(t, "whoami")
-	if !strings.Contains(out, "via ancestor "+work) || !strings.Contains(out, "acme") {
+	if !strings.Contains(out, "via ancestor ~/work") || !strings.Contains(out, "acme") {
 		t.Fatalf("ancestor row missing:\n%s", out)
 	}
 }
@@ -150,7 +150,7 @@ func TestWhoamiExplainShowsLadder(t *testing.T) {
 	whoamiExplain = false
 	for _, want := range []string{
 		"$AZRL_PROFILE not set",
-		"nearest ancestor " + filepath.Join(work, ".azprofile") + ` names "acme"  → in effect`,
+		`nearest ancestor ~/work/.azprofile names "acme"  → in effect`,
 		"other@corp.com",
 		"(shadowed)",
 		`AZ_BROWSER_CMD=chrome-work on profile "acme"  → in effect`,

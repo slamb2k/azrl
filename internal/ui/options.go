@@ -103,7 +103,7 @@ func (o optionsPicker) view() string {
 		if i == o.cursor {
 			title = selBlockActive.Render(title)
 		}
-		line := truncateLine(box+" "+providerIcon(p.Name())+" "+title, innerW)
+		line := truncateLine(box+" "+ProviderIcon(p.Name())+" "+title, innerW)
 		b.WriteString(zone.Mark(fmt.Sprintf("opt:%d", i), line) + "\n\n")
 	}
 	b.WriteString(lipgloss.PlaceHorizontal(innerW, lipgloss.Center, keyHelp("space", "toggle", "↵", "save", "esc", "cancel")))

@@ -178,7 +178,7 @@ func (f mapForm) view() string {
 	b.WriteString(paneTitle("MAP THIS DIRECTORY", true) + "\n")
 	b.WriteString(mutedStyle.Render("📁 "+displayDir(f.dir)) + "\n\n")
 	for i, r := range f.rows {
-		label := providerIcon(r.prov.Name()) + " " + r.prov.Title()
+		label := ProviderIcon(r.prov.Name()) + " " + r.prov.Title()
 		pick := "◂ " + r.choice() + " ▸"
 		if i == f.cursor {
 			pick = selBlockActive.Render(pick)

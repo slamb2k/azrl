@@ -826,7 +826,7 @@ func (v providerTabView) identityStrip() string {
 	if v.shellName != "" {
 		ident = accentStyle.Render("⌁ shell: " + v.shellName)
 	}
-	strip := headerStrip(contentW, providerIcon(v.prov.Name()), v.prov.Title(), pwd, ident)
+	strip := headerStrip(contentW, ProviderIcon(v.prov.Name()), v.prov.Title(), pwd, ident)
 	if v.notice != "" {
 		strip += "\n" + ansi.Wordwrap(v.notice, contentW, "")
 	}
