@@ -167,3 +167,70 @@ func TestBrowserPickerWheelMovesCursor(t *testing.T) {
 		t.Fatalf("wheel up should move back, got %d", nm2.(awsView).providerTabView.browserPick.cursor)
 	}
 }
+
+func TestBrowserPickStealConfirmMovesMapping(t *testing.T) {
+	confPath := seedAwsHome(t, "AWS_SSO_START_URL=https://acme.awsapps.com/start\n")
+	otherPath := filepath.Join(filepath.Dir(confPath), "other.conf")
+	os.WriteFile(otherPath, []byte("AWS_SSO_START_URL=https://o.awsapps.com/start\n"+
+		"AWS_BROWSER_CMD=microsoft-edge --profile-directory=\"Profile 2\"\nAWS_BROWSER_LABEL=Edge — Work\n"), 0o644)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	av := nm.(awsView)
+	av.providerTabView.browserFor = "work"
+	msg := browserProfilesMsg{forProfile: "work", profiles: []browserpick.Profile{
+		{Browser: "edge", OS: "linux", Dir: "Profile 2", Name: "Work", Email: "simon@acme.com"},
+	}}
+	nm2, _ := av.Update(msg)
+	nm3, _ := nm2.Update(tea.KeyMsg{Type: tea.KeyEnter}) // pick → collides → confirm dialog
+
+	out := nm3.(awsView).View()
+	if !strings.Contains(out, "one owner") || !strings.Contains(out, "Yes, move it to") {
+		t.Fatalf("steal confirm not shown:\n%s", out)
+	}
+	if b, _ := os.ReadFile(confPath); strings.Contains(string(b), "AWS_BROWSER_CMD=microsoft-edge") {
+		t.Fatalf("nothing may be written before confirmation:\n%s", b)
+	}
+
+	nm4, _ := nm3.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	b, _ := os.ReadFile(confPath)
+	if !strings.Contains(string(b), `AWS_BROWSER_CMD=microsoft-edge --profile-directory="Profile 2"`) {
+		t.Fatalf("mapping not moved to work:\n%s", b)
+	}
+	ob, _ := os.ReadFile(otherPath)
+	if !strings.Contains(string(ob), "AWS_BROWSER_CMD=\n") {
+		t.Fatalf("previous owner not cleared:\n%s", ob)
+	}
+	if strings.Contains(nm4.(awsView).View(), "Yes, move it to") {
+		t.Fatal("confirm dialog should close after steal")
+	}
+}
+
+func TestBrowserPickStealDeclineLeavesEverything(t *testing.T) {
+	confPath := seedAwsHome(t, "AWS_SSO_START_URL=https://acme.awsapps.com/start\n")
+	otherPath := filepath.Join(filepath.Dir(confPath), "other.conf")
+	orig := "AWS_SSO_START_URL=https://o.awsapps.com/start\n" +
+		"AWS_BROWSER_CMD=microsoft-edge --profile-directory=\"Profile 2\"\nAWS_BROWSER_LABEL=Edge — Work\n"
+	os.WriteFile(otherPath, []byte(orig), 0o644)
+
+	v := newAwsView()
+	nm, _ := v.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	av := nm.(awsView)
+	av.providerTabView.browserFor = "work"
+	msg := browserProfilesMsg{forProfile: "work", profiles: []browserpick.Profile{
+		{Browser: "edge", OS: "linux", Dir: "Profile 2", Name: "Work", Email: "simon@acme.com"},
+	}}
+	nm2, _ := av.Update(msg)
+	nm3, _ := nm2.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	nm4, _ := nm3.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	if b, _ := os.ReadFile(confPath); strings.Contains(string(b), "AWS_BROWSER_CMD=microsoft-edge") {
+		t.Fatalf("decline must not write:\n%s", b)
+	}
+	if ob, _ := os.ReadFile(otherPath); string(ob) != orig {
+		t.Fatalf("previous owner must be untouched:\n%s", ob)
+	}
+	if strings.Contains(nm4.(awsView).View(), "Yes, move it to") {
+		t.Fatal("esc should close the confirm dialog")
+	}
+}

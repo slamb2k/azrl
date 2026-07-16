@@ -207,6 +207,25 @@ func (s Scheme) GetKey(name, confdir, key string) string {
 	return m[key]
 }
 
+// FindByKey returns the names of every profile (except exclude) whose conf
+// holds key=value. Best-effort: unreadable confs are skipped.
+func (s Scheme) FindByKey(confdir, key, value, exclude string) []string {
+	if value == "" {
+		return nil
+	}
+	listed, err := s.List(confdir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, l := range listed {
+		if l.Name != exclude && s.GetKey(l.Name, confdir, key) == value {
+			names = append(names, l.Name)
+		}
+	}
+	return names
+}
+
 // readOrderedKV parses a KEY=value conf into a map plus the key order as first
 // seen. Blank lines and lines without '=' are skipped.
 func readOrderedKV(path string) (map[string]string, []string, error) {
