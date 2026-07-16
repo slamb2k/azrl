@@ -351,3 +351,19 @@ func TestLinkedDirsUnlinkAllAndReplace(t *testing.T) {
 		t.Fatalf("mappings should be gone: %v", got)
 	}
 }
+
+func TestFindByKey(t *testing.T) {
+	dir := t.TempDir()
+	s := AzureScheme()
+	os.WriteFile(filepath.Join(dir, "a.conf"), []byte("AZ_TENANT=x\nAZ_BROWSER_CMD=edge --profile-directory=\"P2\"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "b.conf"), []byte("AZ_TENANT=y\nAZ_BROWSER_CMD=edge --profile-directory=\"P2\"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "c.conf"), []byte("AZ_TENANT=z\n"), 0o644)
+
+	got := s.FindByKey(dir, "AZ_BROWSER_CMD", `edge --profile-directory="P2"`, "a")
+	if len(got) != 1 || got[0] != "b" {
+		t.Fatalf("FindByKey = %v, want [b]", got)
+	}
+	if got := s.FindByKey(dir, "AZ_BROWSER_CMD", "", "a"); got != nil {
+		t.Fatalf("empty value must match nothing, got %v", got)
+	}
+}

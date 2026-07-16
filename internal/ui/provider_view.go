@@ -81,10 +81,20 @@ type providerTabView struct {
 	notice           string
 	identityOverride string
 
-	browserFor    string // profile a browser mapping is being chosen for
-	browserPick   *browserPicker
-	browserManual bool
-	browserInput  textinput.Model
+	browserFor     string // profile a browser mapping is being chosen for
+	browserPick    *browserPicker
+	browserManual  bool
+	browserInput   textinput.Model
+	pendingBrowser *stealBrowser // pick colliding with other profiles' mappings, awaiting steal confirm
+}
+
+// stealBrowser holds a browser pick that another profile already owns — a
+// browser profile has a single owner per provider, so applying it waits on
+// the user confirming the steal (the other profiles' mappings are cleared).
+type stealBrowser struct {
+	forName    string
+	cmd, label string
+	others     []string
 }
 
 // providerActions is the shared verb set every tab offers. group is the azrl
@@ -280,6 +290,9 @@ func (v providerTabView) update(msg tea.Msg) (providerTabView, tea.Cmd) {
 			case "esc", "n", "q":
 				v.cancelConfirm()
 			case "y":
+				if v.pendingBrowser != nil {
+					return v.doStealBrowser()
+				}
 				// Fast path: link-free keeps the historical bare delete; a linked
 				// profile maps 'y' to unlink-all so it can't strand a pointer file.
 				if len(v.linkedDirs) > 0 {
@@ -634,16 +647,35 @@ func captureAction(v *providerTabView) tea.Cmd {
 	return namingPromptAction("capture")(v)
 }
 
-// applyBrowserMapping writes the browser cmd/label keys for browserFor.
+// applyBrowserMapping writes the browser cmd/label keys for browserFor — a
+// browser profile has a single owner, so a pick that another profile already
+// uses arms the shared confirm dialog to steal it instead of writing.
 func (v *providerTabView) applyBrowserMapping(cmdVal, labelVal string) {
+	cmdKey, _ := browserpick.Keys(v.prov.Name())
+	if others := v.prov.Scheme().FindByKey(v.prov.ProfilesDir(), cmdKey, cmdVal, v.browserFor); len(others) != 0 {
+		v.pendingBrowser = &stealBrowser{forName: v.browserFor, cmd: cmdVal, label: labelVal, others: others}
+		v.confirming = true
+		v.confirm = newRadio([]radioOption{
+			{label: "No, keep it on " + strings.Join(others, ", ")},
+			{label: fmt.Sprintf("Yes, move it to %q", v.browserFor)},
+		})
+		v.confirmKind = []string{"cancel", "steal-browser"}
+		v.confirm.focused = true
+		return
+	}
+	v.writeBrowserMapping(v.browserFor, cmdVal, labelVal)
+}
+
+// writeBrowserMapping writes the browser cmd/label keys for name.
+func (v *providerTabView) writeBrowserMapping(name, cmdVal, labelVal string) {
 	cmdKey, labelKey := browserpick.Keys(v.prov.Name())
 	s := v.prov.Scheme()
 	dir := v.prov.ProfilesDir()
-	if err := s.SetKey(v.browserFor, dir, cmdKey, cmdVal); err != nil {
+	if err := s.SetKey(name, dir, cmdKey, cmdVal); err != nil {
 		v.status = failureStyle.Render(err.Error())
 		return
 	}
-	if err := s.SetKey(v.browserFor, dir, labelKey, labelVal); err != nil {
+	if err := s.SetKey(name, dir, labelKey, labelVal); err != nil {
 		v.status = failureStyle.Render(err.Error())
 		return
 	}
@@ -651,7 +683,31 @@ func (v *providerTabView) applyBrowserMapping(cmdVal, labelVal string) {
 	if disp == "" {
 		disp = cmdVal
 	}
-	v.status = successStyle.Render(fmt.Sprintf("%q opens with %s", v.browserFor, disp))
+	v.status = successStyle.Render(fmt.Sprintf("%q opens with %s", name, disp))
+}
+
+// doStealBrowser clears the colliding profiles' browser keys, then writes the
+// pending mapping to its new owner.
+func (v providerTabView) doStealBrowser() (providerTabView, tea.Cmd) {
+	p := v.pendingBrowser
+	v.cancelConfirm()
+	if p == nil {
+		return v, nil
+	}
+	cmdKey, labelKey := browserpick.Keys(v.prov.Name())
+	s, dir := v.prov.Scheme(), v.prov.ProfilesDir()
+	for _, o := range p.others {
+		if err := s.SetKey(o, dir, cmdKey, ""); err != nil {
+			v.status = failureStyle.Render(err.Error())
+			return v, nil
+		}
+		if err := s.SetKey(o, dir, labelKey, ""); err != nil {
+			v.status = failureStyle.Render(err.Error())
+			return v, nil
+		}
+	}
+	v.writeBrowserMapping(p.forName, p.cmd, p.label)
+	return v, nil
 }
 
 // removeAction arms the shared confirm dialog for the selected profile —
@@ -709,6 +765,7 @@ func (v *providerTabView) cancelConfirm() {
 	v.confirming = false
 	v.replacePicking = false
 	v.pendingDelete = ""
+	v.pendingBrowser = nil
 	v.linkedDirs = nil
 }
 
@@ -721,6 +778,8 @@ func (v providerTabView) runConfirmSelection() (providerTabView, tea.Cmd) {
 		kind = v.confirmKind[v.confirm.cursor]
 	}
 	switch kind {
+	case "steal-browser":
+		return v.doStealBrowser()
 	case "remove":
 		return v.doRemove()
 	case "unlink":
@@ -908,6 +967,11 @@ func (v providerTabView) View() string {
 		right = paneTitle("REPLACE WITH", true) + "\n\n" +
 			mutedStyle.Render(fmt.Sprintf("Repoint %d mapped dir(s) at:", len(v.linkedDirs))) + "\n\n" +
 			v.replacePick.view(rightW)
+	case v.confirming && v.pendingBrowser != nil:
+		right = paneTitle("CONFIRM", true) + "\n\n" +
+			mutedStyle.Render("A browser profile has one owner —\nstealing clears it on "+
+				strings.Join(v.pendingBrowser.others, ", ")+".") + "\n\n" +
+			v.confirm.view(rightW)
 	case v.confirming && len(v.linkedDirs) > 0:
 		right = paneTitle("CONFIRM", true) + "\n\n" +
 			mutedStyle.Render("Mapped in:\n"+formatDirList(v.linkedDirs)) + "\n\n" +

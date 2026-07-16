@@ -105,3 +105,52 @@ func TestBrowserMapNoticesBrokenGlobalConf(t *testing.T) {
 		t.Fatalf("missing discovery-unavailable notice:\n%s", out)
 	}
 }
+
+func TestBrowserMapStealConfirmYes(t *testing.T) {
+	confPath := seedBrowserMapEnv(t, twoProfileProbe)
+	otherPath := filepath.Join(filepath.Dir(confPath), "other.conf")
+	os.WriteFile(otherPath, []byte("GCP_PROJECT=other-proj\n"+
+		"GCP_BROWSER_CMD=microsoft-edge --profile-directory=\"Profile 2\"\nGCP_BROWSER_LABEL=Edge — Work\n"), 0o644)
+
+	RootCmd.SetIn(strings.NewReader("1\ny\n"))
+	out, err := execRoot(t, "gcp", "browser", "work")
+	if err != nil {
+		t.Fatalf("browser map: %v (out=%q)", err, out)
+	}
+	if !strings.Contains(out, "already opens for other") {
+		t.Fatalf("missing steal prompt:\n%s", out)
+	}
+	b, _ := os.ReadFile(confPath)
+	if !strings.Contains(string(b), `GCP_BROWSER_CMD=microsoft-edge --profile-directory="Profile 2"`) {
+		t.Fatalf("new owner missing mapping:\n%s", b)
+	}
+	ob, _ := os.ReadFile(otherPath)
+	if !strings.Contains(string(ob), "GCP_BROWSER_CMD=\n") || !strings.Contains(string(ob), "GCP_BROWSER_LABEL=\n") {
+		t.Fatalf("previous owner not cleared:\n%s", ob)
+	}
+}
+
+func TestBrowserMapStealDeclined(t *testing.T) {
+	confPath := seedBrowserMapEnv(t, twoProfileProbe)
+	otherPath := filepath.Join(filepath.Dir(confPath), "other.conf")
+	orig := "GCP_PROJECT=other-proj\n" +
+		"GCP_BROWSER_CMD=microsoft-edge --profile-directory=\"Profile 2\"\nGCP_BROWSER_LABEL=Edge — Work\n"
+	os.WriteFile(otherPath, []byte(orig), 0o644)
+
+	RootCmd.SetIn(strings.NewReader("1\nn\n"))
+	out, err := execRoot(t, "gcp", "browser", "work")
+	if err != nil {
+		t.Fatalf("browser map: %v (out=%q)", err, out)
+	}
+	if !strings.Contains(out, "unchanged") {
+		t.Fatalf("decline should report unchanged:\n%s", out)
+	}
+	b, _ := os.ReadFile(confPath)
+	if strings.Contains(string(b), "GCP_BROWSER_CMD=microsoft-edge") {
+		t.Fatalf("decline must not write the mapping:\n%s", b)
+	}
+	ob, _ := os.ReadFile(otherPath)
+	if string(ob) != orig {
+		t.Fatalf("previous owner must be untouched:\n%s", ob)
+	}
+}

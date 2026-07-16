@@ -71,15 +71,34 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 				return fmt.Errorf("%s: no selection", tool)
 			}
 			s := prov.Scheme()
-			set := func(cmdVal, labelVal string) error {
-				if err := s.SetKey(name, dir, cmdKey, cmdVal); err != nil {
-					return err
+			// A browser profile has a single owner per provider: assigning one
+			// that another profile already uses asks to steal it — yes moves
+			// the mapping (the other profile is cleared), no leaves everything.
+			set := func(cmdVal, labelVal string) (bool, error) {
+				if others := s.FindByKey(dir, cmdKey, cmdVal, name); len(others) != 0 {
+					fmt.Fprintf(out, "%s: that browser already opens for %s — steal it? [y/N]: ",
+						tool, strings.Join(others, ", "))
+					if !in.Scan() || !strings.EqualFold(strings.TrimSpace(in.Text()), "y") {
+						fmt.Fprintf(out, "%s: unchanged\n", tool)
+						return false, nil
+					}
+					for _, o := range others {
+						if err := s.SetKey(o, dir, cmdKey, ""); err != nil {
+							return false, err
+						}
+						if err := s.SetKey(o, dir, labelKey, ""); err != nil {
+							return false, err
+						}
+					}
 				}
-				return s.SetKey(name, dir, labelKey, labelVal)
+				if err := s.SetKey(name, dir, cmdKey, cmdVal); err != nil {
+					return false, err
+				}
+				return true, s.SetKey(name, dir, labelKey, labelVal)
 			}
 			switch ans := strings.TrimSpace(in.Text()); {
 			case ans == "0":
-				if err := set("", ""); err != nil {
+				if _, err := set("", ""); err != nil {
 					return err
 				}
 				fmt.Fprintf(out, "%s: cleared browser mapping for %q\n", tool, name)
@@ -89,20 +108,22 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 					return fmt.Errorf("%s: no command entered", tool)
 				}
 				c := strings.TrimSpace(in.Text())
-				if err := set(c, ""); err != nil {
+				if ok, err := set(c, ""); err != nil {
 					return err
+				} else if ok {
+					fmt.Fprintf(out, "%s: %q now opens with: %s\n", tool, name, c)
 				}
-				fmt.Fprintf(out, "%s: %q now opens with: %s\n", tool, name, c)
 			default:
 				n, err := strconv.Atoi(ans)
 				if err != nil || n < 1 || n > len(found) {
 					return fmt.Errorf("%s: invalid selection %q", tool, ans)
 				}
 				p := found[n-1]
-				if err := set(p.Command(), p.Label()); err != nil {
+				if ok, err := set(p.Command(), p.Label()); err != nil {
 					return err
+				} else if ok {
+					fmt.Fprintf(out, "%s: %q now opens with %s\n", tool, name, p.Label())
 				}
-				fmt.Fprintf(out, "%s: %q now opens with %s\n", tool, name, p.Label())
 			}
 			return nil
 		},
