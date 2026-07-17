@@ -88,6 +88,7 @@ func (m pickModel) View() string {
 // pickArrow runs the picker and returns the chosen index, or an error when
 // the user cancelled.
 func pickArrow(title string, items []pickItem) (int, error) {
+	ensureStderrColour()
 	m := pickModel{title: title, items: items, choice: -1}
 	final, err := tea.NewProgram(m, tea.WithOutput(os.Stderr)).Run()
 	if err != nil {

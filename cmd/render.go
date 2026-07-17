@@ -5,10 +5,12 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
+	"github.com/muesli/termenv"
 )
 
 // Plain-CLI styling: the same visual language as the TUI (green = this dir,
@@ -151,4 +153,19 @@ func printList(w io.Writer, pairs [][2]string) {
 		rows[i] = []string{cliBold.Render(p[0]), cliValue.Render(p[1])}
 	}
 	renderAligned(w, "", rows)
+}
+
+// ensureStderrColour re-detects the colour profile from stderr when stdout is
+// captured. lipgloss keys its default profile to stdout, so under
+// `eval "$(azrl env …)"` — stdout a pipe, stderr the terminal — every style
+// silently rendered plain even though the picker and notes land on a real
+// TTY. Once per process; a no-op when stdout is itself a terminal.
+var stderrColourOnce sync.Once
+
+func ensureStderrColour() {
+	stderrColourOnce.Do(func() {
+		if !term.IsTerminal(os.Stdout.Fd()) && term.IsTerminal(os.Stderr.Fd()) {
+			lipgloss.SetColorProfile(termenv.NewOutput(os.Stderr).ColorProfile())
+		}
+	})
 }
