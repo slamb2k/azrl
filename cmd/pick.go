@@ -115,6 +115,17 @@ func resolveLoginTargetWithProfiles(cmd *cobra.Command, prov provider.Provider, 
 	if !isInteractive() {
 		return "", profs, false, fmt.Errorf("%s: multiple profiles — specify one of: %s", label, strings.Join(names, ", "))
 	}
+	if useArrowPicker() {
+		items := make([]pickItem, len(profs))
+		for i, p := range profs {
+			items[i] = pickItem{Label: p.Display(), Detail: p.Detail}
+		}
+		idx, perr := pickArrow("Select a profile", items)
+		if perr != nil {
+			return "", profs, false, perr
+		}
+		return profs[idx].Name, profs, false, nil
+	}
 	for i, p := range profs {
 		fmt.Fprintf(out, "  %d) %-24s %s\n", i+1, p.Display(), p.Detail)
 	}

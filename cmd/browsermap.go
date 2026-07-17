@@ -56,19 +56,47 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 					return found[i].Email == ident && found[j].Email != ident
 				})
 			}
-			for i, p := range found {
-				email := p.Email
-				if email == "" {
-					email = "(not signed in)"
-				}
-				fmt.Fprintf(out, "%2d) %-28s %s\n", i+1, p.Label(), email)
-			}
-			fmt.Fprintln(out, " m) enter command manually")
-			fmt.Fprintln(out, " 0) clear mapping")
-			fmt.Fprint(out, "select: ")
+			var picked string // "m", "0", or a 1-based number as text
 			in := bufio.NewScanner(cmd.InOrStdin())
-			if !in.Scan() {
-				return fmt.Errorf("%s: no selection", tool)
+			if useArrowPicker() {
+				items := make([]pickItem, 0, len(found)+2)
+				for _, p := range found {
+					email := p.Email
+					if email == "" {
+						email = "(not signed in)"
+					}
+					items = append(items, pickItem{Label: p.Label(), Detail: email})
+				}
+				items = append(items,
+					pickItem{Label: "enter command manually"},
+					pickItem{Label: "clear mapping"})
+				idx, perr := pickArrow(fmt.Sprintf("Browser for profile %q", name), items)
+				if perr != nil {
+					return perr
+				}
+				switch idx {
+				case len(found):
+					picked = "m"
+				case len(found) + 1:
+					picked = "0"
+				default:
+					picked = fmt.Sprintf("%d", idx+1)
+				}
+			} else {
+				for i, p := range found {
+					email := p.Email
+					if email == "" {
+						email = "(not signed in)"
+					}
+					fmt.Fprintf(out, "%2d) %-28s %s\n", i+1, p.Label(), email)
+				}
+				fmt.Fprintln(out, " m) enter command manually")
+				fmt.Fprintln(out, " 0) clear mapping")
+				fmt.Fprint(out, "select: ")
+				if !in.Scan() {
+					return fmt.Errorf("%s: no selection", tool)
+				}
+				picked = strings.TrimSpace(in.Text())
 			}
 			s := prov.Scheme()
 			// A browser profile has a single owner per provider: assigning one
@@ -96,7 +124,7 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 				}
 				return true, s.SetKey(name, dir, labelKey, labelVal)
 			}
-			switch ans := strings.TrimSpace(in.Text()); {
+			switch ans := picked; {
 			case ans == "0":
 				if _, err := set("", ""); err != nil {
 					return err

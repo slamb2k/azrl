@@ -27,7 +27,7 @@ func newEnvCmd(provFn func() provider.Provider, label, providerName string, vali
 			errOut := cmd.ErrOrStderr()
 			if off {
 				fmt.Fprintf(out, "unset %s\n", strings.Join(shellOwnedKeys(providerName), " "))
-				fmt.Fprintf(errOut, "%s: shell override cleared — back to the mapping/ambient resolution\n", label)
+				fmt.Fprintln(errOut, cliDim.Render(fmt.Sprintf("%s: shell override cleared — back to the mapping/ambient resolution", label)))
 				return nil
 			}
 			prov := provFn()
@@ -59,7 +59,7 @@ func newEnvCmd(provFn func() provider.Provider, label, providerName string, vali
 				k, v, _ := strings.Cut(kv, "=")
 				fmt.Fprintf(out, "export %s=%s\n", k, shellQuote(v))
 			}
-			fmt.Fprintf(errOut, "%s: this shell now acts as %s:%s — '%s env --off' reverts\n", label, providerName, name, label)
+			fmt.Fprintln(errOut, cliAccentBlue.Render(fmt.Sprintf("%s: this shell now acts as %s:%s", label, providerName, name))+cliDim.Render(fmt.Sprintf(" — '%s env --off' reverts", label)))
 			return nil
 		},
 	}
@@ -81,8 +81,8 @@ func printApplyHint(cmd *cobra.Command, label, providerName, name string) {
 	if g, err := resolveGoverning(providerName); err == nil && g == name {
 		return
 	}
-	fmt.Fprintf(cmd.OutOrStdout(),
+	fmt.Fprintln(cmd.OutOrStdout(), cliDim.Render(fmt.Sprintf(
 		"%s: note — tokens live in the profile; plain CLIs HERE still act as the ambient default.\n"+
-			"      apply with: %s use %s (this dir) · shell (subshell) · env (this shell) · default (everywhere)\n",
-		label, label, name)
+			"      apply with: %s use %s (this dir) · shell (subshell) · env (this shell) · default (everywhere)",
+		label, label, name)))
 }

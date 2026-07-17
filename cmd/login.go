@@ -121,7 +121,7 @@ func printSignedIn(out interface{ Write([]byte) (int, error) }, acct []byte) {
 	if tenant == "" {
 		tenant = a.TenantID
 	}
-	fmt.Fprintf(out, "✓ azrl: signed in as %s (tenant %s, sub %s)\n", a.User.Name, tenant, a.Name)
+	fmt.Fprintf(out, "%s azrl: signed in as %s (tenant %s, sub %s)\n", cliGood.Render("✓"), cliBold.Render(a.User.Name), tenant, a.Name)
 }
 
 func init() {
