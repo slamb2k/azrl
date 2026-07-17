@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -12,18 +11,7 @@ import (
 
 // validGhName guards GitHub profile names the same way validProfileName guards
 // Azure ones, reserving the ghrl global-conf basename.
-func validGhName(name string) error {
-	if name == "" {
-		return fmt.Errorf("ghrl: a profile name is required")
-	}
-	if strings.Contains(name, "/") {
-		return fmt.Errorf("ghrl: invalid profile name %q", name)
-	}
-	if name == "ghrl" {
-		return fmt.Errorf("ghrl: refusing to use the global ghrl config")
-	}
-	return nil
-}
+var validGhName = newValidName("ghrl", "ghrl")
 
 func newGhLoginCmd() *cobra.Command {
 	var hostname string
@@ -51,7 +39,7 @@ func newGhLoginCmd() *cobra.Command {
 					return fmt.Errorf("ghrl: no profile %q — pass --yes to create it (host %s) or run interactively", name, hostname)
 				}
 				conf = github.Conf{Host: hostname, Protocol: "https"}
-				if werr := conf.Write(ghConfPath(dir, name)); werr != nil {
+				if werr := conf.Write(groupConfPath(dir, name)); werr != nil {
 					return werr
 				}
 				created = true
@@ -85,26 +73,6 @@ func newGhLoginCmd() *cobra.Command {
 	c.Flags().BoolVar(&ghNoLink, "no-map", false, "Create without claiming this directory (skip the .ghprofile pin).")
 	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	return c
-}
-
-func newGhListCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List configured GitHub profiles and their hosts",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			prov := github.NewProvider()
-			profs, err := prov.ListProfiles(prov.ProfilesDir())
-			if err != nil {
-				return err
-			}
-			pairs := make([][2]string, len(profs))
-			for i, p := range profs {
-				pairs[i] = [2]string{p.Display(), p.Detail}
-			}
-			printList(cmd.OutOrStdout(), pairs)
-			return nil
-		},
-	}
 }
 
 func newGhUseCmd() *cobra.Command {
@@ -151,44 +119,6 @@ func newGhSwitchStubCmd() *cobra.Command {
 	}
 }
 
-func newGhRmCmd() *cobra.Command {
-	var unlinkAll bool
-	var replace string
-	c := &cobra.Command{
-		Use:   "rm <name>",
-		Short: "Remove a GitHub profile and its isolated config dir",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			if err := validGhName(name); err != nil {
-				return err
-			}
-			prov := github.NewProvider()
-			dir := prov.ProfilesDir()
-			if err := refuseIfLinked(prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
-				return err
-			}
-			if err := unlinkOrReplace(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
-				return err
-			}
-			pwd, _ := os.Getwd()
-			removed, err := prov.Remove(name, dir, pwd)
-			if err != nil {
-				return err
-			}
-			for _, r := range removed {
-				cmd.Printf("removed %s\n", r)
-			}
-			return nil
-		},
-	}
-	c.Flags().BoolVar(&unlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
-	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
-	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
-	c.MarkFlagsMutuallyExclusive("unmap-all", "replace")
-	return c
-}
-
 func newGhCaptureCmd() *cobra.Command {
 	var hostname string
 	c := &cobra.Command{
@@ -218,7 +148,7 @@ func newGhCaptureCmd() *cobra.Command {
 				conf.BrowserCmd = existing.BrowserCmd
 				conf.BrowserLabel = existing.BrowserLabel
 			}
-			if err := conf.Write(ghConfPath(dir, name)); err != nil {
+			if err := conf.Write(groupConfPath(dir, name)); err != nil {
 				return err
 			}
 			pwd, _ := os.Getwd()
@@ -233,29 +163,17 @@ func newGhCaptureCmd() *cobra.Command {
 	return c
 }
 
-func newGhStatusCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "status",
-		Short: "Show the repo-pinned GitHub profile",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			prov := github.NewProvider()
-			pwd, _ := os.Getwd()
-			if pin, err := prov.Resolve("", pwd); err == nil {
-				cmd.Printf("this dir is pinned to: %s\n", pin)
-			} else {
-				cmd.Println("this dir has no .ghprofile pin")
-			}
-			return nil
-		},
-	}
-}
-
 // githubSubcommands builds a fresh set of the GitHub subcommands (cobra commands
 // bind to one parent, so both `azrl gh …` and the ghrl alias build their own).
 func githubSubcommands() []*cobra.Command {
 	return []*cobra.Command{
-		newGhLoginCmd(), newGhListCmd(), newGhUseCmd(), newGhSwitchStubCmd(),
-		newGhRmCmd(), newGhCaptureCmd(), newGhStatusCmd(), newGhBrowserCmd(),
+		newGhLoginCmd(),
+		newGroupListCmd(github.NewProvider, "List configured GitHub profiles and their hosts"),
+		newGhUseCmd(), newGhSwitchStubCmd(),
+		newGroupRmCmd(github.NewProvider, "Remove a GitHub profile and its isolated config dir", validGhName),
+		newGhCaptureCmd(),
+		newGroupStatusCmd(github.NewProvider, "Show the repo-pinned GitHub profile", ".ghprofile", ""),
+		newGhBrowserCmd(),
 		newShellCmd("github", "Open a subshell acting as a GitHub profile (no mapping)"),
 		newConsoleCmd("github", "Open GitHub as a profile's account"),
 		newUnlinkCmd("github", "Remove this directory's GitHub profile mapping (keeps the profile)"),
@@ -271,11 +189,6 @@ func newGhGroupCmd() *cobra.Command {
 	}
 	g.AddCommand(githubSubcommands()...)
 	return g
-}
-
-// ghConfPath is the conf file path for a GitHub profile.
-func ghConfPath(dir, name string) string {
-	return dir + string(os.PathSeparator) + name + ".conf"
 }
 
 func init() { RootCmd.AddCommand(newGhGroupCmd()) }
