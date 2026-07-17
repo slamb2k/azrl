@@ -46,10 +46,10 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 				if ps, derr := browserpick.Discover(g); derr == nil {
 					found = ps
 				} else {
-					fmt.Fprintf(out, "%s: discovery failed (%v) — manual entry only\n", tool, derr)
+					fmt.Fprintln(out, cliDim.Render(fmt.Sprintf("%s: discovery failed (%v) — manual entry only", tool, derr)))
 				}
 			} else {
-				fmt.Fprintf(out, "%s: discovery unavailable (%v) — manual entry only\n", tool, err)
+				fmt.Fprintln(out, cliDim.Render(fmt.Sprintf("%s: discovery unavailable (%v) — manual entry only", tool, err)))
 			}
 			if ident := expectIdent(name, dir); ident != "" {
 				sort.SliceStable(found, func(i, j int) bool {
@@ -104,10 +104,10 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 			// the mapping (the other profile is cleared), no leaves everything.
 			set := func(cmdVal, labelVal string) (bool, error) {
 				if others := s.FindByKey(dir, cmdKey, cmdVal, name); len(others) != 0 {
-					fmt.Fprintf(out, "%s: that browser already opens for %s — steal it? [y/N]: ",
-						tool, strings.Join(others, ", "))
+					fmt.Fprintf(out, "%s: that browser already opens for %s — %s [y/N]: ",
+						tool, cliBold.Render(strings.Join(others, ", ")), cliParent.Render("steal it?"))
 					if !in.Scan() || !strings.EqualFold(strings.TrimSpace(in.Text()), "y") {
-						fmt.Fprintf(out, "%s: unchanged\n", tool)
+						fmt.Fprintln(out, cliDim.Render(tool+": unchanged"))
 						return false, nil
 					}
 					for _, o := range others {
@@ -129,9 +129,9 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 				if _, err := set("", ""); err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "%s: cleared browser mapping for %q\n", tool, name)
+				fmt.Fprintf(out, "%s %s: cleared browser mapping for %s\n", cliGood.Render("✓"), tool, cliBold.Render(name))
 			case ans == "m":
-				fmt.Fprint(out, "command: ")
+				fmt.Fprint(out, cliDim.Render("command: "))
 				if !in.Scan() || strings.TrimSpace(in.Text()) == "" {
 					return fmt.Errorf("%s: no command entered", tool)
 				}
@@ -139,7 +139,7 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 				if ok, err := set(c, ""); err != nil {
 					return err
 				} else if ok {
-					fmt.Fprintf(out, "%s: %q now opens with: %s\n", tool, name, c)
+					fmt.Fprintf(out, "%s %s: %s now opens with: %s\n", cliGood.Render("✓"), tool, cliBold.Render(name), cliValue.Render(c))
 				}
 			default:
 				n, err := strconv.Atoi(ans)
@@ -150,7 +150,7 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 				if ok, err := set(p.Command(), p.Label()); err != nil {
 					return err
 				} else if ok {
-					fmt.Fprintf(out, "%s: %q now opens with %s\n", tool, name, p.Label())
+					fmt.Fprintf(out, "%s %s: %s now opens with %s\n", cliGood.Render("✓"), tool, cliBold.Render(name), cliValue.Render(p.Label()))
 				}
 			}
 			return nil
