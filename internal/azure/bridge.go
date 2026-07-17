@@ -16,6 +16,6 @@ func WaitForLogin(lg *Login, timeout time.Duration) error {
 	case <-time.After(timeout):
 		_ = lg.Cmd.Process.Kill()
 		<-lg.waitErr
-		return fmt.Errorf("azrl: sign-in did not complete within %s", timeout)
+		return fmt.Errorf("azrl: sign-in did not complete within %s — the browser window never finished (check it on your browser machine), or the callback never reached this VM (tunnel/paste line)", timeout)
 	}
 }
