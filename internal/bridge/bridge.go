@@ -60,10 +60,14 @@ func Bridge(port, url string, g config.Global, forcePaste bool) (*exec.Cmd, stri
 		reachable = probe.Run() == nil
 	}
 	if !reachable {
+		if !forcePaste {
+			fmt.Fprintf(os.Stderr, "azrl: zero-paste unavailable — ssh probe to %s failed (BatchMode, 5s timeout); falling back to the paste line\n", g.BrowserHost)
+		}
 		return nil, PasteLine(port, vmHost, g.BrowserCmd, url), nil
 	}
 	tunnel := exec.Command("ssh", "-N", "-R", fmt.Sprintf("%s:localhost:%s", port, port), g.BrowserHost)
 	if err := tunnel.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "azrl: zero-paste unavailable — could not start the ssh tunnel: %v; falling back to the paste line\n", err)
 		return nil, PasteLine(port, vmHost, g.BrowserCmd, url), nil
 	}
 	// Detect tunnels that die immediately (port conflict, auth failure, etc.).
@@ -73,6 +77,7 @@ func Bridge(port, url string, g config.Global, forcePaste bool) (*exec.Cmd, stri
 	select {
 	case <-tunnelDone:
 		// Tunnel exited within the liveness window — fall back to paste.
+		fmt.Fprintf(os.Stderr, "azrl: zero-paste unavailable — the ssh tunnel to %s exited immediately (port %s already forwarded, or ssh auth failed); falling back to the paste line\n", g.BrowserHost, port)
 		return nil, PasteLine(port, vmHost, g.BrowserCmd, url), nil
 	case <-time.After(500 * time.Millisecond):
 		// Tunnel is still alive — open the remote browser and return it.

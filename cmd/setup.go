@@ -86,6 +86,7 @@ func writeConf(dir string, g config.Global, out io.Writer) error {
 		mode = "local"
 	}
 	fmt.Fprintf(out, "azrl: wrote %s (%s mode, BROWSER_CMD=%s)\n", path, mode, g.BrowserCmd)
+	fmt.Fprintln(out, "azrl: next — azrl login <name> creates a profile and signs in (bare azrl opens the dashboard)")
 	return nil
 }
 
