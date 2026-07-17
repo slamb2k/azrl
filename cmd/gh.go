@@ -65,6 +65,7 @@ func newGhLoginCmd() *cobra.Command {
 					cmd.Printf("ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
 				}
 			}
+			printApplyHint(cmd, "ghrl", "github", name)
 			return github.Scheme().Touch(name, dir, pwd)
 		},
 	}
@@ -161,6 +162,7 @@ func githubSubcommands() []*cobra.Command {
 		newShellCmd("github", "Open a subshell acting as a GitHub profile (no mapping)"),
 		newConsoleCmd("github", "Open GitHub as a profile's account"),
 		newUnlinkCmd("github", "Remove this directory's GitHub profile mapping (keeps the profile)"),
+		newEnvCmd(github.NewProvider, "ghrl", "github", validGhName),
 		newDefaultCmd("github", "Make a profile's account the native gh default (web login via the bridge if needed)"),
 	}
 }
