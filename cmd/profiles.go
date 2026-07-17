@@ -140,7 +140,7 @@ func printProfilesSections(w io.Writer, ov ui.Overview, rep profilesReport) {
 		fmt.Fprintln(w, cliDim.Render("  (none)"))
 	}
 	rows := [][]string{}
-	for _, m := range ov.Mappings {
+	for i, m := range ov.Mappings {
 		mark := " "
 		switch m.Scope {
 		case ui.ScopeCwd:
@@ -167,7 +167,8 @@ func printProfilesSections(w io.Writer, ov ui.Overview, rep profilesReport) {
 		if ui.ExpiryActionable(m.Provider) && m.Expiry != nil && time.Until(*m.Expiry) <= 0 {
 			notes = append(notes, cliBad.Render("⚠ expired"))
 		}
-		rows = append(rows, []string{mark + " " + tildePath(m.Dir), "→ " + target, cliDim.Render(src), strings.Join(notes, " ")})
+		rows = append(rows, []string{mark + " " + tildePath(m.Dir), "→ " + target, cliDim.Render(src),
+			cliDim.Render(browserDisp(rep.Mappings[i].Browser, rep.Mappings[i].BrowserLabel)), strings.Join(notes, " ")})
 	}
 	renderAligned(w, "  ", rows)
 	fmt.Fprintln(w, cliBold.Render("AMBIENT"))
@@ -193,9 +194,19 @@ func printProfilesSections(w io.Writer, ov ui.Overview, rep profilesReport) {
 		if exp == "expired" {
 			exp = cliBad.Render("⚠ expired")
 		}
-		rows = append(rows, []string{r.Provider + ":" + cliBold.Render(r.ProfileName), cliDim.Render(dash(r.Identity)), exp})
+		rows = append(rows, []string{r.Provider + ":" + cliBold.Render(r.ProfileName), cliDim.Render(dash(r.Identity)),
+			cliDim.Render(browserDisp(r.Browser, r.BrowserLabel)), exp})
 	}
 	renderAligned(w, "  ", rows)
+}
+
+// browserDisp renders a profile's assigned browser for the plain table:
+// the human label when the picker set one, else the raw command, else a dash.
+func browserDisp(cmd, label string) string {
+	if label != "" {
+		return label
+	}
+	return dash(cmd)
 }
 
 // plainExpiry renders a relative expiry for the plain table, styling-free.
