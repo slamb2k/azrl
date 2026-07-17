@@ -36,6 +36,29 @@ than one account that single session becomes a bottleneck:
 `AZURE_CONFIG_DIR` token cache, wiring those profiles to directories, and bridging
 the browser back to wherever you actually are.
 
+## Five commands. That's the whole tool.
+
+For all the machinery underneath, day-to-day azrl is deliberately tiny:
+
+```bash
+azrl setup                  # once per machine — detects WSL/remote/desktop, writes the config
+azrl login work             # sign an identity in (first use creates the profile)
+azrl use work               # this directory now acts as that identity — permanently
+azrl whoami                 # "who am I here, and which browser opens?"  (--all: everywhere)
+azrl rm old-client          # clean up
+```
+
+That's a complete workflow. Sign in once per identity, point directories at
+profiles, and from then on plain `az` in any mapped directory just *is* the
+right account — no flags, no re-login, no thinking. When something looks odd,
+`azrl whoami --explain` shows exactly why the winning identity won, rung by rung.
+
+Everything else — subshells (`shell`), current-shell overrides (`env`), browser
+windows (`browser`), web consoles (`console`), native defaults (`default`), the
+sign-in bridge for other tools (`bridge`) — is the advanced shelf, grouped
+separately in `azrl --help` so it never crowds the five verbs above. Reach for
+it when you want it; ignore it forever if you don't.
+
 ## Where it helps
 
 `azrl` is useful anywhere you touch more than one Azure account — it is **not**
