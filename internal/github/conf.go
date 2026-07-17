@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/slamb2k/azrl/internal/config"
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // Conf holds a per-profile GitHub configuration. Host is the account's server
@@ -56,15 +57,5 @@ func (c Conf) Write(path string) error {
 	}
 	body := fmt.Sprintf("GH_HOST=%s\nGH_USER=%s\nGH_LABEL=%s\nGH_PROTOCOL=%s\nGH_BROWSER_CMD=%s\nGH_BROWSER_LABEL=%s\n",
 		c.Host, c.User, c.Label, protocol, c.BrowserCmd, c.BrowserLabel)
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.WriteString(body); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	tmp.Close()
-	return os.Rename(tmp.Name(), path)
+	return profile.WriteAtomic(path, body)
 }

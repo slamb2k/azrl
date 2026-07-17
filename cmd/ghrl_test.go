@@ -28,7 +28,7 @@ func TestGhrlRootIncludesBrowserShim(t *testing.T) {
 		names = append(names, c.Name())
 	}
 	joined := strings.Join(names, " ")
-	for _, want := range []string{"__browser", "login", "use", "switch", "rm", "status", "capture"} {
+	for _, want := range []string{"__browser", "login", "use", "rm", "status", "capture"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("ghrl root missing %q; has: %s", want, joined)
 		}

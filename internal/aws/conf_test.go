@@ -42,22 +42,22 @@ func TestLoadConfRequiresStartURL(t *testing.T) {
 	}
 }
 
-func TestSetConfKeyPreservesOrderAndOtherKeys(t *testing.T) {
+func TestSetIsolatePreservesOrderAndOtherKeys(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "work.conf")
 	os.WriteFile(path, []byte("AWS_SSO_START_URL=https://x/start\nLAST_USED=2026-06-01T10:00:00Z\nLAST_DIR=/work/repo\n"), 0o644)
-	if err := setConfKey(path, "AWS_ISOLATE", "true"); err != nil {
+	if err := SetIsolate(dir, "work", true); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(path)
 	out := string(b)
 	for _, want := range []string{"AWS_SSO_START_URL=https://x/start", "LAST_USED=2026-06-01T10:00:00Z", "LAST_DIR=/work/repo", "AWS_ISOLATE=true"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("setConfKey dropped %q:\n%s", want, out)
+			t.Fatalf("SetIsolate dropped %q:\n%s", want, out)
 		}
 	}
 	// Updating an existing key must not duplicate it.
-	if err := setConfKey(path, "AWS_ISOLATE", "false"); err != nil {
+	if err := SetIsolate(dir, "work", false); err != nil {
 		t.Fatal(err)
 	}
 	b, _ = os.ReadFile(path)

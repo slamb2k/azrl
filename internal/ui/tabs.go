@@ -404,21 +404,6 @@ func (m tabsModel) forwardMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, c
 }
 
-// Close tears down any tab model that owns OS resources by calling its Close if
-// it implements one (e.g. the dashboard's fsnotify watcher). It is best-effort:
-// per-tab errors are ignored. run.go calls it once after the program loop ends,
-// so teardown happens on every quit path regardless of the active tab or the
-// quit key — the alternative of closing in a tab's Update would leak whenever
-// the container intercepts the quit key or another tab is active.
-func (m tabsModel) Close() error {
-	for _, t := range m.tabs {
-		if c, ok := t.model.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-	}
-	return nil
-}
-
 // broadcast forwards msg to every tab, collecting their commands.
 func (m tabsModel) broadcast(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -507,13 +492,11 @@ func (m tabsModel) innerHeight() int {
 }
 
 // applyProviderSelection persists the chosen provider set and rebuilds the
-// tab strip around it: old tab resources (the dashboard's fsnotify watcher)
-// are closed, fresh views are constructed, sized, and initialised, and the
-// active tab clamps to the dashboard when its provider was disabled.
+// tab strip around it: fresh views are constructed, sized, and initialised,
+// and the active tab clamps to the dashboard when its provider was disabled.
 func (m tabsModel) applyProviderSelection(names []string) (tea.Model, tea.Cmd) {
 	_ = config.SetEnabledProviders(config.ProfilesDir(), names)
 	current := m.tabs[m.active].name
-	_ = m.Close()
 	m.tabs = buildTabs("")
 	m.active = 0
 	for i, t := range m.tabs {

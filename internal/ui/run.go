@@ -20,12 +20,6 @@ func runTabs(m tabsModel) error {
 	zone.NewGlobal()
 	defer zone.Close()
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	// Run returns the final model on every exit path; centralize teardown here so
-	// tab-owned resources (the dashboard's fsnotify watcher) are released whatever
-	// the quit key or active tab. Best-effort — still surface the run error.
-	final, err := p.Run()
-	if tm, ok := final.(tabsModel); ok {
-		_ = tm.Close()
-	}
+	_, err := p.Run()
 	return err
 }

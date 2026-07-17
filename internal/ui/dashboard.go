@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/fsnotify/fsnotify"
 	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/slamb2k/azrl/internal/config"
@@ -30,10 +29,6 @@ type dashItem struct {
 // dashboardTickMsg drives the periodic disk re-read (the fallback poll).
 type dashboardTickMsg struct{}
 
-// fsEventMsg fires when a watched provider dir changes on disk (an external
-// az/gh/aws/gcloud token cache write), driving an immediate re-aggregate.
-type fsEventMsg struct{}
-
 // switchTabMsg asks the tab container to jump to a provider's tab with a
 // profile pre-selected; emitted when the user presses Enter on a dashboard row.
 type switchTabMsg struct {
@@ -44,7 +39,7 @@ type switchTabMsg struct {
 // dashboardModel is the landing view: MAPPINGS (directory→profile associations
 // with scope and drift markers), AMBIENT (each provider's native default), and
 // UNMAPPED PROFILES (saved profiles no mapping names). It refreshes from disk
-// on a timer and on fsnotify events, and never makes a network call.
+// on a timer, and never makes a network call.
 type dashboardModel struct {
 	providers []provider.Provider
 	ov        Overview
@@ -53,7 +48,6 @@ type dashboardModel struct {
 	width     int
 	height    int
 	interval  time.Duration
-	watcher   *fsnotify.Watcher
 	naming    bool
 	nameInput textinput.Model
 	adoptItem dashItem
@@ -62,10 +56,7 @@ type dashboardModel struct {
 }
 
 // newDashboard builds the dashboard over provs, reading the poll interval from
-// azrl.conf and aggregating the initial sections from disk. It also creates a
-// best-effort filesystem watcher over each provider's WatchDirs so external
-// token changes refresh the view immediately; on watcher-create failure it
-// falls back to timer-only polling (watcher stays nil).
+// azrl.conf and aggregating the initial sections from disk.
 func newDashboard(provs []provider.Provider) dashboardModel {
 	m := dashboardModel{
 		providers: provs,
@@ -73,7 +64,6 @@ func newDashboard(provs []provider.Provider) dashboardModel {
 	}
 	m.reload()
 	m.cursor = governingIndex(m.ov)
-	m.watcher = newDashboardWatcher(provs)
 	return m
 }
 
@@ -129,64 +119,8 @@ func overviewItems(ov Overview) []dashItem {
 	return items
 }
 
-// newDashboardWatcher creates an fsnotify watcher and adds every provider
-// WatchDir (fsnotify is not recursive, so WatchDirs already enumerates the
-// per-profile subdirs). It returns nil on create failure so the dashboard falls
-// back to timer-only polling. Individual Add failures are ignored (best-effort).
-func newDashboardWatcher(provs []provider.Provider) *fsnotify.Watcher {
-	w, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil
-	}
-	for _, p := range provs {
-		for _, d := range p.WatchDirs() {
-			_ = w.Add(d)
-		}
-	}
-	return w
-}
-
-// watchCmd blocks on the watcher's Events/Errors channels and returns an
-// fsEventMsg on any activity, so Update can re-aggregate and re-arm. It returns
-// nil when the watcher is absent or its channels have closed (stopping the loop).
-func watchCmd(w *fsnotify.Watcher) tea.Cmd {
-	if w == nil {
-		return nil
-	}
-	return func() tea.Msg {
-		select {
-		case _, ok := <-w.Events:
-			if !ok {
-				return nil
-			}
-			return fsEventMsg{}
-		case _, ok := <-w.Errors:
-			if !ok {
-				return nil
-			}
-			return fsEventMsg{}
-		}
-	}
-}
-
 func (m dashboardModel) Init() tea.Cmd {
-	tick := tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
-	if wc := watchCmd(m.watcher); wc != nil {
-		return tea.Batch(tick, wc)
-	}
-	return tick
-}
-
-// Close releases the dashboard's OS resources — currently the fsnotify watcher.
-// It is best-effort and safe to call when the watcher is nil or already closed
-// (fsnotify's "already closed" error is ignored), so centralized teardown in
-// run.go can call it on every quit path without guarding. A pointer field, so
-// the final model returned by tea.Program.Run holds the live watcher.
-func (m dashboardModel) Close() error {
-	if m.watcher != nil {
-		_ = m.watcher.Close()
-	}
-	return nil
+	return tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
 }
 
 // capturesInput reports whether the dashboard is in a text-entry state, so
@@ -218,11 +152,6 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dashboardTickMsg:
 		m.reload()
 		return m, tea.Tick(m.interval, func(time.Time) tea.Msg { return dashboardTickMsg{} })
-	case fsEventMsg:
-		// An external token/config change on a watched dir: re-aggregate now (disk
-		// only, cheap) and re-arm the watch. The timer keeps running as a fallback.
-		m.reload()
-		return m, watchCmd(m.watcher)
 	case cwdChangedMsg:
 		m.reload()
 		return m, nil

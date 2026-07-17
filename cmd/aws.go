@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -14,23 +12,7 @@ import (
 
 // validAwsName guards AWS profile names the same way validGhName guards GitHub
 // ones, reserving the aws global-conf basename.
-func validAwsName(name string) error {
-	if name == "" {
-		return fmt.Errorf("aws: a profile name is required")
-	}
-	if strings.Contains(name, "/") {
-		return fmt.Errorf("aws: invalid profile name %q", name)
-	}
-	if name == "aws" {
-		return fmt.Errorf("aws: refusing to use the global aws config")
-	}
-	return nil
-}
-
-// awsConfPath is the conf file path for an AWS profile.
-func awsConfPath(dir, name string) string {
-	return dir + string(os.PathSeparator) + name + ".conf"
-}
+var validAwsName = newValidName("aws", "aws")
 
 func newAwsLoginCmd() *cobra.Command {
 	var startURL, region, accountID, roleName string
@@ -63,7 +45,7 @@ func newAwsLoginCmd() *cobra.Command {
 					return fmt.Errorf("azrl aws: no profile %q — pass --yes to create it (%s) or run interactively", name, startURL)
 				}
 				conf = aws.Conf{SSOStartURL: startURL, SSORegion: region, AccountID: accountID, RoleName: roleName, Isolate: isolate}
-				if werr := conf.Write(awsConfPath(dir, name)); werr != nil {
+				if werr := conf.Write(groupConfPath(dir, name)); werr != nil {
 					return werr
 				}
 				created = true
@@ -119,28 +101,7 @@ func newAwsLoginCmd() *cobra.Command {
 	c.Flags().BoolVar(&device, "use-device-code", false, "Use the device-code flow instead of the PKCE loopback")
 	c.Flags().BoolVarP(&awsYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&awsNoLink, "no-map", false, "Create without claiming this directory (skip the .awsprofile pin).")
-	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	return c
-}
-
-func newAwsListCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List configured AWS profiles and their SSO portals",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			prov := aws.NewProvider()
-			profs, err := prov.ListProfiles(prov.ProfilesDir())
-			if err != nil {
-				return err
-			}
-			pairs := make([][2]string, len(profs))
-			for i, p := range profs {
-				pairs[i] = [2]string{p.Display(), p.Detail}
-			}
-			printList(cmd.OutOrStdout(), pairs)
-			return nil
-		},
-	}
 }
 
 func newAwsUseCmd() *cobra.Command {
@@ -183,44 +144,6 @@ func newAwsUseCmd() *cobra.Command {
 	return c
 }
 
-func newAwsRmCmd() *cobra.Command {
-	var unlinkAll bool
-	var replace string
-	c := &cobra.Command{
-		Use:   "rm <name>",
-		Short: "Remove an AWS profile and its isolated config dir",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			if err := validAwsName(name); err != nil {
-				return err
-			}
-			prov := aws.NewProvider()
-			dir := prov.ProfilesDir()
-			if err := refuseIfLinked(prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
-				return err
-			}
-			if err := unlinkOrReplace(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
-				return err
-			}
-			pwd, _ := os.Getwd()
-			removed, err := prov.Remove(name, dir, pwd)
-			if err != nil {
-				return err
-			}
-			for _, r := range removed {
-				cmd.Printf("removed %s\n", r)
-			}
-			return nil
-		},
-	}
-	c.Flags().BoolVar(&unlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
-	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
-	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
-	c.MarkFlagsMutuallyExclusive("unmap-all", "replace")
-	return c
-}
-
 func newAwsCaptureCmd() *cobra.Command {
 	var startURL, region, accountID, roleName, expectAccount, expectARN string
 	c := &cobra.Command{
@@ -254,7 +177,7 @@ func newAwsCaptureCmd() *cobra.Command {
 				conf.BrowserCmd = existing.BrowserCmd
 				conf.BrowserLabel = existing.BrowserLabel
 			}
-			if err := conf.Write(awsConfPath(dir, name)); err != nil {
+			if err := conf.Write(groupConfPath(dir, name)); err != nil {
 				return err
 			}
 			pwd, _ := os.Getwd()
@@ -278,55 +201,22 @@ func newAwsCaptureCmd() *cobra.Command {
 	return c
 }
 
-func newAwsStatusCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "status",
-		Short: "Show the ambient and repo-pinned AWS profiles",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if p := os.Getenv("AWS_PROFILE"); p != "" {
-				cmd.Printf("ambient AWS_PROFILE: %s\n", p)
-			} else {
-				cmd.Println("ambient AWS_PROFILE: (unset)")
-			}
-			prov := aws.NewProvider()
-			pwd, _ := os.Getwd()
-			if pin, err := prov.Resolve("", pwd); err == nil {
-				cmd.Printf("this dir is pinned to: %s\n", pin)
-			} else {
-				cmd.Println("this dir has no .awsprofile pin")
-			}
-			return nil
-		},
-	}
-}
-
 // offerAwsEnvrc offers to write a direnv .envrc so plain `aws` in pwd follows the
 // profile. A closed/non-tty stdin reads as a decline (never hangs).
 func offerAwsEnvrc(pwd, name string, isolate bool, out io.Writer, in io.Reader) {
-	fmt.Fprint(out, "aws: also write .envrc so `aws` in this dir follows this profile? [y/N] ")
-	sc := bufio.NewScanner(in)
-	if !sc.Scan() {
-		fmt.Fprintln(out)
-		return
-	}
-	if ans := strings.TrimSpace(sc.Text()); !strings.HasPrefix(strings.ToLower(ans), "y") {
-		return
-	}
-	wrote, err := aws.WriteEnvrc(pwd, name, isolate)
-	if err != nil {
-		fmt.Fprintf(out, "aws: could not write .envrc: %v\n", err)
-		return
-	}
-	if wrote {
-		fmt.Fprintf(out, "aws: wrote %s/.envrc — run `direnv allow` to activate\n", pwd)
-	}
+	offerGroupEnvrc("aws", "aws", aws.WriteEnvrc, pwd, name, isolate, out, in)
 }
 
 // awsSubcommands builds a fresh set of the AWS subcommands.
 func awsSubcommands() []*cobra.Command {
 	return []*cobra.Command{
-		newAwsLoginCmd(), newAwsListCmd(), newAwsUseCmd(),
-		newAwsRmCmd(), newAwsCaptureCmd(), newAwsStatusCmd(), newAwsBrowserCmd(),
+		newAwsLoginCmd(),
+		newGroupListCmd(aws.NewProvider, "List configured AWS profiles and their SSO portals"),
+		newAwsUseCmd(),
+		newGroupRmCmd(aws.NewProvider, "Remove an AWS profile and its isolated config dir", validAwsName),
+		newAwsCaptureCmd(),
+		newGroupStatusCmd(aws.NewProvider, "Show the ambient and repo-pinned AWS profiles", ".awsprofile", "AWS_PROFILE"),
+		newAwsBrowserCmd(),
 		newShellCmd("aws", "Open a subshell acting as an AWS profile (no mapping)"),
 		newConsoleCmd("aws", "Open the AWS access portal for a profile"),
 		newUnlinkCmd("aws", "Remove this directory's AWS profile mapping (keeps the profile)"),

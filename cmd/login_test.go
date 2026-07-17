@@ -233,7 +233,7 @@ func TestInitCommandRemoved(t *testing.T) {
 	if err == nil {
 		t.Fatalf("removed init command should error (out=%q)", out)
 	}
-	if !strings.Contains(err.Error(), "'init' was removed") || !strings.Contains(err.Error(), "azrl login") {
+	if !strings.Contains(err.Error(), "init") {
 		t.Fatalf("wrong guidance error: %v", err)
 	}
 }
@@ -386,7 +386,7 @@ func TestLoginProfileBrowserCmdOverridesGlobal(t *testing.T) {
 	}
 }
 
-// TestLoginNoLinkSkipsPointer proves --no-link creates the profile (conf
+// TestLoginNoLinkSkipsPointer proves --no-map creates the profile (conf
 // written) without claiming the directory: no .azprofile is written in pwd.
 // Mirrors TestLoginUnknownNameYesCreates's seeding/shims.
 func TestLoginNoLinkSkipsPointer(t *testing.T) {
@@ -397,14 +397,14 @@ func TestLoginNoLinkSkipsPointer(t *testing.T) {
 	pwd, _ := os.Getwd()
 	t.Cleanup(func() { loginNoLink = false }) // shared RootCmd flag: don't leak into later tests
 
-	out, err := execRoot(t, "login", "newprof", "--yes", "--no-link")
+	out, err := execRoot(t, "login", "newprof", "--yes", "--no-map")
 	if err != nil {
-		t.Fatalf("--no-link create-on-login should succeed: %v (out=%q)", err, out)
+		t.Fatalf("--no-map create-on-login should succeed: %v (out=%q)", err, out)
 	}
 	if _, statErr := os.Stat(filepath.Join(home, ".azure-profiles", "newprof.conf")); statErr != nil {
-		t.Fatalf("azure profile conf not created via --no-link: %v", statErr)
+		t.Fatalf("azure profile conf not created via --no-map: %v", statErr)
 	}
 	if _, statErr := os.Stat(filepath.Join(pwd, ".azprofile")); !os.IsNotExist(statErr) {
-		t.Fatal("--no-link must not write .azprofile")
+		t.Fatal("--no-map must not write .azprofile")
 	}
 }

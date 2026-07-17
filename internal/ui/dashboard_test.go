@@ -251,32 +251,18 @@ func TestDashboardFSEventReaggregates(t *testing.T) {
 		t.Fatalf("setup: expected 2 items, got %d", len(m.items))
 	}
 
-	// Simulate an external change: a new Azure profile appears on disk. A real
-	// fsnotify event would deliver an fsEventMsg; feed one synthetically so the
-	// message-handling path is exercised deterministically (no reliance on timing).
+	// Simulate an external change: a new Azure profile appears on disk. The
+	// poll tick re-aggregates; feed one synthetically so the message-handling
+	// path is exercised deterministically (no reliance on timing).
 	home := os.Getenv("HOME")
 	az := filepath.Join(home, ".azure-profiles")
 	os.MkdirAll(filepath.Join(az, "beta"), 0o755)
 	os.WriteFile(filepath.Join(az, "beta.conf"),
 		[]byte("AZ_TENANT=beta.com\nLAST_USED=2026-06-01T10:00:00Z\nLAST_DIR=/work/beta\n"), 0o644)
 
-	nm, _ := m.Update(fsEventMsg{})
+	nm, _ := m.Update(dashboardTickMsg{})
 	if got := len(nm.(dashboardModel).items); got != 3 {
-		t.Fatalf("fsEventMsg did not re-aggregate: got %d items, want 3", got)
-	}
-}
-
-func TestDashboardWatcherFallsBackGracefully(t *testing.T) {
-	// A dashboard with no watcher (create failure path) must still Init to the
-	// timer and handle fsEventMsg without panicking.
-	seedDashHome(t)
-	m := newDashboard(provider.All())
-	m.watcher = nil
-	if cmd := m.Init(); cmd == nil {
-		t.Fatal("Init returned nil cmd; timer fallback missing")
-	}
-	if _, cmd := m.Update(fsEventMsg{}); cmd != nil {
-		t.Fatal("watcher-less fsEventMsg should not re-arm a watch")
+		t.Fatalf("tick did not re-aggregate: got %d items, want 3", got)
 	}
 }
 

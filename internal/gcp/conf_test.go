@@ -40,22 +40,22 @@ func TestLoadConfRequiresProject(t *testing.T) {
 	}
 }
 
-func TestSetConfKeyPreservesOrderAndOtherKeys(t *testing.T) {
+func TestSetIsolatePreservesOrderAndOtherKeys(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "work.conf")
 	os.WriteFile(path, []byte("GCP_PROJECT=acme-prod\nLAST_USED=2026-06-01T10:00:00Z\nLAST_DIR=/work/repo\n"), 0o644)
-	if err := setConfKey(path, "GCP_ISOLATE", "true"); err != nil {
+	if err := SetIsolate(dir, "work", true); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(path)
 	out := string(b)
 	for _, want := range []string{"GCP_PROJECT=acme-prod", "LAST_USED=2026-06-01T10:00:00Z", "LAST_DIR=/work/repo", "GCP_ISOLATE=true"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("setConfKey dropped %q:\n%s", want, out)
+			t.Fatalf("SetIsolate dropped %q:\n%s", want, out)
 		}
 	}
 	// Updating an existing key must not duplicate it.
-	if err := setConfKey(path, "GCP_ISOLATE", "false"); err != nil {
+	if err := SetIsolate(dir, "work", false); err != nil {
 		t.Fatal(err)
 	}
 	b, _ = os.ReadFile(path)

@@ -12,6 +12,7 @@ import (
 
 func seedStatusHome(t *testing.T) {
 	t.Helper()
+	whoamiJSON, whoamiAll, whoamiExplain = false, false, false
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME", "AZRL_PROFILE"} {
@@ -31,8 +32,8 @@ func seedStatusHome(t *testing.T) {
 
 func TestProfilesCmdPlainSections(t *testing.T) {
 	seedStatusHome(t)
-	profilesJSON = false
-	out := runRoot(t, "profiles")
+	whoamiJSON, whoamiAll = false, false
+	out := runRoot(t, "whoami", "--all")
 	for _, want := range []string{"MAPPINGS", "AMBIENT", "UNMAPPED PROFILES",
 		"azure:acme", "u@acme.com", "github:work"} {
 		if !strings.Contains(out, want) {
@@ -50,9 +51,10 @@ func TestProfilesCmdPlainShowsMappingWithScope(t *testing.T) {
 	os.WriteFile(filepath.Join(home, ".azure-profiles", "mappings"),
 		[]byte(work+"\tacme\tpointer\n"), 0o644)
 	t.Chdir(work)
-	profilesJSON = false
-	out := runRoot(t, "profiles")
-	if !strings.Contains(out, "● ~/work") || !strings.Contains(out, "azure:acme") || !strings.Contains(out, ".azprofile") {
+	whoamiJSON, whoamiAll = false, false
+	out := runRoot(t, "whoami", "--all")
+	if !strings.Contains(out, "● ~/work") || !strings.Contains(out, "azure:acme") || !strings.Contains(out, ".azprofile") ||
+		!strings.Contains(out, "Edge — Work") {
 		t.Fatalf("mapping row with cwd marker missing:\n%s", out)
 	}
 	// Mapped profiles leave the unmapped section.
@@ -89,12 +91,12 @@ func TestProfilesCmdJSONWritesToStdout(t *testing.T) {
 	out := captureRealStdout(t, func() {
 		RootCmd.SetOut(nil) // clear any injected outWriter so OutOrStdout hits os.Stdout
 		RootCmd.SetErr(errBuf)
-		RootCmd.SetArgs([]string{"profiles", "--json"})
+		RootCmd.SetArgs([]string{"whoami", "--all", "--json"})
 		if err := RootCmd.Execute(); err != nil {
 			t.Fatal(err)
 		}
 	})
-	profilesJSON = false
+	whoamiJSON, whoamiAll = false, false
 	if out == "" {
 		t.Fatalf("status --json wrote nothing to stdout (err buffer=%q)", errBuf.String())
 	}
@@ -109,12 +111,12 @@ func TestProfilesCmdJSONWritesToStdout(t *testing.T) {
 
 func TestProfilesCmdPlainTableWritesToStdout(t *testing.T) {
 	seedStatusHome(t)
-	profilesJSON = false
+	whoamiJSON, whoamiAll = false, false
 	errBuf := new(bytes.Buffer)
 	out := captureRealStdout(t, func() {
 		RootCmd.SetOut(nil)
 		RootCmd.SetErr(errBuf)
-		RootCmd.SetArgs([]string{"profiles"})
+		RootCmd.SetArgs([]string{"whoami", "--all"})
 		if err := RootCmd.Execute(); err != nil {
 			t.Fatal(err)
 		}
@@ -139,11 +141,11 @@ func TestProfilesCmdJSON(t *testing.T) {
 	buf := new(bytes.Buffer)
 	RootCmd.SetOut(buf)
 	RootCmd.SetErr(buf)
-	RootCmd.SetArgs([]string{"profiles", "--json"})
+	RootCmd.SetArgs([]string{"whoami", "--all", "--json"})
 	if err := RootCmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	profilesJSON = false
+	whoamiJSON, whoamiAll = false, false
 
 	// The exact three-section object shape (AC-012): no extra top-level keys.
 	var top map[string]json.RawMessage
@@ -191,9 +193,9 @@ func TestProfilesCmdJSONEmptySectionsAreArrays(t *testing.T) {
 	for _, k := range []string{"AZURE_CONFIG_DIR", "GH_CONFIG_DIR", "AWS_CONFIG_FILE", "AWS_PROFILE", "CLOUDSDK_CONFIG", "CLOUDSDK_ACTIVE_CONFIG_NAME"} {
 		t.Setenv(k, "")
 	}
-	profilesJSON = false
-	out := runRoot(t, "profiles", "--json")
-	profilesJSON = false
+	whoamiJSON, whoamiAll = false, false
+	out := runRoot(t, "whoami", "--all", "--json")
+	whoamiJSON, whoamiAll = false, false
 	for _, want := range []string{`"mappings": []`, `"ambient": []`, `"unmapped": []`} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("empty section not an array (%q):\n%s", want, out)
@@ -214,8 +216,8 @@ func TestProfilesCmdMappingExpiry(t *testing.T) {
 		[]byte(`{"AccessToken":{"k":{"expires_on":"1000000"}}}`), 0o644)
 	t.Chdir(work)
 
-	profilesJSON = false
-	out := runRoot(t, "profiles")
+	whoamiJSON, whoamiAll = false, false
+	out := runRoot(t, "whoami", "--all")
 	if !strings.Contains(out, "azure:acme") {
 		t.Fatalf("mapping row missing:\n%s", out)
 	}
@@ -223,8 +225,8 @@ func TestProfilesCmdMappingExpiry(t *testing.T) {
 		t.Fatalf("azure mapping must not carry the expired note (AWS-only guidance):\n%s", out)
 	}
 
-	out = runRoot(t, "profiles", "--json")
-	profilesJSON = false
+	out = runRoot(t, "whoami", "--all", "--json")
+	whoamiJSON, whoamiAll = false, false
 	var rep profilesReport
 	if err := json.Unmarshal([]byte(out), &rep); err != nil {
 		t.Fatalf("bad JSON: %v\n%s", err, out)
@@ -247,14 +249,14 @@ func TestProfilesReportsShellOverride(t *testing.T) {
 	seedStatusHome(t)
 	t.Setenv("AZRL_PROFILE", "azure:work")
 
-	profilesJSON = false
-	out := runRoot(t, "profiles")
+	whoamiJSON, whoamiAll = false, false
+	out := runRoot(t, "whoami", "--all")
 	if !strings.Contains(out, "shell override: azure:work") {
 		t.Fatalf("plain status missing shell override line:\n%s", out)
 	}
 
-	out = runRoot(t, "profiles", "--json")
-	profilesJSON = false
+	out = runRoot(t, "whoami", "--all", "--json")
+	whoamiJSON, whoamiAll = false, false
 	if !strings.Contains(out, `"shell_override": "azure:work"`) {
 		t.Fatalf("json status missing shell_override:\n%s", out)
 	}
@@ -264,13 +266,13 @@ func TestProfilesOmitsShellOverrideWhenUnset(t *testing.T) {
 	seedStatusHome(t)
 	t.Setenv("AZRL_PROFILE", "")
 
-	profilesJSON = false
-	out := runRoot(t, "profiles")
+	whoamiJSON, whoamiAll = false, false
+	out := runRoot(t, "whoami", "--all")
 	if strings.Contains(out, "shell override") {
 		t.Fatalf("no override line expected:\n%s", out)
 	}
-	out = runRoot(t, "profiles", "--json")
-	profilesJSON = false
+	out = runRoot(t, "whoami", "--all", "--json")
+	whoamiJSON, whoamiAll = false, false
 	if strings.Contains(out, "shell_override") {
 		t.Fatalf("omitempty field leaked into JSON:\n%s", out)
 	}
@@ -280,8 +282,8 @@ func TestProfilesShellOverrideMalformedMarkerFallsBackToRawValue(t *testing.T) {
 	seedStatusHome(t)
 	t.Setenv("AZRL_PROFILE", "garbled")
 
-	profilesJSON = false
-	out := runRoot(t, "profiles")
+	whoamiJSON, whoamiAll = false, false
+	out := runRoot(t, "whoami", "--all")
 	if !strings.Contains(out, "shell override: garbled — this terminal acts as garbled") {
 		t.Fatalf("malformed marker should fall back to the raw value, not an empty name:\n%s", out)
 	}

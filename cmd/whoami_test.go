@@ -199,11 +199,10 @@ func TestWhoamiExplainJSONTrace(t *testing.T) {
 	}
 }
 
-func TestStatusStubPointsAtReplacements(t *testing.T) {
+func TestStatusCommandRemoved(t *testing.T) {
 	seedWhoamiHome(t)
-	RootCmd.SetArgs([]string{"status", "--json"})
-	err := RootCmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "whoami") || !strings.Contains(err.Error(), "profiles") {
-		t.Fatalf("status stub should point at whoami/profiles, got %v", err)
+	RootCmd.SetArgs([]string{"status"})
+	if err := RootCmd.Execute(); err == nil {
+		t.Fatal("top-level status should be an unknown command")
 	}
 }

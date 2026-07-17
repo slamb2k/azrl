@@ -34,7 +34,6 @@ func runUnlink(providerName string, out io.Writer) error {
 func newUnlinkCmd(providerName, short string) *cobra.Command {
 	return &cobra.Command{
 		Use:          "unmap",
-		Aliases:      []string{"unlink"}, // the pre-map-vocabulary spelling
 		Short:        short,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,

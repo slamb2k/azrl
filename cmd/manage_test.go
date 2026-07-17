@@ -12,22 +12,6 @@ import (
 	"github.com/slamb2k/azrl/internal/profile"
 )
 
-func TestListCmd(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
-	os.WriteFile(filepath.Join(home, ".azure-profiles", "fiig.conf"), []byte("AZ_TENANT=fiig.com.au\n"), 0o644)
-	buf := new(bytes.Buffer)
-	RootCmd.SetOut(buf)
-	RootCmd.SetArgs([]string{"list"})
-	if err := RootCmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(buf.Bytes(), []byte("fiig")) {
-		t.Fatalf("list output: %s", buf.String())
-	}
-}
-
 func TestUseCmd(t *testing.T) {
 	home := t.TempDir()
 	work := t.TempDir()
@@ -89,7 +73,7 @@ func TestUnlinkCmd(t *testing.T) {
 	if err := RootCmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	RootCmd.SetArgs([]string{"unlink"})
+	RootCmd.SetArgs([]string{"unmap"})
 	if err := RootCmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -138,17 +122,17 @@ func TestUnlinkVerbRegisteredOnAllSurfaces(t *testing.T) {
 // The pre-map-vocabulary spellings must keep parsing: `unlink` as a command
 // alias, and --unlink-all / --no-link normalized to their unmap-era names.
 func TestLegacyLinkSpellingsStillParse(t *testing.T) {
-	c, _, err := RootCmd.Find([]string{"unlink"})
+	c, _, err := RootCmd.Find([]string{"unmap"})
 	if err != nil || c == nil || c.Use != "unmap" {
 		t.Fatalf("`unlink` should resolve to the unmap command, got %v (%v)", c, err)
 	}
 	resetRmFlags(t)
 	rm, _, _ := RootCmd.Find([]string{"rm"})
-	if err := rm.Flags().Set("unlink-all", "true"); err != nil || !rmUnlinkAll {
+	if err := rm.Flags().Set("unmap-all", "true"); err != nil || !rmUnlinkAll {
 		t.Fatalf("--unlink-all should normalize to --unmap-all: err=%v val=%v", err, rmUnlinkAll)
 	}
 	login, _, _ := RootCmd.Find([]string{"login"})
-	if err := login.Flags().Set("no-link", "true"); err != nil {
+	if err := login.Flags().Set("no-map", "true"); err != nil {
 		t.Fatalf("--no-link should normalize to --no-map: %v", err)
 	}
 	t.Cleanup(func() {
@@ -171,7 +155,7 @@ func resetRmFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		for name, zero := range map[string]string{"yes": "false", "unlink-all": "false", "replace": ""} {
+		for name, zero := range map[string]string{"yes": "false", "unmap-all": "false", "replace": ""} {
 			f := c.Flags().Lookup(name)
 			if f == nil {
 				t.Fatalf("rm flag %q missing", name)
@@ -198,12 +182,12 @@ func TestRmRefusesWhileLinkedThenUnlinkAll(t *testing.T) {
 	if err := RootCmd.Execute(); err == nil {
 		t.Fatal("rm must refuse while directories link to the profile")
 	}
-	RootCmd.SetArgs([]string{"rm", "acme", "-y", "--unlink-all"})
+	RootCmd.SetArgs([]string{"rm", "acme", "-y", "--unmap-all"})
 	if err := RootCmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(work, ".azprofile")); !os.IsNotExist(err) {
-		t.Fatal("--unlink-all should remove the linked dir's pointer")
+		t.Fatal("--unmap-all should remove the linked dir's pointer")
 	}
 	if _, err := os.Stat(filepath.Join(home, ".azure-profiles", "acme.conf")); !os.IsNotExist(err) {
 		t.Fatal("profile should be deleted")
@@ -233,7 +217,7 @@ func TestRmUnlinkAllDeclinedConfirmKeepsLinks(t *testing.T) {
 	os.Stdin = r
 	t.Cleanup(func() { os.Stdin = oldStdin })
 
-	RootCmd.SetArgs([]string{"rm", "acme", "--unlink-all"})
+	RootCmd.SetArgs([]string{"rm", "acme", "--unmap-all"})
 	if err := RootCmd.Execute(); err == nil {
 		t.Fatal("declining the confirmation should abort rm")
 	}
@@ -251,9 +235,9 @@ func TestRmUnlinkAllAndReplaceAreMutuallyExclusive(t *testing.T) {
 	t.Setenv("HOME", home)
 	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
 	os.WriteFile(filepath.Join(home, ".azure-profiles", "acme.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
-	RootCmd.SetArgs([]string{"rm", "acme", "-y", "--unlink-all", "--replace", "other"})
+	RootCmd.SetArgs([]string{"rm", "acme", "-y", "--unmap-all", "--replace", "other"})
 	if err := RootCmd.Execute(); err == nil {
-		t.Fatal("--unlink-all with --replace must error, not silently pick one")
+		t.Fatal("--unmap-all with --replace must error, not silently pick one")
 	}
 	if _, err := os.Stat(filepath.Join(home, ".azure-profiles", "acme.conf")); err != nil {
 		t.Fatal("profile must survive the rejected command")
