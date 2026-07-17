@@ -105,12 +105,16 @@ func runConsole(providerName, name string, out io.Writer) error {
 
 func newConsoleCmd(providerName, short string) *cobra.Command {
 	return &cobra.Command{
-		Use:          "console <name>",
+		Use:          "console [name]",
 		Short:        short,
-		Args:         cobra.ExactArgs(1),
+		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConsole(providerName, args[0], cmd.OutOrStdout())
+			name, err := nameOrGoverning(providerName, args)
+			if err != nil {
+				return err
+			}
+			return runConsole(providerName, name, cmd.OutOrStdout())
 		},
 	}
 }

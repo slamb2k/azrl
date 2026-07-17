@@ -141,3 +141,50 @@ func offerGroupEnvrc(tool, cli string, writeEnvrc func(pwd, name string, isolate
 		fmt.Fprintf(out, "%s: wrote %s/.envrc — run `direnv allow` to activate\n", tool, pwd)
 	}
 }
+
+// resolveGoverning returns the profile governing the cwd for providerName —
+// the same ladder `whoami` renders: shell override, else the pointer walk-up,
+// else the ambient identity's managed match. Lets `console`/`shell` run bare
+// from any directory where a default identity is in effect.
+func resolveGoverning(providerName string) (string, error) {
+	if p, name, ok := strings.Cut(os.Getenv("AZRL_PROFILE"), ":"); ok && p == providerName && name != "" {
+		return name, nil
+	}
+	for _, prov := range provider.All() {
+		if prov.Name() != providerName {
+			continue
+		}
+		pwd, _ := os.Getwd()
+		if name, err := prov.Resolve("", pwd); err == nil && name != "" {
+			return name, nil
+		}
+		confdir := prov.ProfilesDir()
+		amb, err := prov.Ambient()
+		if err != nil || amb.Identity == "" {
+			break
+		}
+		listed, err := prov.ListProfiles(confdir)
+		if err != nil {
+			break
+		}
+		var sts []provider.Status
+		for _, l := range listed {
+			if st, serr := prov.Status(l.Name, confdir); serr == nil {
+				sts = append(sts, st)
+			}
+		}
+		if name := provider.MatchProfile(sts, amb.Identity); name != "" {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("azrl: no %s profile governs this directory — pass a name, map one (use <name>), or set a default (default <name>)", providerName)
+}
+
+// nameOrGoverning resolves the optional profile argument for verbs that can
+// run bare: an explicit name wins, else the governing ladder decides.
+func nameOrGoverning(providerName string, args []string) (string, error) {
+	if len(args) == 1 {
+		return args[0], nil
+	}
+	return resolveGoverning(providerName)
+}

@@ -181,3 +181,60 @@ func TestConsoleVerbRegisteredOnAllSurfaces(t *testing.T) {
 		t.Fatal("console verb missing from a surface")
 	}
 }
+
+// TestResolveGoverning proves the bare-verb ladder: shell override wins, then
+// the pointer walk-up, then the ambient identity's managed match; nothing
+// governing errors with guidance.
+func TestResolveGoverning(t *testing.T) {
+	home := seedConsoleHome(t)
+	t.Setenv("AZURE_CONFIG_DIR", "")
+	t.Setenv("AZRL_PROFILE", "")
+
+	// Nothing governs: guidance error.
+	if _, err := resolveGoverning("azure"); err == nil || !strings.Contains(err.Error(), "no azure profile governs") {
+		t.Fatalf("want guidance error, got %v", err)
+	}
+
+	// Ambient match: native default identity maps to a managed profile.
+	os.MkdirAll(filepath.Join(home, ".azure"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure", "azureProfile.json"),
+		[]byte(`{"subscriptions":[{"user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"g1"}]}`), 0o644)
+	os.MkdirAll(filepath.Join(home, ".azure-profiles", "work"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "work", "azureProfile.json"),
+		[]byte(`{"subscriptions":[{"user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"g1"}]}`), 0o644)
+	if name, err := resolveGoverning("azure"); err != nil || name != "work" {
+		t.Fatalf("ambient match = %q, %v; want work", name, err)
+	}
+
+	// Pointer outranks ambient.
+	work := filepath.Join(home, "repo")
+	os.MkdirAll(work, 0o755)
+	os.WriteFile(filepath.Join(work, ".azprofile"), []byte("guest\n"), 0o644)
+	t.Chdir(work)
+	if name, err := resolveGoverning("azure"); err != nil || name != "guest" {
+		t.Fatalf("pointer = %q, %v; want guest", name, err)
+	}
+
+	// Shell override outranks everything.
+	t.Setenv("AZRL_PROFILE", "azure:other")
+	if name, err := resolveGoverning("azure"); err != nil || name != "other" {
+		t.Fatalf("override = %q, %v; want other", name, err)
+	}
+}
+
+// TestConsoleBareUsesGoverningProfile proves `azrl console` with no name opens
+// as the governing profile (degraded path prints the URL — no browser conf).
+func TestConsoleBareUsesGoverningProfile(t *testing.T) {
+	home := seedConsoleHome(t)
+	t.Setenv("AZURE_CONFIG_DIR", "")
+	t.Setenv("AZRL_PROFILE", "")
+	work := filepath.Join(home, "repo")
+	os.MkdirAll(work, 0o755)
+	os.WriteFile(filepath.Join(work, ".azprofile"), []byte("work\n"), 0o644)
+	t.Chdir(work)
+
+	out := runRoot(t, "console")
+	if !strings.Contains(out, "acme.com") {
+		t.Fatalf("bare console should open the governing profile's tenant:\n%s", out)
+	}
+}
