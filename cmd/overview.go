@@ -14,8 +14,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var profilesJSON bool
-
 // profilesMapping is one directory→profile association for `azrl profiles`.
 type profilesMapping struct {
 	Dir          string     `json:"dir"`
@@ -72,55 +70,53 @@ type profilesReport struct {
 	Unmapped      []profilesRow     `json:"unmapped"`
 }
 
-var profilesCmd = &cobra.Command{
-	Use:   "profiles",
-	Short: "Show mappings, ambient defaults, and unmapped profiles (who am I, everywhere)",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cwd, _ := os.Getwd()
-		provs := provider.All()
-		byName := map[string]provider.Provider{}
-		for _, p := range provs {
-			byName[p.Name()] = p
+// runOverview renders the everywhere-view (`azrl whoami --all`): the same
+// three sections the TUI landing view shows, as text or JSON.
+func runOverview(cmd *cobra.Command, asJSON bool) error {
+	cwd, _ := os.Getwd()
+	provs := provider.All()
+	byName := map[string]provider.Provider{}
+	for _, p := range provs {
+		byName[p.Name()] = p
+	}
+	ov := ui.BuildOverview(provs, cwd)
+	rep := profilesReport{Mappings: []profilesMapping{}, Ambient: []profilesAmbient{}, Unmapped: []profilesRow{}}
+	for _, m := range ov.Mappings {
+		bcmd, blabel := assignedBrowser(byName[m.Provider], m.Profile)
+		rep.Mappings = append(rep.Mappings, profilesMapping{
+			Dir: m.Dir, Provider: m.Provider, Profile: m.Profile,
+			Source: m.Source, Scope: m.Scope, Drifted: m.Drifted, Expiry: m.Expiry,
+			Browser: bcmd, BrowserLabel: blabel,
+		})
+	}
+	for _, a := range ov.Ambient {
+		row := profilesAmbient{Provider: a.Provider, Identity: a.Identity, Source: a.Source}
+		if a.Profile != "" {
+			p := a.Profile
+			row.Profile = &p
 		}
-		ov := ui.BuildOverview(provs, cwd)
-		rep := profilesReport{Mappings: []profilesMapping{}, Ambient: []profilesAmbient{}, Unmapped: []profilesRow{}}
-		for _, m := range ov.Mappings {
-			bcmd, blabel := assignedBrowser(byName[m.Provider], m.Profile)
-			rep.Mappings = append(rep.Mappings, profilesMapping{
-				Dir: m.Dir, Provider: m.Provider, Profile: m.Profile,
-				Source: m.Source, Scope: m.Scope, Drifted: m.Drifted, Expiry: m.Expiry,
-				Browser: bcmd, BrowserLabel: blabel,
-			})
+		rep.Ambient = append(rep.Ambient, row)
+	}
+	for _, u := range ov.Unmapped {
+		st := u.Status
+		bcmd, blabel := assignedBrowser(byName[u.Provider], st.ProfileName)
+		rep.Unmapped = append(rep.Unmapped, profilesRow{
+			Provider: u.Provider, ProfileName: st.ProfileName, Identity: st.Identity,
+			Directory: st.Directory, Expiry: st.Expiry, Drifted: st.Drifted, LastUsed: st.LastUsed,
+			Browser: bcmd, BrowserLabel: blabel,
+		})
+	}
+	rep.ShellOverride = os.Getenv("AZRL_PROFILE")
+	if asJSON {
+		b, err := json.MarshalIndent(rep, "", "  ")
+		if err != nil {
+			return err
 		}
-		for _, a := range ov.Ambient {
-			row := profilesAmbient{Provider: a.Provider, Identity: a.Identity, Source: a.Source}
-			if a.Profile != "" {
-				p := a.Profile
-				row.Profile = &p
-			}
-			rep.Ambient = append(rep.Ambient, row)
-		}
-		for _, u := range ov.Unmapped {
-			st := u.Status
-			bcmd, blabel := assignedBrowser(byName[u.Provider], st.ProfileName)
-			rep.Unmapped = append(rep.Unmapped, profilesRow{
-				Provider: u.Provider, ProfileName: st.ProfileName, Identity: st.Identity,
-				Directory: st.Directory, Expiry: st.Expiry, Drifted: st.Drifted, LastUsed: st.LastUsed,
-				Browser: bcmd, BrowserLabel: blabel,
-			})
-		}
-		rep.ShellOverride = os.Getenv("AZRL_PROFILE")
-		if profilesJSON {
-			b, err := json.MarshalIndent(rep, "", "  ")
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), string(b))
-			return nil
-		}
-		printProfilesSections(cmd.OutOrStdout(), ov, rep)
+		fmt.Fprintln(cmd.OutOrStdout(), string(b))
 		return nil
-	},
+	}
+	printProfilesSections(cmd.OutOrStdout(), ov, rep)
+	return nil
 }
 
 // printProfilesSections renders the three-section view. Columns size to
@@ -233,9 +229,4 @@ func dash(s string) string {
 		return "—"
 	}
 	return s
-}
-
-func init() {
-	profilesCmd.Flags().BoolVar(&profilesJSON, "json", false, "Output the three-section snapshot as JSON")
-	RootCmd.AddCommand(profilesCmd)
 }

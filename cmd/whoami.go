@@ -18,6 +18,7 @@ import (
 var (
 	whoamiJSON    bool
 	whoamiExplain bool
+	whoamiAll     bool
 )
 
 // whoamiRow is one provider's effective identity for the current directory:
@@ -45,8 +46,11 @@ type whoamiReport struct {
 
 var whoamiCmd = &cobra.Command{
 	Use:   "whoami",
-	Short: "Show what is in effect in this directory: governing profile and browser per provider",
+	Short: "Show what is in effect here (--all: every mapping, ambient default, and profile)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if whoamiAll {
+			return runOverview(cmd, whoamiJSON)
+		}
 		cwd, _ := os.Getwd()
 		rep := buildWhoami(provider.All(), cwd, whoamiExplain)
 		if whoamiJSON {
@@ -302,5 +306,6 @@ func printWhoami(w io.Writer, rep whoamiReport) {
 func init() {
 	whoamiCmd.Flags().BoolVar(&whoamiJSON, "json", false, "Output the per-provider effective view as JSON")
 	whoamiCmd.Flags().BoolVar(&whoamiExplain, "explain", false, "Show the full resolution ladder per provider: every rung checked and why the winner won")
+	whoamiCmd.Flags().BoolVar(&whoamiAll, "all", false, "Show the everywhere-view: MAPPINGS / AMBIENT / UNMAPPED PROFILES across all directories")
 	RootCmd.AddCommand(whoamiCmd)
 }
