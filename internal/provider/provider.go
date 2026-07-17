@@ -59,11 +59,6 @@ type Provider interface {
 	// Status returns a per-profile snapshot from local cache/config only. It MUST
 	// NOT make network calls or spawn az/gh; callers poll it on a short timer.
 	Status(name, confdir string) (Status, error)
-	// WatchDirs returns the existing on-disk directories this provider's Status()
-	// reads (profiles dir, per-profile isolated dirs, relevant global cache dirs),
-	// so the dashboard can watch them for external token changes. It stat-filters
-	// to existing dirs and is best-effort: it never errors.
-	WatchDirs() []string
 	// Ambient returns the provider's native default identity from local disk and
 	// the process environment only. It MUST NOT make network calls or spawn any
 	// CLI, and is best-effort: missing or unparseable native state yields the
