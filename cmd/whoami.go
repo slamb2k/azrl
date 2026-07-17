@@ -256,10 +256,10 @@ func effectiveBrowser(p provider.Provider, name string) (cmd, label, source stri
 // language (green = this dir, orange = parent, ⌁ = shell/ambient) and vanish
 // on pipes and files.
 func printWhoami(w io.Writer, rep whoamiReport) {
-	fmt.Fprintln(w, cliBold.Render("📁 "+tildePath(rep.Dir)))
+	fmt.Fprintln(w, cliHeading.Render("📁 "+tildePath(rep.Dir)))
 	rows := make([][]string, 0, len(rep.Providers))
 	for _, r := range rep.Providers {
-		mark, via := " ", cliDim.Render("—")
+		mark, via := " ", "—"
 		switch r.Via {
 		case "shell":
 			mark, via = cliAccent.Render("⌁"), "shell override"
@@ -286,7 +286,7 @@ func printWhoami(w io.Writer, rep whoamiReport) {
 		}
 		rows = append(rows, []string{
 			mark + " " + ui.ProviderIcon(r.Provider) + " " + r.Provider,
-			profile, cliDim.Render(dash(r.Identity)), via, "browser: " + browser,
+			profile, cliValue.Render(dash(r.Identity)), cliDim.Render(via), cliDim.Render("browser:") + " " + browser,
 		})
 	}
 	renderAligned(w, "  ", rows)
@@ -294,8 +294,11 @@ func printWhoami(w io.Writer, rep whoamiReport) {
 		if len(r.Trace) == 0 {
 			continue
 		}
-		fmt.Fprintln(w, "  "+ui.ProviderIcon(r.Provider)+" "+cliBold.Render(r.Provider))
+		fmt.Fprintln(w, "  "+ui.ProviderIcon(r.Provider)+" "+cliHeading.Render(r.Provider))
 		for _, line := range r.Trace {
+			if i := strings.Index(line, "   "); i > 0 {
+				line = cliDim.Render(line[:i]) + line[i:]
+			}
 			line = strings.ReplaceAll(line, "→ in effect", cliGood.Render("→ in effect"))
 			line = strings.ReplaceAll(line, "(shadowed)", cliDim.Render("(shadowed)"))
 			fmt.Fprintf(w, "      %s\n", line)

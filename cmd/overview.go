@@ -131,7 +131,7 @@ func printProfilesSections(w io.Writer, ov ui.Overview, rep profilesReport) {
 		fmt.Fprintf(w, "%s shell override: %s — this terminal acts as %s\n\n",
 			cliAccent.Render("⌁"), rep.ShellOverride, cliBold.Render(prof))
 	}
-	fmt.Fprintln(w, cliBold.Render("MAPPINGS"))
+	fmt.Fprintln(w, cliHeading.Render("MAPPINGS"))
 	if len(ov.Mappings) == 0 {
 		fmt.Fprintln(w, cliDim.Render("  (none)"))
 	}
@@ -167,7 +167,7 @@ func printProfilesSections(w io.Writer, ov ui.Overview, rep profilesReport) {
 			cliDim.Render(browserDisp(rep.Mappings[i].Browser, rep.Mappings[i].BrowserLabel)), strings.Join(notes, " ")})
 	}
 	renderAligned(w, "  ", rows)
-	fmt.Fprintln(w, cliBold.Render("AMBIENT"))
+	fmt.Fprintln(w, cliHeading.Render("AMBIENT"))
 	if len(ov.Ambient) == 0 {
 		fmt.Fprintln(w, cliDim.Render("  (none)"))
 	}
@@ -180,7 +180,7 @@ func printProfilesSections(w io.Writer, ov ui.Overview, rep profilesReport) {
 		rows = append(rows, []string{ui.ProviderIcon(a.Provider) + " " + a.Provider, a.Identity, cliDim.Render(a.Source), target})
 	}
 	renderAligned(w, "  ", rows)
-	fmt.Fprintln(w, cliBold.Render("UNMAPPED PROFILES"))
+	fmt.Fprintln(w, cliHeading.Render("UNMAPPED PROFILES"))
 	if len(rep.Unmapped) == 0 {
 		fmt.Fprintln(w, cliDim.Render("  (none)"))
 	}

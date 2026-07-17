@@ -16,13 +16,18 @@ import (
 // output profile from os.Stdout, so pipes, files, tests, and NO_COLOR all
 // degrade to plain text automatically.
 var (
-	cliGood       = lipgloss.NewStyle().Foreground(lipgloss.Color("#3fb950"))
-	cliParent     = lipgloss.NewStyle().Foreground(lipgloss.Color("#d99a2b"))
-	cliBad        = lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
-	cliAccent     = lipgloss.NewStyle().Foreground(lipgloss.Color("#f2c14e"))
-	cliDim        = lipgloss.NewStyle().Foreground(lipgloss.Color("#8b949e"))
-	cliBold       = lipgloss.NewStyle().Bold(true)
-	cliAccentBlue = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true) // bright blue — matches the prompt chip
+	// Semantic state — reserved for meaning, never decoration.
+	cliGood   = lipgloss.NewStyle().Foreground(lipgloss.Color("#3fb950")) // this dir / success
+	cliParent = lipgloss.NewStyle().Foreground(lipgloss.Color("#d99a2b")) // inherited / caution
+	cliBad    = lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149")) // expired / conflict
+	cliAccent = lipgloss.NewStyle().Foreground(lipgloss.Color("#f2c14e")) // ⌁ shell/override gold
+
+	// Type ramp — structure vs content vs commentary (TUI palette hues).
+	cliHeading    = lipgloss.NewStyle().Foreground(lipgloss.Color("#2599f7")).Bold(true) // section/picker titles
+	cliValue      = lipgloss.NewStyle().Foreground(lipgloss.Color("#7cc4ff"))            // secondary values (tenants, identities)
+	cliBold       = lipgloss.NewStyle().Bold(true)                                       // primary values (profile names)
+	cliDim        = lipgloss.NewStyle().Foreground(lipgloss.Color("#8b949e"))            // subtext, sources, meta
+	cliAccentBlue = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)      // bright blue — matches the prompt chip
 )
 
 // cliWidth returns the terminal width when stdout is a real terminal, else 0
@@ -143,7 +148,7 @@ func renderAligned(w io.Writer, indent string, rows [][]string) {
 func printList(w io.Writer, pairs [][2]string) {
 	rows := make([][]string, len(pairs))
 	for i, p := range pairs {
-		rows[i] = []string{cliBold.Render(p[0]), p[1]}
+		rows[i] = []string{cliBold.Render(p[0]), cliValue.Render(p[1])}
 	}
 	renderAligned(w, "", rows)
 }

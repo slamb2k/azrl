@@ -66,7 +66,7 @@ func (m pickModel) View() string {
 		return "" // clear the list on exit
 	}
 	var b strings.Builder
-	b.WriteString(cliBold.Render(m.title) + "\n")
+	b.WriteString(cliHeading.Render(m.title) + "\n")
 	labelW := 0
 	for _, it := range m.items {
 		if w := len([]rune(it.Label)); w > labelW {
@@ -74,7 +74,7 @@ func (m pickModel) View() string {
 		}
 	}
 	for i, it := range m.items {
-		line := fmt.Sprintf("%-*s  %s", labelW, it.Label, cliDim.Render(it.Detail))
+		line := fmt.Sprintf("%-*s  %s", labelW, it.Label, cliValue.Render(it.Detail))
 		if i == m.cursor {
 			b.WriteString(cliAccentBlue.Render("  ❯ "+line) + "\n")
 		} else {
