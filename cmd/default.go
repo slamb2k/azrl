@@ -36,6 +36,17 @@ func pickDefaultProfile(providerName, name string, in io.Reader, out io.Writer) 
 		fmt.Fprintf(out, "azrl: one profile — using %s\n", listed[0].Name)
 		return listed[0].Name, nil
 	}
+	if useArrowPicker() {
+		items := make([]pickItem, len(listed))
+		for i, p := range listed {
+			items[i] = pickItem{Label: p.Display(), Detail: p.Detail}
+		}
+		idx, perr := pickArrow(fmt.Sprintf("Make which %s profile the default?", providerName), items)
+		if perr != nil {
+			return "", perr
+		}
+		return listed[idx].Name, nil
+	}
 	fmt.Fprintf(out, "Make which %s profile the default?\n", providerName)
 	for i, p := range listed {
 		fmt.Fprintf(out, "  %d) %s  %s\n", i+1, p.Display(), p.Detail)

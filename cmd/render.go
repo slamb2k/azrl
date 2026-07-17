@@ -16,12 +16,13 @@ import (
 // output profile from os.Stdout, so pipes, files, tests, and NO_COLOR all
 // degrade to plain text automatically.
 var (
-	cliGood   = lipgloss.NewStyle().Foreground(lipgloss.Color("#3fb950"))
-	cliParent = lipgloss.NewStyle().Foreground(lipgloss.Color("#d99a2b"))
-	cliBad    = lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
-	cliAccent = lipgloss.NewStyle().Foreground(lipgloss.Color("#f2c14e"))
-	cliDim    = lipgloss.NewStyle().Foreground(lipgloss.Color("#8b949e"))
-	cliBold   = lipgloss.NewStyle().Bold(true)
+	cliGood       = lipgloss.NewStyle().Foreground(lipgloss.Color("#3fb950"))
+	cliParent     = lipgloss.NewStyle().Foreground(lipgloss.Color("#d99a2b"))
+	cliBad        = lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
+	cliAccent     = lipgloss.NewStyle().Foreground(lipgloss.Color("#f2c14e"))
+	cliDim        = lipgloss.NewStyle().Foreground(lipgloss.Color("#8b949e"))
+	cliBold       = lipgloss.NewStyle().Bold(true)
+	cliAccentBlue = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true) // bright blue — matches the prompt chip
 )
 
 // cliWidth returns the terminal width when stdout is a real terminal, else 0
