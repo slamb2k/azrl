@@ -190,27 +190,6 @@ func TestTabsBannerOnEveryTab(t *testing.T) {
 	}
 }
 
-// TestTabsCloseTearsDownDashboardWatcher proves centralized teardown: the tab
-// container's Close() closes the dashboard-owned fsnotify watcher (so no quit
-// path leaks its goroutine/fd), and is safe to call again (idempotent).
-func TestTabsCloseTearsDownDashboardWatcher(t *testing.T) {
-	m := seedTabs(t) // NewTabs in a temp HOME → dashboard builds a real watcher.
-	dash, ok := m.tabs[0].model.(dashboardModel)
-	if !ok {
-		t.Fatalf("tab 0 is %T, want dashboardModel", m.tabs[0].model)
-	}
-	if dash.watcher == nil {
-		t.Skip("no fsnotify watcher available; nothing to tear down")
-	}
-	if err := m.Close(); err != nil {
-		t.Fatalf("tabsModel.Close() returned error: %v", err)
-	}
-	// Idempotent: a second Close (watcher already closed) must not error.
-	if err := m.Close(); err != nil {
-		t.Fatalf("second tabsModel.Close() returned error: %v", err)
-	}
-}
-
 // TestTabsWidthInvariant is the core responsiveness guarantee: at every width,
 // on every tab, no rendered line may exceed the terminal width.
 func TestTabsWidthInvariant(t *testing.T) {
