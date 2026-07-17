@@ -90,6 +90,7 @@ func newAwsLoginCmd() *cobra.Command {
 				cmd.Printf("aws: pinned %s/.awsprofile -> %q\n", pwd, name)
 				offerAwsEnvrc(pwd, name, conf.Isolate, cmd.OutOrStdout(), cmd.InOrStdin())
 			}
+			printApplyHint(cmd, "azrl aws", "aws", name)
 			return aws.Scheme().Touch(name, dir, pwd)
 		},
 	}
@@ -220,6 +221,7 @@ func awsSubcommands() []*cobra.Command {
 		newShellCmd("aws", "Open a subshell acting as an AWS profile (no mapping)"),
 		newConsoleCmd("aws", "Open the AWS access portal for a profile"),
 		newUnlinkCmd("aws", "Remove this directory's AWS profile mapping (keeps the profile)"),
+		newEnvCmd(aws.NewProvider, "azrl aws", "aws", validAwsName),
 		newDefaultCmd("aws", "Point the native default profile at this profile's SSO and sign in via the bridge"),
 	}
 }

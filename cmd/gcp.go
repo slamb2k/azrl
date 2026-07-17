@@ -97,6 +97,7 @@ func newGcpLoginCmd() *cobra.Command {
 				cmd.Printf("gcp: pinned %s/.gcpprofile -> %q\n", pwd, name)
 				offerGcpEnvrc(pwd, name, conf.Isolate, cmd.OutOrStdout(), cmd.InOrStdin())
 			}
+			printApplyHint(cmd, "azrl gcp", "gcp", name)
 			return gcp.Scheme().Touch(name, dir, pwd)
 		},
 	}
@@ -225,6 +226,7 @@ func gcpSubcommands() []*cobra.Command {
 		newShellCmd("gcp", "Open a subshell acting as a GCP profile (no mapping)"),
 		newConsoleCmd("gcp", "Open the GCP console for a profile's project"),
 		newUnlinkCmd("gcp", "Remove this directory's GCP profile mapping (keeps the profile)"),
+		newEnvCmd(gcp.NewProvider, "azrl gcp", "gcp", validGcpName),
 		newDefaultCmd("gcp", "Sign the native gcloud session in as this profile's account via the bridge"),
 	}
 }
