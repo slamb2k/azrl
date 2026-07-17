@@ -106,7 +106,6 @@ func newGcpLoginCmd() *cobra.Command {
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own CLOUDSDK_CONFIG dir")
 	c.Flags().BoolVarP(&gcpYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&gcpNoLink, "no-map", false, "Create without claiming this directory (skip the .gcpprofile pin).")
-	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	return c
 }
 

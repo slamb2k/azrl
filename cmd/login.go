@@ -127,6 +127,5 @@ func init() {
 	loginCmd.Flags().BoolVar(&loginPaste, "paste", false, "Force the manual paste-line path (A)")
 	loginCmd.Flags().BoolVarP(&loginYes, "yes", "y", false, "Create a missing profile without prompting.")
 	loginCmd.Flags().BoolVar(&loginNoLink, "no-map", false, "Create without claiming this directory (skip the .azprofile pin).")
-	loginCmd.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	RootCmd.AddCommand(loginCmd)
 }

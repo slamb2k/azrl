@@ -9,20 +9,7 @@ import (
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
-
-// normalizeLegacyFlags keeps the pre-map-vocabulary flag spellings working:
-// --unlink-all and --no-link parse as their unmap-era names.
-func normalizeLegacyFlags(f *pflag.FlagSet, name string) pflag.NormalizedName {
-	switch name {
-	case "unlink-all":
-		name = "unmap-all"
-	case "no-link":
-		name = "no-map"
-	}
-	return pflag.NormalizedName(name)
-}
 
 var rmYes bool
 var rmUnlinkAll bool
@@ -134,7 +121,6 @@ func init() {
 	rmCmd.Flags().BoolVarP(&rmYes, "yes", "y", false, "Skip the confirmation prompt")
 	rmCmd.Flags().BoolVar(&rmUnlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
 	rmCmd.Flags().StringVar(&rmReplace, "replace", "", "Repoint every directory mapping at this profile before deleting")
-	rmCmd.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	rmCmd.MarkFlagsMutuallyExclusive("unmap-all", "replace")
 	RootCmd.AddCommand(rmCmd)
 }

@@ -54,18 +54,14 @@ func TestGhListPrintsProfiles(t *testing.T) {
 	}
 }
 
-// TestGhSwitchCommandRemoved proves the `switch` command is gone from both the
-// gh group and the promoted ghrl top level: the hidden stubs return guidance,
-// write no .current file, and appear in no help output.
+// TestGhSwitchCommandRemoved proves the `switch` command is fully gone from
+// both the gh group and the promoted ghrl top level: unknown command, no
+// .current file written, absent from help output.
 func TestGhSwitchCommandRemoved(t *testing.T) {
 	home := seedGhHome(t)
 
-	out, err := execRoot(t, "gh", "switch", "work")
-	if err == nil {
-		t.Fatalf("removed switch command should error (out=%q)", out)
-	}
-	if !strings.Contains(err.Error(), "'switch' was removed") || !strings.Contains(err.Error(), "gh auth switch") {
-		t.Fatalf("wrong guidance error: %v", err)
+	if c, _, _ := RootCmd.Find([]string{"gh", "switch"}); c != nil && c.Name() == "switch" {
+		t.Fatal("switch must not resolve to a command")
 	}
 	if _, statErr := os.Stat(filepath.Join(home, ".github-profiles", ".current")); !os.IsNotExist(statErr) {
 		t.Fatal("removed switch must not write .current")
@@ -75,10 +71,10 @@ func TestGhSwitchCommandRemoved(t *testing.T) {
 	buf := new(bytes.Buffer)
 	ghrl.SetOut(buf)
 	ghrl.SetErr(buf)
-	ghrl.SetArgs([]string{"switch", "work"})
-	if err := ghrl.Execute(); err == nil || !strings.Contains(err.Error(), "'switch' was removed") {
-		t.Fatalf("ghrl switch stub error: %v (out=%q)", err, buf.String())
+	if c, _, _ := ghrl.Find([]string{"switch"}); c != nil && c.Name() == "switch" {
+		t.Fatal("ghrl switch must not resolve to a command")
 	}
+	_ = buf
 
 	if help := runRoot(t, "gh", "--help"); strings.Contains(help, "switch") {
 		t.Fatalf("switch must be hidden from gh help:\n%s", help)
@@ -317,7 +313,7 @@ func TestGhCapturePreservesExistingKeys(t *testing.T) {
 	}
 }
 
-// TestGhLoginNoLinkSkipsPin proves created-but-no-link skips prov.Use: the
+// TestGhLoginNoLinkSkipsPin proves created-but-no-map skips prov.Use: the
 // conf is written but no .ghprofile pin lands in pwd. Mirrors
 // TestGhLoginCreatesWithYes's seeding/shims.
 func TestGhLoginNoLinkSkipsPin(t *testing.T) {
@@ -332,12 +328,12 @@ func TestGhLoginNoLinkSkipsPin(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := c.Flags().Set("no-link", "false"); err != nil {
+		if err := c.Flags().Set("no-map", "false"); err != nil {
 			t.Fatal(err)
 		}
 	})
 
-	out := runRoot(t, "gh", "login", "neu", "--yes", "--no-link")
+	out := runRoot(t, "gh", "login", "neu", "--yes", "--no-map")
 	if !strings.Contains(out, `created profile "neu" (github.com)`) {
 		t.Fatalf("missing created-profile announce:\n%s", out)
 	}
@@ -345,6 +341,6 @@ func TestGhLoginNoLinkSkipsPin(t *testing.T) {
 		t.Fatalf("neu.conf not written: %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(pwd, ".ghprofile")); !os.IsNotExist(statErr) {
-		t.Fatal("--no-link must not pin .ghprofile")
+		t.Fatal("--no-map must not pin .ghprofile")
 	}
 }

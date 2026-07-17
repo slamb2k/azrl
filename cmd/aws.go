@@ -101,7 +101,6 @@ func newAwsLoginCmd() *cobra.Command {
 	c.Flags().BoolVar(&device, "use-device-code", false, "Use the device-code flow instead of the PKCE loopback")
 	c.Flags().BoolVarP(&awsYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&awsNoLink, "no-map", false, "Create without claiming this directory (skip the .awsprofile pin).")
-	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	return c
 }
 

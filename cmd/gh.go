@@ -71,7 +71,6 @@ func newGhLoginCmd() *cobra.Command {
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host (github.com, a *.ghe.com tenant, or a GHES hostname)")
 	c.Flags().BoolVarP(&ghYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&ghNoLink, "no-map", false, "Create without claiming this directory (skip the .ghprofile pin).")
-	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	return c
 }
 
@@ -101,20 +100,6 @@ func newGhUseCmd() *cobra.Command {
 			}
 			cmd.Printf("ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
 			return nil
-		},
-	}
-}
-
-// newGhSwitchStubCmd is a hidden stub that replaces the removed `switch`
-// command. It runs nothing and returns guidance pointing at gh's own account
-// switching (same pattern as the removed `init` stub).
-func newGhSwitchStubCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "switch [name]",
-		Hidden: true,
-		Args:   cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("ghrl: 'switch' was removed — the default account is whatever gh itself is signed into; use 'gh auth switch', or map a directory with 'ghrl use <name>'")
 		},
 	}
 }
@@ -169,8 +154,7 @@ func githubSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newGhLoginCmd(),
 		newGroupListCmd(github.NewProvider, "List configured GitHub profiles and their hosts"),
-		newGhUseCmd(), newGhSwitchStubCmd(),
-		newGroupRmCmd(github.NewProvider, "Remove a GitHub profile and its isolated config dir", validGhName),
+		newGhUseCmd(), newGroupRmCmd(github.NewProvider, "Remove a GitHub profile and its isolated config dir", validGhName),
 		newGhCaptureCmd(),
 		newGroupStatusCmd(github.NewProvider, "Show the repo-pinned GitHub profile", ".ghprofile", ""),
 		newGhBrowserCmd(),

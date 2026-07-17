@@ -89,7 +89,6 @@ func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(str
 	}
 	c.Flags().BoolVar(&unlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
 	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
-	c.Flags().SetNormalizeFunc(normalizeLegacyFlags)
 	c.MarkFlagsMutuallyExclusive("unmap-all", "replace")
 	return c
 }
