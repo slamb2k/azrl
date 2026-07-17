@@ -23,6 +23,7 @@ func newEnvCmd(provFn func() provider.Provider, label, providerName string, vali
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ensureStderrColour()
 			out := cmd.OutOrStdout()
 			errOut := cmd.ErrOrStderr()
 			if off {
