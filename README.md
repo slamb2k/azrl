@@ -59,6 +59,41 @@ sign-in bridge for other tools (`bridge`) — is the advanced shelf, grouped
 separately in `azrl --help` so it never crowds the five verbs above. Reach for
 it when you want it; ignore it forever if you don't.
 
+## The one thing to understand: `login` fills a container
+
+The most common early surprise: you run `azrl login work`, it says ✓ signed in —
+and then `az account show` still answers as your old account. **That's not a
+bug; it's the core design.**
+
+Every profile is an isolated **token container** (`~/.azure-profiles/<name>/`,
+its own `AZURE_CONFIG_DIR`). `azrl login` signs in *inside the container* and
+deliberately never touches your shell or the native `~/.azure` session — that's
+what lets five identities stay signed in simultaneously without clobbering each
+other. Filling a container and *acting as* it are two separate steps, and the
+second one has exactly four **appliers**:
+
+| Applier | Scope | How |
+|---|---|---|
+| `azrl use <name>` | **this directory**, permanently | writes the `.azprofile` pointer (+ `.envrc`); plain `az` here is the profile from now on |
+| `azrl shell [name]` | a **subshell** | exit to leave; nothing persists |
+| `azrl env [name]` | the **current shell** | eval'd exports; `azrl env --off` reverts; nothing on disk |
+| `azrl default [name]` | the **native default**, everywhere | the one sanctioned way azrl signs the *native* `az` in as a profile's identity |
+
+So "which account answers `az account show`?" is always the same ladder,
+top rung wins — and `azrl whoami` shows you the winner (`--explain` shows why):
+
+1. **Shell override** — you're inside `azrl shell` / after `azrl env`
+2. **Directory mapping** — this directory (or an ancestor) is `use`-d to a profile
+3. **Ambient** — nothing applies here, so the native `~/.azure` session answers;
+   that's whatever `azrl default` set — or whatever a plain `az login` last did,
+   which azrl mirrors read-only and never overwrites
+
+Practical upshot: `login` from a random directory is how you **renew** a
+profile's tokens (mappings elsewhere keep working) or **provision** an identity
+you'll map later — it's never how you change who the current terminal is. If
+you sign in somewhere the profile doesn't govern, azrl now says so and names
+the four appliers.
+
 ## Where it helps
 
 `azrl` is useful anywhere you touch more than one Azure account — it is **not**
