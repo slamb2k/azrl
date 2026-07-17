@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mattn/go-isatty"
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
 	"github.com/slamb2k/azrl/internal/profile"
@@ -16,7 +16,7 @@ import (
 
 // isInteractive reports whether stdin is a terminal. It is a package var so
 // tests can stub the picker's TTY branch deterministically.
-var isInteractive = func() bool { return isatty.IsTerminal(os.Stdin.Fd()) }
+var isInteractive = func() bool { return term.IsTerminal(os.Stdin.Fd()) }
 
 // confirmCreateProfile reports whether to create a missing profile. With
 // assumeYes it returns true without prompting. On a non-interactive stream

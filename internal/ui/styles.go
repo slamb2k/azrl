@@ -31,10 +31,8 @@ var (
 	failureStyle = lipgloss.NewStyle().Foreground(red).Bold(true)
 	mutedStyle   = lipgloss.NewStyle().Foreground(gray)
 
-	// selectedStyle marks the focused radio row; dotStyle is the inactive-pane
-	// selection marker; keycapChipStyle renders accelerator hints as
-	// reverse-video keycap chips.
-	selectedStyle   = lipgloss.NewStyle().Foreground(white).Bold(true)
+	// dotStyle is the selection marker; keycapChipStyle renders accelerator
+	// hints as reverse-video keycap chips.
 	dotStyle        = lipgloss.NewStyle().Foreground(azureSky)
 	keycapChipStyle = lipgloss.NewStyle().Foreground(white).Background(azureDeep).Bold(true)
 

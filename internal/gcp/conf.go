@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/slamb2k/azrl/internal/config"
+	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // Conf holds a per-profile GCP configuration. ConfigName is the gcloud named
@@ -69,26 +70,13 @@ func LoadConf(name, confdir string) (Conf, error) {
 
 // Write atomically writes the conf in the canonical KEY=value format.
 func (c Conf) Write(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
 	isolate := "false"
 	if c.Isolate {
 		isolate = "true"
 	}
 	body := fmt.Sprintf("GCP_CONFIG_NAME=%s\nGCP_PROJECT=%s\nGCP_REGION=%s\nGCP_EXPECT_ACCOUNT=%s\nGCP_LABEL=%s\nGCP_ISOLATE=%s\nGCP_BROWSER_CMD=%s\nGCP_BROWSER_LABEL=%s\n",
 		c.ConfigName, c.Project, c.Region, c.ExpectAccount, c.Label, isolate, c.BrowserCmd, c.BrowserLabel)
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.WriteString(body); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	tmp.Close()
-	return os.Rename(tmp.Name(), path)
+	return profile.WriteAtomic(path, body)
 }
 
 // SetIsolate persists the GCP_ISOLATE flag in profile name's conf, preserving
@@ -98,43 +86,5 @@ func SetIsolate(confdir, name string, isolate bool) error {
 	if isolate {
 		v = "true"
 	}
-	return setConfKey(filepath.Join(confdir, name+".conf"), "GCP_ISOLATE", v)
-}
-
-// setConfKey updates or appends a single KEY=value line in an existing conf,
-// preserving every other key and its order (so LAST_USED/LAST_DIR written by the
-// scheme survive). It creates the file when absent.
-func setConfKey(path, key, value string) error {
-	b, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	var out []string
-	found := false
-	for _, line := range strings.Split(string(b), "\n") {
-		k, _, ok := strings.Cut(strings.TrimSpace(line), "=")
-		if ok && strings.TrimSpace(k) == key {
-			out = append(out, key+"="+value)
-			found = true
-			continue
-		}
-		if line != "" {
-			out = append(out, line)
-		}
-	}
-	if !found {
-		out = append(out, key+"="+value)
-	}
-	body := strings.Join(out, "\n") + "\n"
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.WriteString(body); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	tmp.Close()
-	return os.Rename(tmp.Name(), path)
+	return scheme.SetKey(name, confdir, "GCP_ISOLATE", v)
 }

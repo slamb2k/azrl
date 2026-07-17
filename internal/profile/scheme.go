@@ -93,7 +93,7 @@ func (s Scheme) Touch(name, confdir, dir string) error {
 			_ = RecordMapping(confdir, Mapping{Dir: pdir, Profile: name, Source: "pointer"})
 		}
 	}
-	return writeAtomic(path, b.String())
+	return WriteAtomic(path, b.String())
 }
 
 // LastTouch reads LAST_USED and LAST_DIR back from profile name's conf, returning
@@ -194,7 +194,7 @@ func (s Scheme) SetKey(name, confdir, key, value string) error {
 	for _, k := range order {
 		fmt.Fprintf(&b, "%s=%s\n", k, m[k])
 	}
-	return writeAtomic(path, b.String())
+	return WriteAtomic(path, b.String())
 }
 
 // GetKey returns one key's value from the conf; "" when the key or the conf
@@ -327,8 +327,9 @@ func (s Scheme) ReplaceLinks(confdir, oldName, newName string) ([]string, error)
 	return done, nil
 }
 
-// writeAtomic writes body to path via a temp file + rename.
-func writeAtomic(path, body string) error {
+// WriteAtomic writes body to path via a temp file + rename, creating the
+// parent directory as needed. Shared by every conf writer in the tree.
+func WriteAtomic(path, body string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

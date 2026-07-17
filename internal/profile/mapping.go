@@ -90,7 +90,7 @@ func readMappings(profilesDir string, revalidate func(Mapping) (Mapping, bool)) 
 		for _, m := range kept {
 			fmt.Fprintf(&body, "%s\t%s\t%s\n", m.Dir, m.Profile, m.Source)
 		}
-		writeAtomic(path, body.String())
+		WriteAtomic(path, body.String())
 	}
 	return kept
 }
@@ -125,7 +125,7 @@ func RecordMapping(profilesDir string, m Mapping) error {
 	if !replaced {
 		lines = append(lines, entry)
 	}
-	return writeAtomic(path, strings.Join(lines, "\n")+"\n")
+	return WriteAtomic(path, strings.Join(lines, "\n")+"\n")
 }
 
 // RemoveMapping drops the entry with the given Dir and Source from
@@ -157,7 +157,7 @@ func RemoveMapping(profilesDir, dir, source string) error {
 	if len(kept) > 0 {
 		body = strings.Join(kept, "\n") + "\n"
 	}
-	return writeAtomic(path, body)
+	return WriteAtomic(path, body)
 }
 
 // parseMapping parses one index line; ok is false when the line is malformed
