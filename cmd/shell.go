@@ -202,12 +202,16 @@ func runShell(providerName, name string, out io.Writer) error {
 
 func newShellCmd(providerName, short string) *cobra.Command {
 	return &cobra.Command{
-		Use:          "shell <name>",
+		Use:          "shell [name]",
 		Short:        short,
-		Args:         cobra.ExactArgs(1),
+		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runShell(providerName, args[0], cmd.OutOrStdout())
+			name, err := nameOrGoverning(providerName, args)
+			if err != nil {
+				return err
+			}
+			return runShell(providerName, name, cmd.OutOrStdout())
 		},
 	}
 }
