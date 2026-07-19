@@ -28,7 +28,8 @@ type whoamiRow struct {
 	Provider      string   `json:"provider"`
 	Profile       string   `json:"profile,omitempty"`
 	Identity      string   `json:"identity,omitempty"`
-	Via           string   `json:"via"` // shell | pointer | ancestor | gitconfig | ambient | none
+	Subscription  string   `json:"subscription,omitempty"` // azure only
+	Via           string   `json:"via"`                    // shell | pointer | ancestor | gitconfig | ambient | none
 	Dir           string   `json:"dir,omitempty"`
 	Pointer       string   `json:"pointer,omitempty"`
 	Browser       string   `json:"browser,omitempty"`
@@ -100,9 +101,12 @@ func buildWhoami(provs []provider.Provider, cwd string, explain bool) whoamiRepo
 		case a != nil:
 			row.Via, row.Profile, row.Identity = "ambient", a.Profile, a.Identity
 		}
-		if row.Profile != "" && row.Identity == "" {
+		if row.Profile != "" {
 			if st, err := p.Status(row.Profile, p.ProfilesDir()); err == nil {
-				row.Identity = st.Identity
+				if row.Identity == "" {
+					row.Identity = st.Identity
+				}
+				row.Subscription = st.Subscription
 			}
 		}
 		row.Browser, row.BrowserLabel, row.BrowserSource = effectiveBrowser(p, row.Profile)
@@ -284,9 +288,13 @@ func printWhoami(w io.Writer, rep whoamiReport) {
 		if r.Profile != "" {
 			profile = cliBold.Render(r.Profile)
 		}
+		identity := cliValue.Render(dash(r.Identity))
+		if r.Subscription != "" {
+			identity += " " + cliDim.Render("("+r.Subscription+")")
+		}
 		rows = append(rows, []string{
 			mark + " " + ui.ProviderIcon(r.Provider) + " " + r.Provider,
-			profile, cliValue.Render(dash(r.Identity)), cliDim.Render(via), cliDim.Render("browser:") + " " + browser,
+			profile, identity, cliDim.Render(via), cliDim.Render("browser:") + " " + browser,
 		})
 	}
 	renderAligned(w, "  ", rows)

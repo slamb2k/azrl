@@ -17,7 +17,7 @@ func TestStatusReadsIdentityExpiryAndLastUsed(t *testing.T) {
 	os.WriteFile(filepath.Join(confdir, "acme.conf"),
 		[]byte("AZ_TENANT=acme.com\nLAST_USED=2026-06-01T10:00:00Z\nLAST_DIR=/work/acme\n"), 0o644)
 	os.WriteFile(filepath.Join(iso, "azureProfile.json"),
-		[]byte(`{"subscriptions":[{"user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"guid-1"}]}`), 0o644)
+		[]byte(`{"subscriptions":[{"name":"Acme Production","user":{"name":"u@acme.com"},"isDefault":true,"tenantId":"guid-1"}]}`), 0o644)
 	exp := time.Now().Add(42 * time.Minute).Unix()
 	os.WriteFile(filepath.Join(iso, "msal_token_cache.json"),
 		[]byte(`{"AccessToken":{"k":{"expires_on":"`+strconv.FormatInt(exp, 10)+`"}}}`), 0o644)
@@ -28,6 +28,9 @@ func TestStatusReadsIdentityExpiryAndLastUsed(t *testing.T) {
 	}
 	if st.Identity != "u@acme.com · guid-1" {
 		t.Fatalf("Identity = %q", st.Identity)
+	}
+	if st.Subscription != "Acme Production" {
+		t.Fatalf("Subscription = %q", st.Subscription)
 	}
 	if st.Directory != "/work/acme" {
 		t.Fatalf("Directory = %q", st.Directory)
