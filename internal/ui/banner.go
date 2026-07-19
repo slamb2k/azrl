@@ -129,6 +129,20 @@ func truncateLine(s string, w int) string {
 	return ansi.Truncate(s, w, "")
 }
 
+// truncateLeft keeps the tail of s (the discriminating end of a path) under
+// max visible cells, prefixing an ellipsis — mirrors cmd/render.go's helper
+// of the same name for the plain-CLI output.
+func truncateLeft(s string, max int) string {
+	if max <= 1 || lipgloss.Width(s) <= max {
+		return s
+	}
+	r := []rune(s)
+	for len(r) > 0 && lipgloss.Width(string(r))+1 > max {
+		r = r[1:]
+	}
+	return "…" + string(r)
+}
+
 // Banner renders the winged AZRL crest: gold shadow wordmark, a gradient halo,
 // and gradient-blue wings, padded top and bottom. No tagline.
 func Banner() string {
