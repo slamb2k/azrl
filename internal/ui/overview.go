@@ -2,7 +2,6 @@ package ui
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -175,7 +174,7 @@ func selfHealCwd(p provider.Provider, confdir, cwd string) {
 		return
 	}
 	dir := cwd
-	if out, err := exec.Command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output(); err == nil {
+	if out, err := github.GitCmd(cwd, "rev-parse", "--show-toplevel").Output(); err == nil {
 		if top := strings.TrimSpace(string(out)); top != "" {
 			dir = top
 		}

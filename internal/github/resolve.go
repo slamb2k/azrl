@@ -1,7 +1,6 @@
 package github
 
 import (
-	"os/exec"
 	"strings"
 )
 
@@ -72,7 +71,7 @@ type credentialEntry struct {
 // from the git repo enclosing dir (the exact key SetupRepo writes). No repo,
 // no git, or no entries all yield nil.
 func credentialUsernames(dir string) []credentialEntry {
-	out, err := exec.Command("git", "-C", dir, "config", "--local", "--get-regexp",
+	out, err := GitCmd(dir, "config", "--local", "--get-regexp",
 		`^credential\.https://.*\.username$`).Output()
 	if err != nil {
 		return nil

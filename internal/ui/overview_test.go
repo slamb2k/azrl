@@ -3,19 +3,19 @@ package ui
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/slamb2k/azrl/internal/github"
 	"github.com/slamb2k/azrl/internal/provider"
 )
 
 func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	os.MkdirAll(dir, 0o755)
-	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+	if out, err := github.GitCmd(dir, "init", "-q").CombinedOutput(); err != nil {
 		t.Skipf("git init failed: %v: %s", err, out)
 	}
 }
@@ -23,7 +23,7 @@ func initGitRepo(t *testing.T, dir string) {
 func setCredentialUser(t *testing.T, dir, host, user string) {
 	t.Helper()
 	key := fmt.Sprintf("credential.https://%s.username", host)
-	if err := exec.Command("git", "-C", dir, "config", "--local", key, user).Run(); err != nil {
+	if err := github.GitCmd(dir, "config", "--local", key, user).Run(); err != nil {
 		t.Fatal(err)
 	}
 }
