@@ -13,7 +13,7 @@ import (
 // matches what the read path (rev-parse in the overview) resolves; falls back
 // to dir outside a repo.
 func repoRoot(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+	out, err := GitCmd(dir, "rev-parse", "--show-toplevel").Output()
 	if root := strings.TrimSpace(string(out)); err == nil && root != "" {
 		return root
 	}
@@ -33,7 +33,7 @@ func SetupRepo(profilesDir, name, pwd string, c Conf) error {
 	}
 	if c.User != "" {
 		key := fmt.Sprintf("credential.https://%s.username", c.Host)
-		if err := exec.Command("git", "-C", pwd, "config", "--local", key, c.User).Run(); err != nil {
+		if err := GitCmd(pwd, "config", "--local", key, c.User).Run(); err != nil {
 			return fmt.Errorf("ghrl: setting %s failed: %w", key, err)
 		}
 		_ = profile.RecordMapping(profilesDir, profile.Mapping{Dir: repoRoot(pwd), Profile: name, Source: "gitconfig"})

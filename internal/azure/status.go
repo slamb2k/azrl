@@ -22,13 +22,39 @@ func (Provider) Status(name, confdir string) (provider.Status, error) {
 		filepath.Join(isolated, "msal_token_cache.json"),
 		filepath.Join(isolated, "azureProfile.json"))
 	return provider.Status{
-		ProfileName: name,
-		Identity:    azureIdentity(isolated),
-		Directory:   dir,
-		Expiry:      azureExpiry(isolated),
-		Drifted:     provider.Drifted(profile.AzureScheme(), "AZURE_CONFIG_DIR", name, isolated),
-		LastUsed:    last,
+		ProfileName:  name,
+		Identity:     azureIdentity(isolated),
+		Subscription: azureSubscription(isolated),
+		Directory:    dir,
+		Expiry:       azureExpiry(isolated),
+		Drifted:      provider.Drifted(profile.AzureScheme(), "AZURE_CONFIG_DIR", name, isolated),
+		LastUsed:     last,
 	}, nil
+}
+
+// azureSubscription reads the default subscription's display name from
+// azureProfile.json. Blank on any error or when none is marked default.
+func azureSubscription(confdir string) string {
+	b, err := os.ReadFile(filepath.Join(confdir, "azureProfile.json"))
+	if err != nil {
+		return ""
+	}
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+	var p struct {
+		Subscriptions []struct {
+			Name      string `json:"name"`
+			IsDefault bool   `json:"isDefault"`
+		} `json:"subscriptions"`
+	}
+	if json.Unmarshal(b, &p) != nil {
+		return ""
+	}
+	for _, s := range p.Subscriptions {
+		if s.IsDefault {
+			return s.Name
+		}
+	}
+	return ""
 }
 
 // azureIdentity reads the default subscription's signed-in user from

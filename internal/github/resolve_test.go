@@ -3,7 +3,6 @@ package github
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -13,7 +12,7 @@ import (
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+	if out, err := GitCmd(dir, "init", "-q").CombinedOutput(); err != nil {
 		t.Skipf("git init failed: %v: %s", err, out)
 	}
 	return dir
@@ -22,7 +21,7 @@ func initGitRepo(t *testing.T) string {
 func setCredentialUser(t *testing.T, dir, host, user string) {
 	t.Helper()
 	key := fmt.Sprintf("credential.https://%s.username", host)
-	if err := exec.Command("git", "-C", dir, "config", "--local", key, user).Run(); err != nil {
+	if err := GitCmd(dir, "config", "--local", key, user).Run(); err != nil {
 		t.Fatal(err)
 	}
 }

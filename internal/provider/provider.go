@@ -12,12 +12,13 @@ import (
 
 // Status is a normalized, disk-only snapshot of one profile for the dashboard.
 type Status struct {
-	ProfileName string
-	Identity    string
-	Directory   string
-	Expiry      *time.Time
-	Drifted     bool
-	LastUsed    time.Time
+	ProfileName  string
+	Identity     string
+	Subscription string // azure only; blank for providers with no such concept
+	Directory    string
+	Expiry       *time.Time
+	Drifted      bool
+	LastUsed     time.Time
 }
 
 // Ambient is a provider's native default identity — the account its CLI would

@@ -46,16 +46,29 @@ func headerStrip(width int, icon, title, cwd, identity string) string {
 func justify(width int, left, mid, right string) string {
 	lw, mw, rw := lipgloss.Width(left), lipgloss.Width(mid), lipgloss.Width(right)
 	if lw+mw+rw+4 > width {
-		return truncateLine(left+"  "+mid+"  "+right, width)
+		// left/right carry the provider name and identity/shell chip — keep
+		// those intact and shrink mid (the directory path) instead, since a
+		// long cwd degrades gracefully with an ellipsis; a naive whole-line
+		// truncation would silently drop right off the end.
+		if avail := width - lw - rw - 4; avail > 1 {
+			mid = truncateLeft(mid, avail)
+			mw = lipgloss.Width(mid)
+		} else {
+			return truncateLine(left+"  "+mid+"  "+right, width)
+		}
 	}
 	midStart := (width - mw) / 2
 	if midStart < lw+2 {
 		midStart = lw + 2
 	}
-	rightStart := width - rw
-	if rightStart < midStart+mw+2 {
-		rightStart = midStart + mw + 2
+	// A wide mid can push the naturally-centered position so close to right
+	// that there's no room for a 2-space gap; capping here (rather than only
+	// pushing rightStart out below) keeps the total line at exactly width —
+	// pushing rightStart alone without this would silently overflow it.
+	if max := width - rw - mw - 2; midStart > max {
+		midStart = max
 	}
+	rightStart := width - rw
 	return left + strings.Repeat(" ", midStart-lw) + mid +
 		strings.Repeat(" ", rightStart-midStart-mw) + right
 }
