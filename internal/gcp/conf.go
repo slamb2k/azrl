@@ -42,6 +42,9 @@ func (c Conf) ResolvedConfigName(name string) string {
 // LoadConf reads <confdir>/<name>.conf and requires GCP_PROJECT.
 func LoadConf(name, confdir string) (Conf, error) {
 	var c Conf
+	if err := profile.ValidateName(name); err != nil {
+		return c, fmt.Errorf("gcp: %w", err)
+	}
 	path := filepath.Join(confdir, name+".conf")
 	f, err := os.Open(path)
 	if err != nil {

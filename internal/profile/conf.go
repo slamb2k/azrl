@@ -76,6 +76,9 @@ func LocateAzprofile(dir string) (string, bool) {
 // LoadConf reads <confdir>/<name>.conf and requires AZ_TENANT.
 func LoadConf(name, confdir string) (Conf, error) {
 	var c Conf
+	if err := ValidateName(name); err != nil {
+		return c, fmt.Errorf("azrl: %w", err)
+	}
 	path := filepath.Join(confdir, name+".conf")
 	f, err := os.Open(path)
 	if err != nil {

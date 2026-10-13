@@ -27,13 +27,23 @@ type Scheme struct {
 // nearest Pointer file found walking up from dir.
 func (s Scheme) Resolve(arg, dir string) (string, error) {
 	if arg != "" {
+		if err := ValidateName(arg); err != nil {
+			return "", fmt.Errorf("%s: %w", s.Prefix, err)
+		}
 		return arg, nil
 	}
 	d := dir
 	for d != "" && d != string(filepath.Separator) {
-		b, err := os.ReadFile(filepath.Join(d, s.Pointer))
+		ptr := filepath.Join(d, s.Pointer)
+		b, err := os.ReadFile(ptr)
 		if err == nil {
-			return strings.TrimSpace(string(b)), nil
+			// A pointer file may come from a cloned repo: its contents are
+			// untrusted and must never steer a path outside the profiles dir.
+			name := strings.TrimSpace(string(b))
+			if verr := ValidateName(name); verr != nil {
+				return "", fmt.Errorf("%s: %s: %w", s.Prefix, ptr, verr)
+			}
+			return name, nil
 		}
 		d = filepath.Dir(d)
 	}
@@ -56,6 +66,9 @@ func (s Scheme) Locate(dir string) (string, bool) {
 // Use links pwd to an existing profile by writing pwd/<Pointer>, after verifying
 // <confdir>/<name>.conf exists.
 func (s Scheme) Use(name, confdir, pwd string) error {
+	if err := ValidateName(name); err != nil {
+		return fmt.Errorf("%s: %w", s.Prefix, err)
+	}
 	conf := filepath.Join(confdir, name+".conf")
 	if _, err := os.Stat(conf); err != nil {
 		return fmt.Errorf("%s: no such profile %q (missing %s)", s.Prefix, name, conf)
@@ -71,6 +84,9 @@ func (s Scheme) Use(name, confdir, pwd string) error {
 // When a Pointer file governing dir names this profile, it also records the
 // pointer's directory in the mappings index (best-effort, never fails Touch).
 func (s Scheme) Touch(name, confdir, dir string) error {
+	if err := ValidateName(name); err != nil {
+		return fmt.Errorf("%s: %w", s.Prefix, err)
+	}
 	path := filepath.Join(confdir, name+".conf")
 	m, order, err := readOrderedKV(path)
 	if err != nil {
@@ -114,7 +130,12 @@ func (s Scheme) LastTouch(name, confdir string) (time.Time, string) {
 
 // RemoveTargets returns the existing paths Remove would delete: the conf, the
 // per-profile config dir, and pwd/<Pointer> only when it names this profile.
+//
+// An invalid name yields no targets: nothing outside confdir is ever deleted.
 func (s Scheme) RemoveTargets(name, confdir, pwd string) []string {
+	if ValidateName(name) != nil {
+		return nil
+	}
 	var targets []string
 	conf := filepath.Join(confdir, name+".conf")
 	if _, err := os.Stat(conf); err == nil {
@@ -133,6 +154,9 @@ func (s Scheme) RemoveTargets(name, confdir, pwd string) []string {
 
 // Remove deletes the RemoveTargets and returns the list it removed.
 func (s Scheme) Remove(name, confdir, pwd string) ([]string, error) {
+	if err := ValidateName(name); err != nil {
+		return nil, fmt.Errorf("%s: %w", s.Prefix, err)
+	}
 	targets := s.RemoveTargets(name, confdir, pwd)
 	for _, t := range targets {
 		if err := os.RemoveAll(t); err != nil {
@@ -178,6 +202,9 @@ func (s Scheme) SetLabel(name, confdir, label string) error {
 // SetKey updates a single key of profile name's conf, preserving the other
 // keys and their order (the key is appended when absent).
 func (s Scheme) SetKey(name, confdir, key, value string) error {
+	if err := ValidateName(name); err != nil {
+		return fmt.Errorf("%s: %w", s.Prefix, err)
+	}
 	if strings.ContainsAny(value, "\n\r") {
 		return fmt.Errorf("profile: key %s value must be single-line", key)
 	}

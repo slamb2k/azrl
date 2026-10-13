@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -71,7 +72,11 @@ func resolveLoginTargetWithProfiles(cmd *cobra.Command, prov provider.Provider, 
 		return args[0], nil, false, nil
 	}
 	pwd, _ := os.Getwd()
-	if pin, _ := prov.Resolve("", pwd); pin != "" {
+	pin, perr := prov.Resolve("", pwd)
+	if errors.Is(perr, profile.ErrInvalidName) {
+		return "", nil, false, perr
+	}
+	if pin != "" {
 		return pin, nil, false, nil
 	}
 	out := cmd.OutOrStdout()

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/slamb2k/azrl/internal/azure"
 	"github.com/slamb2k/azrl/internal/config"
@@ -17,15 +16,15 @@ var loginPaste bool
 var loginYes bool
 var loginNoLink bool
 
-// validAzureName guards a name typed at the azure first-login prompt: it rejects
-// an empty name and any name containing a path separator (azure profiles map to
-// a conf file and an isolated config dir named after the profile).
+// validAzureName guards a name typed at the azure first-login prompt with the
+// shared profile.ValidateName rule (azure profiles map to a conf file and an
+// isolated config dir named after the profile).
 func validAzureName(name string) error {
 	if name == "" {
 		return fmt.Errorf("azrl: a profile name is required")
 	}
-	if strings.Contains(name, "/") {
-		return fmt.Errorf("azrl: invalid profile name %q", name)
+	if err := profile.ValidateName(name); err != nil {
+		return fmt.Errorf("azrl: %w", err)
 	}
 	return nil
 }
