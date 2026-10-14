@@ -18,6 +18,9 @@ var captureCmd = &cobra.Command{
 			arg = args[0]
 		}
 		name := profile.DefaultName(arg, pwd)
+		if err := validProfileName(name); err != nil {
+			return err
+		}
 		if err := captureSession(name, pwd, true, cmd.OutOrStdout()); err != nil {
 			return err
 		}

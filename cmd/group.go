@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,18 +10,19 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/slamb2k/azrl/internal/provider"
 )
 
-// newValidName builds a profile-name guard for a provider group: non-empty,
-// no "/", and the reserved global-conf basename refused.
+// newValidName builds a profile-name guard for a provider group: the shared
+// profile.ValidateName rule, plus the reserved global-conf basename refused.
 func newValidName(tool, reserved string) func(string) error {
 	return func(name string) error {
 		if name == "" {
 			return fmt.Errorf("%s: a profile name is required", tool)
 		}
-		if strings.Contains(name, "/") {
-			return fmt.Errorf("%s: invalid profile name %q", tool, name)
+		if err := profile.ValidateName(name); err != nil {
+			return fmt.Errorf("%s: %w", tool, err)
 		}
 		if name == reserved {
 			return fmt.Errorf("%s: refusing to use the global %s config", tool, reserved)
@@ -155,7 +157,11 @@ func resolveGoverning(providerName string) (string, error) {
 			continue
 		}
 		pwd, _ := os.Getwd()
-		if name, err := prov.Resolve("", pwd); err == nil && name != "" {
+		name, err := prov.Resolve("", pwd)
+		if errors.Is(err, profile.ErrInvalidName) {
+			return "", err
+		}
+		if err == nil && name != "" {
 			return name, nil
 		}
 		confdir := prov.ProfilesDir()
@@ -184,6 +190,9 @@ func resolveGoverning(providerName string) (string, error) {
 // run bare: an explicit name wins, else the governing ladder decides.
 func nameOrGoverning(providerName string, args []string) (string, error) {
 	if len(args) == 1 {
+		if err := profile.ValidateName(args[0]); err != nil {
+			return "", fmt.Errorf("azrl: %w", err)
+		}
 		return args[0], nil
 	}
 	return resolveGoverning(providerName)

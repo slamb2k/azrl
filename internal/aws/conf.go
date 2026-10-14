@@ -32,6 +32,9 @@ type Conf struct {
 // LoadConf reads <confdir>/<name>.conf and requires AWS_SSO_START_URL.
 func LoadConf(name, confdir string) (Conf, error) {
 	var c Conf
+	if err := profile.ValidateName(name); err != nil {
+		return c, fmt.Errorf("aws: %w", err)
+	}
 	path := filepath.Join(confdir, name+".conf")
 	f, err := os.Open(path)
 	if err != nil {

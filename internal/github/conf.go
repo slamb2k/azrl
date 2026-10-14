@@ -26,6 +26,9 @@ type Conf struct {
 // to https when unset.
 func LoadConf(name, confdir string) (Conf, error) {
 	var c Conf
+	if err := profile.ValidateName(name); err != nil {
+		return c, fmt.Errorf("ghrl: %w", err)
+	}
 	path := filepath.Join(confdir, name+".conf")
 	f, err := os.Open(path)
 	if err != nil {

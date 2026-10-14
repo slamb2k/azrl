@@ -58,14 +58,11 @@ var rmCmd = &cobra.Command{
 	},
 }
 
-// validProfileName rejects empty names, names containing '/', and the reserved
-// global config name.
+// validProfileName applies the shared profile.ValidateName rule and refuses the
+// reserved global config name.
 func validProfileName(name string) error {
-	if name == "" {
-		return fmt.Errorf("azrl: a profile name is required")
-	}
-	if strings.Contains(name, "/") {
-		return fmt.Errorf("azrl: invalid profile name %q", name)
+	if err := validAzureName(name); err != nil {
+		return err
 	}
 	if name == "azrl" {
 		return fmt.Errorf("azrl: refusing to use the global azrl config")
