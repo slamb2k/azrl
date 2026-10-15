@@ -297,11 +297,11 @@ func TestAgentCaptureJSONKeepsStdoutClean(t *testing.T) {
 
 func TestAgentEnvrcFlagWritesWithoutPrompt(t *testing.T) {
 	seedAgentHome(t)
-	pwd, _ := os.Getwd()
+	cwd, _ := os.Getwd()
 	if _, stderr, code := runAgent(t, "gh", "use", "work", "--envrc"); code != ExitOK {
 		t.Fatalf("exit %d (%s)", code, stderr)
 	}
-	b, err := os.ReadFile(filepath.Join(pwd, ".envrc"))
+	b, err := os.ReadFile(filepath.Join(cwd, ".envrc"))
 	if err != nil || !strings.Contains(string(b), "GH_CONFIG_DIR") {
 		t.Fatalf(".envrc not written: %v %q", err, b)
 	}
@@ -309,11 +309,11 @@ func TestAgentEnvrcFlagWritesWithoutPrompt(t *testing.T) {
 
 func TestAgentNoEnvrcWithoutTTY(t *testing.T) {
 	seedAgentHome(t)
-	pwd, _ := os.Getwd()
+	cwd, _ := os.Getwd()
 	if _, stderr, code := runAgent(t, "aws", "use", "work"); code != ExitOK {
 		t.Fatalf("exit %d (%s)", code, stderr)
 	}
-	if _, err := os.Stat(filepath.Join(pwd, ".envrc")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(cwd, ".envrc")); !os.IsNotExist(err) {
 		t.Fatal("no TTY and no --envrc must not write .envrc")
 	}
 }
