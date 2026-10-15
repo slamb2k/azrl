@@ -56,45 +56,56 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 			fmt.Fprintf(out, "✗ %v\n  Recover with:\n  %s\n", err,
 				bridge.PasteLine(lg.Port, vmHost, g.BrowserCmd, lg.URL))
 		}
-		return err
+		// The browser half of the flow never finished — only a human can.
+		return withCode(ExitNeedsHuman, err)
 	}
 	return nil
 }
 
-// captureSession records the current az session as <name>.conf, and — when
-// link is true — pins the directory via .azprofile. Touch runs regardless: with
-// no pointer present it just records LAST_USED/LAST_DIR, not a mapping.
-func captureSession(name, pwd string, link bool, out io.Writer) error {
+// captureSession records the current az session as <name>.conf — creating it,
+// or updating it in place while keeping the user-set label and browser
+// mapping — and, when link is true, pins the directory via .azprofile. Touch
+// runs regardless: with no pointer present it just records LAST_USED/LAST_DIR,
+// not a mapping. It returns the conf written and whether it was new.
+func captureSession(name, pwd string, link bool, out io.Writer) (profile.Conf, bool, error) {
 	confPath := filepath.Join(config.ProfilesDir(), name+".conf")
-	if _, err := os.Stat(confPath); err == nil {
-		return fmt.Errorf("azrl: %s already exists — remove it first", confPath)
-	}
 	acctBytes, err := azure.AccountShow()
 	if err != nil {
-		return fmt.Errorf("azrl: not logged in for %q — run azrl login first", name)
+		return profile.Conf{}, false, needsHumanErr("azrl: not logged in for %q — run azrl login first", name)
 	}
 	var acct profile.AccountJSON
 	if err := json.Unmarshal(acctBytes, &acct); err != nil {
-		return err
+		return profile.Conf{}, false, err
 	}
 	var doms profile.DomainsJSON
 	_ = json.Unmarshal(azure.Domains(), &doms)
 	c := profile.BuildConf(acct, doms)
+	created := true
+	if existing, err := profile.LoadConf(name, config.ProfilesDir()); err == nil {
+		created = false
+		c.Label = existing.Label
+		c.BrowserCmd = existing.BrowserCmd
+		c.BrowserLabel = existing.BrowserLabel
+	}
 	if err := c.Write(confPath); err != nil {
-		return err
+		return c, created, err
 	}
 	if link {
 		if err := os.WriteFile(filepath.Join(pwd, ".azprofile"), []byte(name+"\n"), 0o644); err != nil {
-			return err
+			return c, created, err
 		}
 	}
 	if err := profile.AzureScheme().Touch(name, config.ProfilesDir(), pwd); err != nil {
-		return err
+		return c, created, err
+	}
+	verb := "wrote"
+	if !created {
+		verb = "updated"
 	}
 	if link {
-		fmt.Fprintf(out, "azrl: wrote %s and %s/.azprofile\n", confPath, pwd)
+		fmt.Fprintf(out, "azrl: %s %s and %s/.azprofile\n", verb, confPath, pwd)
 	} else {
-		fmt.Fprintf(out, "azrl: wrote %s\n", confPath)
+		fmt.Fprintf(out, "azrl: %s %s\n", verb, confPath)
 	}
-	return nil
+	return c, created, nil
 }

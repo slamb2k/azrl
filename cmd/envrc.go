@@ -1,18 +1,16 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/slamb2k/azrl/internal/profile"
 )
 
 // offerEnvrc offers to write a direnv .envrc so plain `az` in pwd follows the
-// profile. It skips silently when one already exists, and a closed/non-tty
-// stdin reads as a decline (never hangs).
-func offerEnvrc(pwd string, out io.Writer, in io.Reader) {
+// profile. It skips silently when one already exists; mode decides whether it
+// asks (a closed stdin reads as a decline), writes, or stays quiet.
+func offerEnvrc(pwd string, mode envrcMode, out io.Writer, in io.Reader) {
 	// .envrc must live beside the .azprofile it reads, which may be an ancestor.
 	dir := pwd
 	if d, ok := profile.LocateAzprofile(pwd); ok {
@@ -21,13 +19,7 @@ func offerEnvrc(pwd string, out io.Writer, in io.Reader) {
 	if profile.HasEnvrc(dir) {
 		return
 	}
-	fmt.Fprint(out, "azrl: also write .envrc so `az` in this dir follows this profile? [y/N] ")
-	sc := bufio.NewScanner(in)
-	if !sc.Scan() {
-		fmt.Fprintln(out)
-		return
-	}
-	if ans := strings.TrimSpace(sc.Text()); !strings.HasPrefix(strings.ToLower(ans), "y") {
+	if !envrcConsent(mode, "azrl: also write .envrc so `az` in this dir follows this profile?", out, in) {
 		return
 	}
 	wrote, err := profile.WriteEnvrc(dir)

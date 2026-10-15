@@ -22,7 +22,7 @@ func consoleURL(providerName, name string) (string, string, error) {
 	case "azure":
 		c, err := profile.LoadConf(name, config.ProfilesDir())
 		if err != nil {
-			return "", "", fmt.Errorf("azrl: unknown azure profile %q: %w", name, err)
+			return "", "", profileLoadErr(err, "azrl: unknown azure profile %q: %w", name, err)
 		}
 		tenant := c.Tenant
 		// Defense-in-depth: LoadConf guarantees Tenant is set, and BuildConf falls
@@ -37,7 +37,7 @@ func consoleURL(providerName, name string) (string, string, error) {
 	case "github":
 		c, err := github.LoadConf(name, config.GithubProfilesDir())
 		if err != nil {
-			return "", "", fmt.Errorf("azrl: unknown github profile %q: %w", name, err)
+			return "", "", profileLoadErr(err, "azrl: unknown github profile %q: %w", name, err)
 		}
 		if c.Host == "" {
 			return "", "", fmt.Errorf("azrl: profile %q has no GH_HOST — nothing to open", name)
@@ -46,7 +46,7 @@ func consoleURL(providerName, name string) (string, string, error) {
 	case "aws":
 		c, err := aws.LoadConf(name, config.AwsProfilesDir())
 		if err != nil {
-			return "", "", fmt.Errorf("azrl: unknown aws profile %q: %w", name, err)
+			return "", "", profileLoadErr(err, "azrl: unknown aws profile %q: %w", name, err)
 		}
 		if c.SSOStartURL == "" {
 			return "", "", fmt.Errorf("azrl: profile %q has no AWS_SSO_START_URL — nothing to open", name)
@@ -56,7 +56,7 @@ func consoleURL(providerName, name string) (string, string, error) {
 		dir := config.GcpProfilesDir()
 		c, err := gcp.LoadConf(name, dir)
 		if err != nil {
-			return "", "", fmt.Errorf("azrl: unknown gcp profile %q: %w", name, err)
+			return "", "", profileLoadErr(err, "azrl: unknown gcp profile %q: %w", name, err)
 		}
 		if c.Project == "" {
 			return "", "", fmt.Errorf("azrl: profile %q has no GCP_PROJECT — nothing to open", name)
@@ -104,7 +104,8 @@ func runConsole(providerName, name string, out io.Writer) error {
 }
 
 func newConsoleCmd(providerName, short string) *cobra.Command {
-	return &cobra.Command{
+	var printURL bool
+	c := &cobra.Command{
 		Use:          "console [name]",
 		Short:        short,
 		Args:         cobra.MaximumNArgs(1),
@@ -114,9 +115,19 @@ func newConsoleCmd(providerName, short string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if printURL {
+				u, _, err := consoleURL(providerName, name)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), u)
+				return nil
+			}
 			return runConsole(providerName, name, cmd.OutOrStdout())
 		},
 	}
+	c.Flags().BoolVar(&printURL, "print-url", false, "Print the console deep link on stdout instead of opening a browser")
+	return c
 }
 
 func init() {

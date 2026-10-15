@@ -17,6 +17,7 @@ var validGcpName = newValidName("gcp", "gcp")
 func newGcpLoginCmd() *cobra.Command {
 	var configName, project, region string
 	var isolate, gcpYes, gcpNoLink bool
+	var envrc *envrcFlags
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a Google Cloud account (browser pops on your local machine)",
@@ -45,7 +46,7 @@ func newGcpLoginCmd() *cobra.Command {
 				// newProfile: already committed via the first-login name prompt, so
 				// create without a second confirm. Otherwise confirm before creating.
 				if !newProfile && !confirmCreateProfile(cmd, "azrl gcp", name, detail, gcpYes) {
-					return fmt.Errorf("azrl gcp: no profile %q — pass --yes to create it (%s) or run interactively", name, detail)
+					return usageErr("azrl gcp: no profile %q — pass --yes to create it (%s) or run interactively", name, detail)
 				}
 				conf = gcp.Conf{ConfigName: cn, Project: project, Region: region, Isolate: isolate}
 				if werr := conf.Write(groupConfPath(dir, name)); werr != nil {
@@ -95,7 +96,7 @@ func newGcpLoginCmd() *cobra.Command {
 					return err
 				}
 				cmd.Printf("gcp: pinned %s/.gcpprofile -> %q\n", pwd, name)
-				offerGcpEnvrc(pwd, name, conf.Isolate, cmd.OutOrStdout(), cmd.InOrStdin())
+				offerGcpEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "azrl gcp", "gcp", name)
 			return gcp.Scheme().Touch(name, dir, pwd)
@@ -107,11 +108,13 @@ func newGcpLoginCmd() *cobra.Command {
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own CLOUDSDK_CONFIG dir")
 	c.Flags().BoolVarP(&gcpYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&gcpNoLink, "no-map", false, "Create without claiming this directory (skip the .gcpprofile pin).")
+	envrc = addEnvrcFlags(c)
 	return c
 }
 
 func newGcpUseCmd() *cobra.Command {
 	var isolate bool
+	var envrc *envrcFlags
 	c := &cobra.Command{
 		Use:   "use <name>",
 		Short: "Pin the current directory to a GCP profile and sync its gcloud configuration",
@@ -119,10 +122,13 @@ func newGcpUseCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := validGcpName(name); err != nil {
-				return err
+				return withCode(ExitUsage, err)
 			}
 			prov := gcp.NewProvider()
 			dir := prov.ProfilesDir()
+			if err := requireProfile("azrl gcp", prov, name); err != nil {
+				return err
+			}
 			conf, err := gcp.LoadConf(name, dir)
 			if err != nil {
 				return err
@@ -142,7 +148,7 @@ func newGcpUseCmd() *cobra.Command {
 				return nil
 			}
 			cmd.Printf("gcp: pinned %s/.gcpprofile -> %q and synced the gcloud configuration\n", pwd, name)
-			offerGcpEnvrc(pwd, name, conf.Isolate, cmd.OutOrStdout(), cmd.InOrStdin())
+			offerGcpEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
 			if warn := gcp.GKEIsolationWarning(conf.Isolate); warn != "" {
 				cmd.Println(warn)
 			}
@@ -150,19 +156,27 @@ func newGcpUseCmd() *cobra.Command {
 		},
 	}
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own CLOUDSDK_CONFIG dir")
+	envrc = addEnvrcFlags(c)
 	return c
 }
 
 func newGcpCaptureCmd() *cobra.Command {
 	var configName, project, region, expectAccount string
+	var asJSON bool
 	c := &cobra.Command{
-		Use:   "capture <name>",
-		Short: "Record a GCP account into a profile from its project details",
-		Args:  cobra.ExactArgs(1),
+		Use:   "capture [name]",
+		Short: "Record a GCP account into a profile from its project details (metadata only, no mapping)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+			name := captureName(args)
 			if err := validGcpName(name); err != nil {
-				return err
+				return withCode(ExitUsage, err)
+			}
+			stdout := cmd.OutOrStdout()
+			if asJSON {
+				var restore func()
+				stdout, restore = jsonStdout(cmd)
+				defer restore()
 			}
 			prov := gcp.NewProvider()
 			dir := prov.ProfilesDir()
@@ -183,7 +197,9 @@ func newGcpCaptureCmd() *cobra.Command {
 			if conf.Region == "" {
 				conf.Region = def.Region
 			}
+			created := true
 			if existing, err := gcp.LoadConf(name, dir); err == nil {
+				created = false
 				conf.Label = existing.Label
 				conf.Isolate = existing.Isolate
 				conf.BrowserCmd = existing.BrowserCmd
@@ -196,7 +212,10 @@ func newGcpCaptureCmd() *cobra.Command {
 			if err := gcp.Scheme().Touch(name, dir, pwd); err != nil {
 				return err
 			}
-			cmd.Printf("gcp: captured project %q into profile %q\n", project, name)
+			cmd.Printf("gcp: captured project %q into profile %q\n", conf.Project, name)
+			if asJSON {
+				return writeJSON(stdout, captureResult{Provider: "gcp", Profile: name, Identity: conf.ExpectAccount, Detail: conf.Project, Created: created})
+			}
 			return nil
 		},
 	}
@@ -204,13 +223,14 @@ func newGcpCaptureCmd() *cobra.Command {
 	c.Flags().StringVar(&project, "project", "", "GCP project to bind")
 	c.Flags().StringVar(&region, "region", "", "Default compute region")
 	c.Flags().StringVar(&expectAccount, "expect-account", "", "Account email to assert after sign-in")
+	addJSONFlag(c, &asJSON, "the captured profile")
 	return c
 }
 
 // offerGcpEnvrc offers to write a direnv .envrc so plain `gcloud` in pwd follows
 // the profile. A closed/non-tty stdin reads as a decline (never hangs).
-func offerGcpEnvrc(pwd, name string, isolate bool, out io.Writer, in io.Reader) {
-	offerGroupEnvrc("gcp", "gcloud", gcp.WriteEnvrc, pwd, name, isolate, out, in)
+func offerGcpEnvrc(pwd, name string, isolate bool, mode envrcMode, out io.Writer, in io.Reader) {
+	offerGroupEnvrc("gcp", "gcloud", gcp.WriteEnvrc, pwd, name, isolate, mode, out, in)
 }
 
 // gcpSubcommands builds a fresh set of the GCP subcommands.

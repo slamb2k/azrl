@@ -228,20 +228,27 @@ azrl login [profile]       # sign in via the browser bridge (uses this dir's pro
                            # login <name> also creates the profile on first use
                            # (Azure discovers the tenant); pass --yes to skip the prompt
                            # pass --no-map to create without linking this directory
-azrl capture [name]        # record the CURRENT az session as conf + .azprofile
-azrl use <name>            # link this dir to an existing profile
+azrl capture [name]        # record the CURRENT az session as a profile (metadata only —
+                           # no .azprofile; re-run to update it in place; --json)
+azrl use <name>            # link this dir to an existing profile (--envrc / --no-envrc)
 azrl unmap                # remove this dir's own mapping (keeps the profile)
 azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
+                           # prompts on a TTY; without one it needs --yes
                            # refuses while other directories still link to it —
                            # pass --unmap-all or --replace <other> first
 azrl whoami [--json]       # "who am I, here?" — governing profile + effective browser per provider
                            # --explain prints the resolution ladder; --all the everywhere-view
 azrl browser <name>        # map the profile to a local Edge/Chrome browser profile
+                           # --cmd <c> [--label <l>] | --clear: set it unattended
+azrl shell [name] [-- cmd] # subshell as the profile; with -- cmd, run just that command
+azrl console [name]        # open the portal as the profile (--print-url: just print the link)
 azrl --help                # usage; azrl --version prints the version
 ```
 
-`capture` and `login` both **offer to write an `.envrc`** (and run
-`direnv allow`) so plain `az` in that directory follows the profile from then on.
+`use` and `login` **offer to write an `.envrc`** (and run `direnv allow`) so
+plain `az` in that directory follows the profile from then on — on every
+provider. The offer is a `[y/N]` prompt on a TTY only; `--envrc` writes it
+without asking and `--no-envrc` skips it, so scripts and agents decide up front.
 
 `login` also starts from a clean slate: it reaps orphaned `az login`
 processes (same user, parent process dead) left behind by earlier attempts —
@@ -335,6 +342,9 @@ azrl aws default prod
 `browser <name>` is available on every provider (`azrl browser`, `azrl gh
 browser`/`ghrl browser`, `azrl aws browser`, `azrl gcp browser`). It discovers
 the local machine's Edge/Chrome profiles over SSH and offers a numbered pick.
+To skip discovery (scripts, dotfiles, agents), pass the command directly:
+`--cmd '<launch command>' [--label '<text>']`, or `--clear` to remove the
+mapping; add `--steal` to take a browser another profile already owns.
 For azure/gcp/github it's sorted so a profile already signed into the account
 this azrl profile expects comes first; AWS profiles list unsorted (account IDs
 aren't emails, so there's no identity to match against):
@@ -466,12 +476,12 @@ signed in with the browser on your **local** machine.
 ```bash
 azrl gh login [name] [--hostname H]  # sign in (github.com, *.ghe.com, or a GHES host)
                                       # --no-map creates without mapping this repo
-azrl gh list                         # list GitHub profiles and their hosts
+azrl gh list [--json]                # list GitHub profiles and their hosts
 azrl gh use <name>                   # pin this repo (.ghprofile) + wire git-HTTPS creds
 azrl gh unmap                       # remove this repo's own mapping (keeps the profile)
-azrl gh capture <name> [--hostname H]# record the currently signed-in gh session
-azrl gh status                       # show the ambient and repo-pinned accounts
-azrl gh rm <name>                    # remove a GitHub profile and its config dir
+azrl gh capture [name] [--hostname H]# record the currently signed-in gh session (--json)
+azrl gh status [--json]              # show the ambient and repo-pinned accounts
+azrl gh rm <name> [-y]               # remove a GitHub profile and its config dir
                                       # refuses while mapped; --unmap-all or --replace <other>
 azrl gh browser <name>                # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
@@ -512,12 +522,12 @@ gitignored `.awsprofile`.
 ```bash
 azrl aws login [name]   # sign in via `aws sso login` over the browser bridge
                          # --no-map creates without mapping this dir
-azrl aws list           # list AWS SSO profiles and their start URLs
-azrl aws use <name>     # pin this dir (.awsprofile) + write an .envrc
+azrl aws list [--json]  # list AWS SSO profiles and their start URLs
+azrl aws use <name>     # pin this dir (.awsprofile); --envrc writes an .envrc
 azrl aws unmap         # remove this dir's own mapping (keeps the profile)
-azrl aws capture <name> # record the current SSO session as a profile
-azrl aws status         # disk-only "who am I?" from the SSO token cache
-azrl aws rm <name>      # remove an AWS profile
+azrl aws capture [name] # record the current SSO session as a profile (--json)
+azrl aws status [--json] # disk-only "who am I?" from the SSO token cache
+azrl aws rm <name> [-y] # remove an AWS profile
                          # refuses while mapped; --unmap-all or --replace <other>
 azrl aws browser <name> # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
@@ -541,12 +551,12 @@ pinned to a repo with a gitignored `.gcpprofile`.
 ```bash
 azrl gcp login [name]   # sign in via `gcloud auth login` over the browser bridge
                          # --no-map creates without mapping this dir
-azrl gcp list           # list GCP profiles and their projects
-azrl gcp use <name>     # pin this dir (.gcpprofile) + write an .envrc
+azrl gcp list [--json]  # list GCP profiles and their projects
+azrl gcp use <name>     # pin this dir (.gcpprofile); --envrc writes an .envrc
 azrl gcp unmap         # remove this dir's own mapping (keeps the profile)
-azrl gcp capture <name> # record the current gcloud session as a profile
-azrl gcp status         # disk-only "who am I?" from the gcloud config dir
-azrl gcp rm <name>      # remove a GCP profile
+azrl gcp capture [name] # record the current gcloud session as a profile (--json)
+azrl gcp status [--json] # disk-only "who am I?" from the gcloud config dir
+azrl gcp rm <name> [-y] # remove a GCP profile
                          # refuses while mapped; --unmap-all or --replace <other>
 azrl gcp browser <name> # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
@@ -605,7 +615,10 @@ deeper pins still win — see
   one), while logging into an *existing* profile never touches your pins;
   `--no-map` on any provider's `login <new-name>` skips that pin too.
 - **`azrl capture [name]`** — same recording step, but for a session you're
-  **already** signed into (no new login; capture always links, same as before).
+  **already** signed into (no new login). Capture is **metadata-only on every
+  provider**: it never writes a pointer — follow it with `use <name>` to map a
+  directory. Re-capturing an existing name updates it in place, keeping its
+  label and browser mapping.
 - **`azrl use <name>`** — links the current directory to an **existing** profile
   (validated `echo <name> > .azprofile`); no login, no new conf.
 - **`azrl unmap`** — removes only the current directory's own link, leaving
@@ -613,7 +626,9 @@ deeper pins still win — see
   governed by a parent directory's link instead, naming that parent — links
   are removed where they live.
 - **`azrl rm <name> [-y]`** — deletes the profile's `<name>.conf`, its token dir,
-  and `$PWD/.azprofile` when it names `<name>`. Prompts unless you pass `-y`.
+  and `$PWD/.azprofile` when it names `<name>`. Prompts unless you pass `-y`;
+  without a TTY it refuses (exit 2) unless `-y` is given. The `gh`/`aws`/`gcp`
+  `rm` verbs behave the same way.
   Refuses outright while any other directory still links to the profile,
   unless you also pass `--unmap-all` (removes every link first) or
   `--replace <other>` (repoints every linked directory at another existing
@@ -643,6 +658,46 @@ selection — its default is `gh auth switch`, and azrl's per-repo wiring via
 
 The full pattern language (and what was deliberately *not* built) is in
 [docs/ambient-identity-model.md](docs/ambient-identity-model.md).
+
+## Scripting and agents
+
+Every verb can be driven without a TTY, so the same commands work for you, a
+dotfiles script, or a coding agent such as Claude Code:
+
+- **No hidden prompts.** Without a TTY azrl never waits on stdin: anything that
+  would prompt either has a flag (`--yes`, `--envrc`/`--no-envrc`,
+  `browser --cmd`/`--clear`/`--steal`) or fails fast with exit code 2 naming the
+  flag to pass.
+- **JSON on stdout.** `whoami --json`, `whoami --all --json`, `<provider> list
+  --json`, `<provider> status --json` and `capture --json` print one JSON
+  document on stdout; progress for those runs goes to stderr.
+- **One-shot commands as a profile.** `azrl shell <name> -- <cmd…>` (and `azrl
+  gh|aws|gcp shell …`) runs one command with the profile's environment and exits
+  with its status. A dead session is never signed in unattended: it exits 3 with
+  the exact `login` command for a human to run.
+- **Links instead of browsers.** `console <name> --print-url` prints the deep
+  link without launching anything.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | success |
+| 1 | error |
+| 2 | usage — bad arguments/flags, or a prompt was needed with no TTY |
+| 3 | needs a human — an interactive browser sign-in is required (or timed out) |
+| 4 | not found — the named profile (or any profile) does not exist |
+| 127 | `shell -- <cmd>`: the command was not found |
+
+```bash
+azrl whoami --json                              # ground truth for every provider
+azrl aws shell prod -- aws s3 ls               # run as a profile; exit 3 = ask the human
+azrl gh use work --envrc                        # map a repo and wire direnv, no prompt
+azrl gcp capture analytics --json               # adopt a session, read back the result
+azrl browser contoso --cmd 'msedge --profile-directory="Profile 2"' --label 'Edge · Contoso'
+azrl gh rm old-client --unmap-all --yes        # unattended delete
+```
+
+`login` and `default` open a browser for a person to finish, so agents should
+leave them to you.
 
 ## Configuration
 

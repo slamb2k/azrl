@@ -29,5 +29,7 @@ func GhrlRoot() *cobra.Command {
 
 // ExecuteGhrl runs the ghrl alias root.
 func ExecuteGhrl() error {
-	return GhrlRoot().Execute()
+	root := GhrlRoot()
+	tagUsageErrors(root)
+	return executeTagged(root)
 }
