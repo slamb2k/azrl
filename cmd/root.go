@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/slamb2k/azrl/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -30,6 +32,7 @@ var RootCmd = &cobra.Command{
 // verbs instead of fourteen.
 func Execute() error {
 	groupCommands(RootCmd)
+	showRunBanner(RootCmd, os.Args[1:])
 	return RootCmd.Execute()
 }
 

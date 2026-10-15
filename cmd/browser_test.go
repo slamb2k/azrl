@@ -25,7 +25,7 @@ func TestBrowserShimDeviceRelayPrintsLocalLine(t *testing.T) {
 	if err := RootCmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "wslview https://github.com/login/device") {
+	if !strings.Contains(out.String(), "wslview 'https://github.com/login/device'") {
 		t.Fatalf("expected local-open line; got %q", out.String())
 	}
 }
@@ -47,7 +47,7 @@ func TestBrowserShimEnvBrowserCmdOverride(t *testing.T) {
 	if err := RootCmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "chrome-work https://github.com/login/device") {
+	if !strings.Contains(out.String(), "chrome-work 'https://github.com/login/device'") {
 		t.Fatalf("shim should honour AZRL_BROWSER_CMD; got %q", out.String())
 	}
 }

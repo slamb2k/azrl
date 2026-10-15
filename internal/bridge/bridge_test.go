@@ -12,7 +12,7 @@ import (
 
 func TestPasteLine(t *testing.T) {
 	got := PasteLine("38149", "vm-always", "wslview", "https://login/x?y=z")
-	want := `ssh -fNL 38149:localhost:38149 vm-always && wslview "https://login/x?y=z"`
+	want := `ssh -fNL 38149:localhost:38149 vm-always && wslview 'https://login/x?y=z'`
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
@@ -171,4 +171,88 @@ func TestOpenURLRemoteGoesOverSSH(t *testing.T) {
 	if !strings.Contains(got, "pc") || !strings.Contains(got, "wslview 'https://acme.awsapps.com/start'") {
 		t.Fatalf("remote launch not over ssh with the browser cmd; log: %s", got)
 	}
+}
+
+// TestBrowserLineQuotesHostileURL proves a URL can never break out of its
+// quoting: a ' or $(…) in it reaches the browser as literal text, not code.
+func TestBrowserLineQuotesHostileURL(t *testing.T) {
+	bin := t.TempDir()
+	pwned := filepath.Join(bin, "pwned")
+	marker := filepath.Join(bin, "opened")
+	browser := filepath.Join(bin, "fakebrowser")
+	if err := os.WriteFile(browser, []byte("#!/usr/bin/env bash\nprintf '%s' \"$1\" > \""+marker+"\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	url := "https://x/?a='; touch " + pwned + "; echo '$(touch " + pwned + ")`touch " + pwned + "`"
+	if err := LaunchLocal(browser, url); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if b, err := os.ReadFile(marker); err == nil && len(b) > 0 {
+			if string(b) != url {
+				t.Fatalf("browser got %q, want the URL verbatim %q", b, url)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("browser never launched")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := os.Stat(pwned); err == nil {
+		t.Fatal("URL content was executed by the shell")
+	}
+}
+
+func TestBridgeTunnelExitsOnForwardFailure(t *testing.T) {
+	log := fakeTunnelSSH(t, "sleep 2; exit 0")
+	g := config.Global{BrowserHost: "pc", BrowserCmd: "wslview", VMSSHHost: "vm"}
+	tun, _, err := Bridge("40404", "https://login/x", g, false)
+	if err != nil || tun == nil {
+		t.Fatalf("expected a live tunnel: tun=%v err=%v", tun, err)
+	}
+	defer tun.Process.Kill()
+	b, _ := os.ReadFile(log)
+	if !strings.Contains(string(b), "-o ExitOnForwardFailure=yes -N -R 40404:localhost:40404 pc") {
+		t.Fatalf("tunnel must set ExitOnForwardFailure; log: %s", b)
+	}
+}
+
+// TestLaunchRemoteDoesNotBlockOnForegroundBrowser proves a browser command
+// that never returns (ssh held open) releases the caller after launchWait.
+func TestLaunchRemoteDoesNotBlockOnForegroundBrowser(t *testing.T) {
+	log := fakeTunnelSSH(t, "exit 0")
+	// Any non -R invocation (the browser launch) hangs.
+	b, _ := os.ReadFile(filepath.Join(filepath.Dir(log), "ssh"))
+	os.WriteFile(filepath.Join(filepath.Dir(log), "ssh"), []byte(strings.Replace(string(b), "\nexit 0\n", "\nsleep 30\n", 1)), 0o755)
+	old := launchWait
+	launchWait = 200 * time.Millisecond
+	t.Cleanup(func() { launchWait = old })
+	start := time.Now()
+	if err := LaunchRemote("pc", "chrome", "https://x"); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatal("LaunchRemote blocked on a foreground browser")
+	}
+	got, _ := os.ReadFile(log)
+	if !strings.Contains(string(got), "-o BatchMode=yes -o ConnectTimeout=5 pc chrome 'https://x'") {
+		t.Fatalf("launch must be batch-mode with a connect timeout; log: %s", got)
+	}
+}
+
+// fakeTunnelSSH installs an ssh shim that logs its args; a -R invocation runs
+// onTunnel, anything else exits 0. Returns the log path.
+func fakeTunnelSSH(t *testing.T, onTunnel string) string {
+	t.Helper()
+	bin := t.TempDir()
+	log := filepath.Join(bin, "ssh.log")
+	script := "#!/usr/bin/env bash\necho \"$*\" >> \"" + log + "\"\n" +
+		"for a in \"$@\"; do [[ \"$a\" == \"-R\" ]] && { " + onTunnel + "; }; done\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
 }

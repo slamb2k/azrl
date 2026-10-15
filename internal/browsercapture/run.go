@@ -41,10 +41,10 @@ func relayDevice(url string, g config.Global, forcePaste bool) string {
 		return ""
 	}
 	if !forcePaste && reachable(g.BrowserHost) {
-		_ = exec.Command("ssh", g.BrowserHost, fmt.Sprintf("%s '%s'", g.BrowserCmd, url)).Run()
+		_ = bridge.LaunchRemote(g.BrowserHost, g.BrowserCmd, url)
 		return ""
 	}
-	return fmt.Sprintf("open this URL on your LOCAL machine:\n\n  %s %s", g.BrowserCmd, url)
+	return fmt.Sprintf("open this URL on your LOCAL machine:\n\n  %s", bridge.BrowserLine(g.BrowserCmd, url))
 }
 
 // reachable reports whether host answers a batch-mode SSH probe.
