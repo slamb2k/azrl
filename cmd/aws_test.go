@@ -58,7 +58,7 @@ func TestAwsUsePinsRepoAndSyncsConfig(t *testing.T) {
 
 func TestAwsRmRemovesProfile(t *testing.T) {
 	home := seedAwsHome(t)
-	runRoot(t, "aws", "rm", "work")
+	runRoot(t, "aws", "rm", "work", "--yes")
 	if _, err := os.Stat(filepath.Join(home, ".aws-profiles", "work.conf")); !os.IsNotExist(err) {
 		t.Fatal("work.conf not removed")
 	}

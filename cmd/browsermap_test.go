@@ -38,6 +38,7 @@ EOF
 func TestBrowserMapPicksDiscoveredProfile(t *testing.T) {
 	confPath := seedBrowserMapEnv(t, twoProfileProbe)
 	RootCmd.SetIn(strings.NewReader("1\n"))
+	stubInteractive(t, true)
 	out, err := execRoot(t, "gcp", "browser", "work")
 	if err != nil {
 		t.Fatalf("browser map: %v (out=%q)", err, out)
@@ -59,6 +60,7 @@ func TestBrowserMapPicksDiscoveredProfile(t *testing.T) {
 func TestBrowserMapManualFallbackWhenUnreachable(t *testing.T) {
 	confPath := seedBrowserMapEnv(t, "exit 1\n")
 	RootCmd.SetIn(strings.NewReader("m\nmy-browser --foo\n"))
+	stubInteractive(t, true)
 	if _, err := execRoot(t, "gcp", "browser", "work"); err != nil {
 		t.Fatalf("manual fallback: %v", err)
 	}
@@ -73,6 +75,7 @@ func TestBrowserMapClear(t *testing.T) {
 	os.WriteFile(confPath,
 		[]byte("GCP_PROJECT=acme-prod\nGCP_BROWSER_CMD=old\nGCP_BROWSER_LABEL=Old\n"), 0o644)
 	RootCmd.SetIn(strings.NewReader("0\n"))
+	stubInteractive(t, true)
 	if _, err := execRoot(t, "gcp", "browser", "work"); err != nil {
 		t.Fatalf("clear: %v", err)
 	}
@@ -97,6 +100,7 @@ func TestBrowserMapNoticesBrokenGlobalConf(t *testing.T) {
 	os.WriteFile(filepath.Join(gp, "work.conf"), []byte("GCP_PROJECT=acme-prod\n"), 0o644)
 	// No azrl.conf at all: config.LoadGlobal fails.
 	RootCmd.SetIn(strings.NewReader("m\nmy-browser --foo\n"))
+	stubInteractive(t, true)
 	out, err := execRoot(t, "gcp", "browser", "work")
 	if err != nil {
 		t.Fatalf("browser map: %v (out=%q)", err, out)
@@ -113,6 +117,7 @@ func TestBrowserMapStealConfirmYes(t *testing.T) {
 		"GCP_BROWSER_CMD=microsoft-edge --profile-directory=\"Profile 2\"\nGCP_BROWSER_LABEL=Edge — Work\n"), 0o644)
 
 	RootCmd.SetIn(strings.NewReader("1\ny\n"))
+	stubInteractive(t, true)
 	out, err := execRoot(t, "gcp", "browser", "work")
 	if err != nil {
 		t.Fatalf("browser map: %v (out=%q)", err, out)
@@ -138,6 +143,7 @@ func TestBrowserMapStealDeclined(t *testing.T) {
 	os.WriteFile(otherPath, []byte(orig), 0o644)
 
 	RootCmd.SetIn(strings.NewReader("1\nn\n"))
+	stubInteractive(t, true)
 	out, err := execRoot(t, "gcp", "browser", "work")
 	if err != nil {
 		t.Fatalf("browser map: %v (out=%q)", err, out)

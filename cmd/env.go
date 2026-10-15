@@ -40,7 +40,7 @@ func newEnvCmd(provFn func() provider.Provider, label, providerName string, vali
 				name = args[0]
 			} else {
 				if profs, err := prov.ListProfiles(prov.ProfilesDir()); err != nil || len(profs) == 0 {
-					return fmt.Errorf("%s: no profiles yet — run '%s login <name>' first", label, label)
+					return notFoundErr("%s: no profiles yet — run '%s login <name>' first", label, label)
 				}
 				// Route the picker to stderr: stdout must stay pure shell code
 				// for eval. Restored before the exports are printed.
