@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/spf13/cobra"
 
 	"github.com/slamb2k/azrl/internal/ui"
@@ -29,5 +31,7 @@ func GhrlRoot() *cobra.Command {
 
 // ExecuteGhrl runs the ghrl alias root.
 func ExecuteGhrl() error {
-	return GhrlRoot().Execute()
+	root := GhrlRoot()
+	showRunBanner(root, os.Args[1:])
+	return root.Execute()
 }

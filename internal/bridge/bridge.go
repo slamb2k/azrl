@@ -9,15 +9,55 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/envdetect"
 )
 
-// PasteLine is the one-line command the user runs on their LOCAL machine.
+// PasteLine is the one-line command the user runs on their LOCAL machine. The
+// URL is single-quoted so nothing in it ($(…), backticks, quotes) is expanded
+// by the user's shell when they paste it.
 func PasteLine(port, vmHost, browserCmd, url string) string {
-	return fmt.Sprintf("ssh -fNL %s:localhost:%s %s && %s %q", port, port, vmHost, browserCmd, url)
+	return fmt.Sprintf("ssh -fNL %s:localhost:%s %s && %s", port, port, vmHost, BrowserLine(browserCmd, url))
+}
+
+// ShellQuote wraps v in POSIX single quotes, escaping any embedded single
+// quote, so the shell treats it as one literal word.
+func ShellQuote(v string) string {
+	return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'"
+}
+
+// BrowserLine is the shell command that opens url with browserCmd. browserCmd
+// is trusted user config (it may carry its own arguments); url is untrusted —
+// it comes from whatever CLI invoked $BROWSER — so it is always quoted.
+func BrowserLine(browserCmd, url string) string {
+	return browserCmd + " " + ShellQuote(url)
+}
+
+// launchWait bounds how long a remote browser launch may hold the caller. A
+// BROWSER_CMD that stays in the foreground (e.g. the first Chrome window)
+// keeps ssh open until the browser exits; past this window the launch is
+// treated as done and ssh is left running detached.
+var launchWait = 10 * time.Second
+
+// LaunchRemote runs the browser command for url on host over SSH. BatchMode
+// and ConnectTimeout keep an unreachable or password-prompting host from
+// hanging the caller; a launch still running after launchWait returns nil.
+func LaunchRemote(host, browserCmd, url string) error {
+	c := exec.Command("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, BrowserLine(browserCmd, url))
+	if err := c.Start(); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(launchWait):
+		return nil
+	}
 }
 
 // VMHost resolves the VM's SSH name for the path-A paste line: VM_SSH_HOST if
@@ -39,7 +79,7 @@ func VMHost(g config.Global) (host string, ok bool) {
 // OAuth callback loops back over localhost directly. Best-effort and detached:
 // browserCmd may carry its own arguments, so it runs through the shell.
 func LaunchLocal(browserCmd, url string) error {
-	return exec.Command("sh", "-c", fmt.Sprintf("%s '%s'", browserCmd, url)).Start()
+	return exec.Command("sh", "-c", BrowserLine(browserCmd, url)).Start()
 }
 
 // Bridge connects the local browser to the VM's callback port. Path B (default):
@@ -65,7 +105,10 @@ func Bridge(port, url string, g config.Global, forcePaste bool) (*exec.Cmd, stri
 		}
 		return nil, PasteLine(port, vmHost, g.BrowserCmd, url), nil
 	}
-	tunnel := exec.Command("ssh", "-N", "-R", fmt.Sprintf("%s:localhost:%s", port, port), g.BrowserHost)
+	// ExitOnForwardFailure makes ssh exit when the remote port is already bound
+	// (a stale tunnel, a concurrent login) instead of warning and staying up —
+	// which is what lets the liveness check below catch the conflict.
+	tunnel := exec.Command("ssh", "-o", "ExitOnForwardFailure=yes", "-N", "-R", fmt.Sprintf("%s:localhost:%s", port, port), g.BrowserHost)
 	if err := tunnel.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "azrl: zero-paste unavailable — could not start the ssh tunnel: %v; falling back to the paste line\n", err)
 		return nil, PasteLine(port, vmHost, g.BrowserCmd, url), nil
@@ -82,7 +125,7 @@ func Bridge(port, url string, g config.Global, forcePaste bool) (*exec.Cmd, stri
 	case <-time.After(500 * time.Millisecond):
 		// Tunnel is still alive — open the remote browser and return it.
 	}
-	_ = exec.Command("ssh", g.BrowserHost, fmt.Sprintf("%s '%s'", g.BrowserCmd, url)).Run()
+	_ = LaunchRemote(g.BrowserHost, g.BrowserCmd, url)
 	return tunnel, "", nil
 }
 
@@ -94,5 +137,5 @@ func OpenURL(g config.Global, url string) error {
 	if g.IsLocal() {
 		return LaunchLocal(g.BrowserCmd, url)
 	}
-	return exec.Command("ssh", g.BrowserHost, fmt.Sprintf("%s '%s'", g.BrowserCmd, url)).Run()
+	return LaunchRemote(g.BrowserHost, g.BrowserCmd, url)
 }
