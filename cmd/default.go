@@ -32,10 +32,17 @@ func pickDefaultProfile(providerName, name string, in io.Reader, out io.Writer) 
 	}
 	switch len(listed) {
 	case 0:
-		return "", fmt.Errorf("azrl: no %s profiles — create one with login first", providerName)
+		return "", notFoundErr("azrl: no %s profiles — create one with login first", providerName)
 	case 1:
 		fmt.Fprintf(out, "azrl: one profile — using %s\n", listed[0].Name)
 		return listed[0].Name, nil
+	}
+	if !isInteractive() {
+		names := make([]string, len(listed))
+		for i, p := range listed {
+			names[i] = p.Name
+		}
+		return "", usageErr("azrl: multiple %s profiles — pass one of: %s", providerName, strings.Join(names, ", "))
 	}
 	if useArrowPicker() {
 		items := make([]pickItem, len(listed))

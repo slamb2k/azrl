@@ -90,7 +90,7 @@ func resolveLoginTargetWithProfiles(cmd *cobra.Command, prov provider.Provider, 
 	switch len(profs) {
 	case 0:
 		if !isInteractive() {
-			return "", profs, false, fmt.Errorf(`%s: no profiles yet — run "%s login <name>" to create one`, label, label)
+			return "", profs, false, notFoundErr(`%s: no profiles yet — run "%s login <name>" to create one`, label, label)
 		}
 		def := profile.DefaultName("", pwd)
 		sc := bufio.NewScanner(cmd.InOrStdin())
@@ -118,7 +118,7 @@ func resolveLoginTargetWithProfiles(cmd *cobra.Command, prov provider.Provider, 
 		names[i] = p.Name
 	}
 	if !isInteractive() {
-		return "", profs, false, fmt.Errorf("%s: multiple profiles — specify one of: %s", label, strings.Join(names, ", "))
+		return "", profs, false, usageErr("%s: multiple profiles — specify one of: %s", label, strings.Join(names, ", "))
 	}
 	if useArrowPicker() {
 		items := make([]pickItem, len(profs))

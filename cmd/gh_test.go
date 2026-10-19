@@ -171,7 +171,7 @@ func TestGhLoginFirstLoginCreatesFromPrompt(t *testing.T) {
 	if !strings.Contains(buf.String(), `created profile "`+want+`"`) {
 		t.Fatalf("missing created-profile announce:\n%s", buf.String())
 	}
-	if strings.Contains(buf.String(), "[y/N]") {
+	if strings.Contains(buf.String(), "Create it") {
 		t.Fatalf("must not double-confirm the just-named profile:\n%s", buf.String())
 	}
 	if _, err := os.Stat(filepath.Join(home, ".github-profiles", want+".conf")); err != nil {
@@ -207,7 +207,7 @@ func TestGhLoginUnknownNonInteractiveErrors(t *testing.T) {
 
 func TestGhRmRemovesProfile(t *testing.T) {
 	home := seedGhHome(t)
-	runRoot(t, "gh", "rm", "work")
+	runRoot(t, "gh", "rm", "work", "--yes")
 	if _, err := os.Stat(filepath.Join(home, ".github-profiles", "work.conf")); !os.IsNotExist(err) {
 		t.Fatal("work.conf not removed")
 	}

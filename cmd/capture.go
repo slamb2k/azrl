@@ -7,9 +7,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var captureJSON bool
+
 var captureCmd = &cobra.Command{
 	Use:   "capture [name]",
-	Short: "Record the current az session as a profile (no login)",
+	Short: "Record the current az session as a profile (metadata only, no login, no mapping)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pwd, _ := os.Getwd()
@@ -19,14 +21,23 @@ var captureCmd = &cobra.Command{
 		}
 		name := profile.DefaultName(arg, pwd)
 		if err := validProfileName(name); err != nil {
-			return err
+			return withCode(ExitUsage, err)
 		}
-		if err := captureSession(name, pwd, true, cmd.OutOrStdout()); err != nil {
-			return err
+		if captureJSON {
+			stdout, restore := jsonStdout(cmd)
+			defer restore()
+			c, created, err := captureSession(name, pwd, false, cmd.OutOrStdout())
+			if err != nil {
+				return err
+			}
+			return writeJSON(stdout, captureResult{Provider: "azure", Profile: name, Identity: c.ExpectUser, Detail: c.Tenant, Created: created})
 		}
-		offerEnvrc(pwd, cmd.OutOrStdout(), os.Stdin)
-		return nil
+		_, _, err := captureSession(name, pwd, false, cmd.OutOrStdout())
+		return err
 	},
 }
 
-func init() { RootCmd.AddCommand(captureCmd) }
+func init() {
+	addJSONFlag(captureCmd, &captureJSON, "the captured profile")
+	RootCmd.AddCommand(captureCmd)
+}

@@ -62,7 +62,7 @@ func TestGcpUsePinsRepoAndSyncsConfig(t *testing.T) {
 
 func TestGcpRmRemovesProfile(t *testing.T) {
 	home := seedGcpHome(t)
-	runRoot(t, "gcp", "rm", "work")
+	runRoot(t, "gcp", "rm", "work", "--yes")
 	if _, err := os.Stat(filepath.Join(home, ".gcp-profiles", "work.conf")); !os.IsNotExist(err) {
 		t.Fatal("work.conf not removed")
 	}

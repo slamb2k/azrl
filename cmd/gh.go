@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -16,6 +16,7 @@ var validGhName = newValidName("ghrl", "ghrl")
 func newGhLoginCmd() *cobra.Command {
 	var hostname string
 	var ghYes, ghNoLink bool
+	var envrc *envrcFlags
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a GitHub account (browser pops on your local machine)",
@@ -36,7 +37,7 @@ func newGhLoginCmd() *cobra.Command {
 				// newProfile: already committed via the first-login name prompt, so
 				// create without a second confirm. Otherwise confirm before creating.
 				if !newProfile && !confirmCreateProfile(cmd, "ghrl", name, hostname, ghYes) {
-					return fmt.Errorf("ghrl: no profile %q — pass --yes to create it (host %s) or run interactively", name, hostname)
+					return usageErr("ghrl: no profile %q — pass --yes to create it (host %s) or run interactively", name, hostname)
 				}
 				conf = github.Conf{Host: hostname, Protocol: "https"}
 				if werr := conf.Write(groupConfPath(dir, name)); werr != nil {
@@ -64,6 +65,7 @@ func newGhLoginCmd() *cobra.Command {
 				} else {
 					cmd.Printf("ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
 				}
+				offerGhEnvrc(pwd, name, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "ghrl", "github", name)
 			return github.Scheme().Touch(name, dir, pwd)
@@ -72,21 +74,26 @@ func newGhLoginCmd() *cobra.Command {
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host (github.com, a *.ghe.com tenant, or a GHES hostname)")
 	c.Flags().BoolVarP(&ghYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&ghNoLink, "no-map", false, "Create without claiming this directory (skip the .ghprofile pin).")
+	envrc = addEnvrcFlags(c)
 	return c
 }
 
 func newGhUseCmd() *cobra.Command {
-	return &cobra.Command{
+	var envrc *envrcFlags
+	c := &cobra.Command{
 		Use:   "use <name>",
 		Short: "Pin the current directory to a GitHub profile and wire git-HTTPS",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := validGhName(name); err != nil {
-				return err
+				return withCode(ExitUsage, err)
 			}
 			prov := github.NewProvider()
 			dir := prov.ProfilesDir()
+			if err := requireProfile("ghrl", prov, name); err != nil {
+				return err
+			}
 			conf, err := github.LoadConf(name, dir)
 			if err != nil {
 				return err
@@ -97,24 +104,40 @@ func newGhUseCmd() *cobra.Command {
 			}
 			if err := github.SetupRepo(dir, name, pwd, conf); err != nil {
 				cmd.Printf("ghrl: pinned %s/.ghprofile -> %q (credential wiring skipped: %v)\n", pwd, name, err)
-				return nil
+			} else {
+				cmd.Printf("ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
 			}
-			cmd.Printf("ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
+			offerGhEnvrc(pwd, name, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
 			return nil
 		},
 	}
+	envrc = addEnvrcFlags(c)
+	return c
+}
+
+// offerGhEnvrc offers to write a direnv .envrc so plain `gh` in pwd follows the
+// profile (GH_CONFIG_DIR). mode decides whether it asks, writes, or stays quiet.
+func offerGhEnvrc(pwd, name string, mode envrcMode, out io.Writer, in io.Reader) {
+	offerGroupEnvrc("ghrl", "gh", github.WriteEnvrc, pwd, name, false, mode, out, in)
 }
 
 func newGhCaptureCmd() *cobra.Command {
 	var hostname string
+	var asJSON bool
 	c := &cobra.Command{
-		Use:   "capture <name>",
-		Short: "Record the currently signed-in gh session into a profile",
-		Args:  cobra.ExactArgs(1),
+		Use:   "capture [name]",
+		Short: "Record the currently signed-in gh session into a profile (metadata only, no mapping)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+			name := captureName(args)
 			if err := validGhName(name); err != nil {
-				return err
+				return withCode(ExitUsage, err)
+			}
+			stdout := cmd.OutOrStdout()
+			if asJSON {
+				var restore func()
+				stdout, restore = jsonStdout(cmd)
+				defer restore()
 			}
 			prov := github.NewProvider()
 			dir := prov.ProfilesDir()
@@ -126,10 +149,12 @@ func newGhCaptureCmd() *cobra.Command {
 				login, err = github.AmbientWhoAmI(hostname)
 			}
 			if err != nil {
-				return err
+				return needsHumanErr("ghrl: no gh session to capture on %s — sign in first (%v)", hostname, err)
 			}
 			conf := github.Conf{Host: hostname, User: login, Protocol: "https"}
+			created := true
 			if existing, err := github.LoadConf(name, dir); err == nil {
+				created = false
 				conf.Label = existing.Label
 				conf.BrowserCmd = existing.BrowserCmd
 				conf.BrowserLabel = existing.BrowserLabel
@@ -142,10 +167,14 @@ func newGhCaptureCmd() *cobra.Command {
 				return err
 			}
 			cmd.Printf("ghrl: captured %s@%s into profile %q\n", login, hostname, name)
+			if asJSON {
+				return writeJSON(stdout, captureResult{Provider: "github", Profile: name, Identity: login, Detail: hostname, Created: created})
+			}
 			return nil
 		},
 	}
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host to record")
+	addJSONFlag(c, &asJSON, "the captured profile")
 	return c
 }
 

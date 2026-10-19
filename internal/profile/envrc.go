@@ -46,9 +46,10 @@ func WriteEnvrc(pwd string) (bool, error) {
 // stanza until the file is updated. "" when there is no .envrc concern.
 func EnvrcWarning(providerName, dir string) string {
 	markers := map[string][]string{
-		"azure": {"AZURE_CONFIG_DIR"},
-		"aws":   {"AWS_PROFILE", "AWS_CONFIG_FILE"},
-		"gcp":   {"CLOUDSDK"},
+		"azure":  {"AZURE_CONFIG_DIR"},
+		"aws":    {"AWS_PROFILE", "AWS_CONFIG_FILE"},
+		"gcp":    {"CLOUDSDK"},
+		"github": {"GH_CONFIG_DIR"},
 	}[providerName]
 	if len(markers) == 0 {
 		return ""

@@ -33,7 +33,8 @@ var RootCmd = &cobra.Command{
 func Execute() error {
 	groupCommands(RootCmd)
 	showRunBanner(RootCmd, os.Args[1:])
-	return RootCmd.Execute()
+	tagUsageErrors(RootCmd)
+	return executeTagged(RootCmd)
 }
 
 // groupCommands sorts the root's visible commands into help groups: the core

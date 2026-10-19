@@ -122,6 +122,7 @@ func TestDefaultPicker(t *testing.T) {
 	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
 	os.WriteFile(filepath.Join(home, ".azure-profiles", "alpha.conf"), []byte("AZ_TENANT=a.com\n"), 0o644)
 	os.WriteFile(filepath.Join(home, ".azure-profiles", "beta.conf"), []byte("AZ_TENANT=b.com\n"), 0o644)
+	stubInteractive(t, true)
 	var out bytes.Buffer
 	name, err := pickDefaultProfile("azure", "", strings.NewReader("2\n"), &out)
 	if err != nil || name != "beta" {

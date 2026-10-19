@@ -33,5 +33,6 @@ func GhrlRoot() *cobra.Command {
 func ExecuteGhrl() error {
 	root := GhrlRoot()
 	showRunBanner(root, os.Args[1:])
-	return root.Execute()
+	tagUsageErrors(root)
+	return executeTagged(root)
 }
