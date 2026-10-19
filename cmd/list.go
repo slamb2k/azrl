@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -84,19 +82,12 @@ func newListCmd(fixed string) *cobra.Command {
 
 func init() { RootCmd.AddCommand(newListCmd("")) }
 
-// deprecate hides c from help and has it note its replacement on stderr each
-// run, then behave as before. cobra's own Deprecated notice goes through
-// cmd.Printf, which lands on stdout whenever the output is redirected, so
-// it would corrupt a --json document.
-func deprecate(c *cobra.Command, replacement string) {
-	c.Hidden = true
-	run := c.RunE
-	c.RunE = func(cmd *cobra.Command, args []string) error {
-		deprecationNote(cmd.ErrOrStderr(), cmd.CommandPath(), replacement)
-		return run(cmd, args)
+// groupRun makes a provider group runnable so an unknown verb is a usage
+// error (exit 2) instead of cobra's silent help-and-exit-0; bare invocation
+// still prints the group's help.
+func groupRun(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return usageErr("azrl: unknown command %q for %q — see `%s --help`", args[0], cmd.CommandPath(), cmd.CommandPath())
 	}
-}
-
-func deprecationNote(w io.Writer, old, replacement string) {
-	fmt.Fprintf(w, "azrl: `%s` is deprecated and will be removed in a later release — use `%s`\n", old, replacement)
+	return cmd.Help()
 }

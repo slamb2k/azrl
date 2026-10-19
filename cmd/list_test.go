@@ -54,24 +54,18 @@ func TestWhoamiFiltersByProvider(t *testing.T) {
 	}
 }
 
-// The superseded read verbs keep working for a release, with their notice on
-// stderr so a --json document on stdout stays parseable.
-func TestDeprecatedReadVerbsStillWork(t *testing.T) {
+// The superseded read verbs are gone after their one-release deprecation:
+// each is an unknown command (exit 2), and its replacement covers it.
+func TestRemovedReadVerbsAreGone(t *testing.T) {
 	seedAgentHome(t)
 	for _, args := range [][]string{
-		{"whoami", "--all", "--json"},
-		{"gh", "list", "--json"},
-		{"aws", "status", "--json"},
+		{"whoami", "--all"},
+		{"gh", "list"},
+		{"aws", "status"},
+		{"gcp", "list", "--json"},
 	} {
-		stdout, stderr, code := runAgent(t, args...)
-		if code != ExitOK {
-			t.Fatalf("%v: exit %d (%s)", args, code, stderr)
-		}
-		if !json.Valid([]byte(stdout)) {
-			t.Fatalf("%v: stdout is not one JSON document:\n%s", args, stdout)
-		}
-		if !strings.Contains(stderr, "deprecated") {
-			t.Fatalf("%v: missing deprecation notice on stderr: %q", args, stderr)
+		if _, _, code := runAgent(t, args...); code != ExitUsage {
+			t.Fatalf("%v should be gone (exit 2), got %d", args, code)
 		}
 	}
 }
@@ -155,5 +149,39 @@ func TestMutatingVerbsKeepStdoutClean(t *testing.T) {
 				t.Fatalf("%v wrote progress to stdout:\n%s", full, stdout)
 			}
 		}
+	}
+}
+
+// login --json prints one result document on stdout; the bridge, sign-in and
+// mapping chatter all stay on stderr.
+func TestLoginJSONKeepsStdoutClean(t *testing.T) {
+	seedGcpLoginEnv(t, "GCP_CONFIG_NAME=work\nGCP_PROJECT=acme-prod\n")
+	chdirClean(t)
+	stdout, stderr, code := runAgent(t, "gcp", "login", "fresh", "--yes", "--no-envrc", "--json")
+	if code != ExitOK {
+		t.Fatalf("exit %d (%s)", code, stderr)
+	}
+	var res loginResult
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%q", err, stdout)
+	}
+	if res.Provider != "gcp" || res.Profile != "fresh" || !res.Created {
+		t.Fatalf("result = %+v", res)
+	}
+	if !strings.Contains(stderr, `created profile "fresh"`) {
+		t.Fatalf("progress should be on stderr: %q", stderr)
+	}
+
+	confBody := "AWS_SSO_START_URL=https://acme.awsapps.com/start\nAWS_SSO_REGION=us-east-1\n" +
+		"AWS_ACCOUNT_ID=123456789012\nAWS_ROLE_NAME=AdminAccess\n"
+	seedAwsLoginEnv(t, confBody)
+	t.Setenv("STS_JSON", `{"Account":"123456789012","Arn":"arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_AdminAccess_a1b2c3d4/simon"}`)
+	stdout, stderr, code = runAgent(t, "aws", "login", "work", "--json")
+	if code != ExitOK {
+		t.Fatalf("aws: exit %d (%s)", code, stderr)
+	}
+	res = loginResult{}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil || res.Profile != "work" || res.Created {
+		t.Fatalf("aws login --json: %v %+v\n%q", err, res, stdout)
 	}
 }

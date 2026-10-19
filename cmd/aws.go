@@ -18,6 +18,7 @@ func newAwsLoginCmd() *cobra.Command {
 	var startURL, region, accountID, roleName string
 	var isolate, device, awsYes, awsNoLink bool
 	var envrc *envrcFlags
+	var res loginResult
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to an AWS account via SSO (browser pops on your local machine)",
@@ -92,7 +93,11 @@ func newAwsLoginCmd() *cobra.Command {
 				offerAwsEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "azrl aws", "aws", name)
-			return aws.Scheme().Touch(name, dir, pwd)
+			if err := aws.Scheme().Touch(name, dir, pwd); err != nil {
+				return err
+			}
+			res.Profile, res.Created = name, created
+			return nil
 		},
 	}
 	c.Flags().StringVar(&startURL, "sso-start-url", "", "IAM Identity Center portal URL (https://<org>.awsapps.com/start)")
@@ -104,6 +109,7 @@ func newAwsLoginCmd() *cobra.Command {
 	c.Flags().BoolVarP(&awsYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&awsNoLink, "no-map", false, "Create without claiming this directory (skip the .awsprofile pin).")
 	envrc = addEnvrcFlags(c)
+	addLoginJSON(c, "aws", &res)
 	return c
 }
 
@@ -232,11 +238,9 @@ func offerAwsEnvrc(pwd, name string, isolate bool, mode envrcMode, out io.Writer
 func awsSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newAwsLoginCmd(),
-		newGroupListCmd(aws.NewProvider, "List configured AWS profiles and their SSO portals"),
 		newAwsUseCmd(),
 		newGroupRmCmd(aws.NewProvider, "Remove an AWS profile and its isolated config dir", validAwsName),
 		newAwsCaptureCmd(),
-		newGroupStatusCmd(aws.NewProvider, "Show the ambient and repo-pinned AWS profiles", ".awsprofile", "AWS_PROFILE"),
 		newAwsBrowserCmd(),
 		newShellCmd("aws", "Open a subshell acting as an AWS profile (no mapping)"),
 		newConsoleCmd("aws", "Open the AWS access portal for a profile"),
@@ -251,6 +255,7 @@ func newAwsGroupCmd() *cobra.Command {
 	g := &cobra.Command{
 		Use:   "aws",
 		Short: "Manage AWS accounts (login, use, capture, …)",
+		RunE:  groupRun,
 	}
 	g.AddCommand(awsSubcommands()...)
 	return g

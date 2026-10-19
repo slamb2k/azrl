@@ -26,9 +26,8 @@ func seedGcpHome(t *testing.T) string {
 
 func TestGcpListPrintsProfiles(t *testing.T) {
 	seedGcpHome(t)
-	out := runRoot(t, "gcp", "list")
-	if !strings.Contains(out, "work") || !strings.Contains(out, "acme-prod") ||
-		!strings.Contains(out, "play") || !strings.Contains(out, "acme-play") {
+	out := runRoot(t, "list", "gcp")
+	if !strings.Contains(out, "gcp:work") || !strings.Contains(out, "gcp:play") || strings.Contains(out, "azure:") {
 		t.Fatalf("gcp list output:\n%s", out)
 	}
 }

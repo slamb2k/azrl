@@ -237,7 +237,7 @@ azrl                       # launch the TUI (manage / select / sign in to profil
 azrl whoami [provider]     # "who am I, here?" — governing profile + effective browser per provider
                            # --json; --explain prints the resolution ladder
 azrl list [provider]       # everywhere: MAPPINGS / AMBIENT / UNMAPPED PROFILES (--json)
-azrl az login [profile]    # sign in via the browser bridge (uses this dir's profile)
+azrl az login [profile]    # sign in via the browser bridge (uses this dir's profile; --json)
                            # login <name> also creates the profile on first use
                            # (Azure discovers the tenant); pass --yes to skip the prompt
                            # pass --no-map to create without linking this directory
@@ -683,7 +683,7 @@ dotfiles script, or a coding agent such as Claude Code:
   `browser --cmd`/`--clear`/`--steal`) or fails fast with exit code 2 naming the
   flag to pass.
 - **Data on stdout, progress on stderr.** `whoami [provider] --json`,
-  `list [provider] --json` and `capture --json` print one JSON document on
+  `list [provider] --json`, `capture --json` and `login --json` print one JSON document on
   stdout; every mutating verb (`login`, `use`, `unmap`, `rm`, `browser`, …)
   reports on stderr only, so `x=$(azrl …)` never captures chatter.
 - **One verb grid.** `azrl <az|gh|aws|gcp> <verb>` with the same ten verbs on
