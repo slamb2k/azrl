@@ -30,7 +30,8 @@ var RootCmd = &cobra.Command{
 // verbs instead of fourteen.
 func Execute() error {
 	groupCommands(RootCmd)
-	return RootCmd.Execute()
+	tagUsageErrors(RootCmd)
+	return executeTagged(RootCmd)
 }
 
 // groupCommands sorts the root's visible commands into help groups: the core

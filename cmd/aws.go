@@ -17,6 +17,7 @@ var validAwsName = newValidName("aws", "aws")
 func newAwsLoginCmd() *cobra.Command {
 	var startURL, region, accountID, roleName string
 	var isolate, device, awsYes, awsNoLink bool
+	var envrc *envrcFlags
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to an AWS account via SSO (browser pops on your local machine)",
@@ -37,12 +38,12 @@ func newAwsLoginCmd() *cobra.Command {
 				// Unknown profile: never create one without an SSO start URL — this
 				// guard applies even on the first-login path (never an empty SSO).
 				if startURL == "" {
-					return fmt.Errorf("azrl aws: no profile %q — provide --sso-start-url (and optionally --sso-region/--account-id/--role-name) to create it", name)
+					return usageErr("azrl aws: no profile %q — provide --sso-start-url (and optionally --sso-region/--account-id/--role-name) to create it", name)
 				}
 				// newProfile: already committed via the first-login name prompt, so
 				// create without a second confirm. Otherwise confirm (or --yes) first.
 				if !newProfile && !confirmCreateProfile(cmd, "azrl aws", name, startURL, awsYes) {
-					return fmt.Errorf("azrl aws: no profile %q — pass --yes to create it (%s) or run interactively", name, startURL)
+					return usageErr("azrl aws: no profile %q — pass --yes to create it (%s) or run interactively", name, startURL)
 				}
 				conf = aws.Conf{SSOStartURL: startURL, SSORegion: region, AccountID: accountID, RoleName: roleName, Isolate: isolate}
 				if werr := conf.Write(groupConfPath(dir, name)); werr != nil {
@@ -88,7 +89,7 @@ func newAwsLoginCmd() *cobra.Command {
 					return err
 				}
 				cmd.Printf("aws: pinned %s/.awsprofile -> %q\n", pwd, name)
-				offerAwsEnvrc(pwd, name, conf.Isolate, cmd.OutOrStdout(), cmd.InOrStdin())
+				offerAwsEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "azrl aws", "aws", name)
 			return aws.Scheme().Touch(name, dir, pwd)
@@ -102,11 +103,13 @@ func newAwsLoginCmd() *cobra.Command {
 	c.Flags().BoolVar(&device, "use-device-code", false, "Use the device-code flow instead of the PKCE loopback")
 	c.Flags().BoolVarP(&awsYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&awsNoLink, "no-map", false, "Create without claiming this directory (skip the .awsprofile pin).")
+	envrc = addEnvrcFlags(c)
 	return c
 }
 
 func newAwsUseCmd() *cobra.Command {
 	var isolate bool
+	var envrc *envrcFlags
 	c := &cobra.Command{
 		Use:   "use <name>",
 		Short: "Pin the current directory to an AWS profile and sync ~/.aws/config",
@@ -114,10 +117,13 @@ func newAwsUseCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := validAwsName(name); err != nil {
-				return err
+				return withCode(ExitUsage, err)
 			}
 			prov := aws.NewProvider()
 			dir := prov.ProfilesDir()
+			if err := requireProfile("azrl aws", prov, name); err != nil {
+				return err
+			}
 			conf, err := aws.LoadConf(name, dir)
 			if err != nil {
 				return err
@@ -137,24 +143,32 @@ func newAwsUseCmd() *cobra.Command {
 				return nil
 			}
 			cmd.Printf("aws: pinned %s/.awsprofile -> %q and synced ~/.aws/config\n", pwd, name)
-			offerAwsEnvrc(pwd, name, conf.Isolate, cmd.OutOrStdout(), cmd.InOrStdin())
+			offerAwsEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
 			return nil
 		},
 	}
 	c.Flags().BoolVar(&isolate, "isolate", false, "Scope this profile to its own config/credentials files")
+	envrc = addEnvrcFlags(c)
 	return c
 }
 
 func newAwsCaptureCmd() *cobra.Command {
 	var startURL, region, accountID, roleName, expectAccount, expectARN string
+	var asJSON bool
 	c := &cobra.Command{
-		Use:   "capture <name>",
-		Short: "Record an AWS SSO account into a profile from its portal details",
-		Args:  cobra.ExactArgs(1),
+		Use:   "capture [name]",
+		Short: "Record an AWS SSO account into a profile from its portal details (metadata only, no mapping)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+			name := captureName(args)
 			if err := validAwsName(name); err != nil {
-				return err
+				return withCode(ExitUsage, err)
+			}
+			stdout := cmd.OutOrStdout()
+			if asJSON {
+				var restore func()
+				stdout, restore = jsonStdout(cmd)
+				defer restore()
 			}
 			prov := aws.NewProvider()
 			dir := prov.ProfilesDir()
@@ -172,7 +186,9 @@ func newAwsCaptureCmd() *cobra.Command {
 				conf.AccountID = def.AccountID
 				conf.RoleName = def.RoleName
 			}
+			created := true
 			if existing, err := aws.LoadConf(name, dir); err == nil {
+				created = false
 				conf.Label = existing.Label
 				conf.Isolate = existing.Isolate
 				conf.BrowserCmd = existing.BrowserCmd
@@ -190,6 +206,9 @@ func newAwsCaptureCmd() *cobra.Command {
 			} else {
 				cmd.Printf("aws: captured %s into profile %q\n", conf.SSOStartURL, name)
 			}
+			if asJSON {
+				return writeJSON(stdout, captureResult{Provider: "aws", Profile: name, Identity: conf.AccountID, Detail: conf.SSOStartURL, Created: created})
+			}
 			return nil
 		},
 	}
@@ -199,13 +218,14 @@ func newAwsCaptureCmd() *cobra.Command {
 	c.Flags().StringVar(&roleName, "role-name", "", "Permission-set role")
 	c.Flags().StringVar(&expectAccount, "expect-account", "", "Account ID to assert after sign-in")
 	c.Flags().StringVar(&expectARN, "expect-arn", "", "Permission-set role prefix to assert (AWSReservedSSO_<permset>)")
+	addJSONFlag(c, &asJSON, "the captured profile")
 	return c
 }
 
 // offerAwsEnvrc offers to write a direnv .envrc so plain `aws` in pwd follows the
 // profile. A closed/non-tty stdin reads as a decline (never hangs).
-func offerAwsEnvrc(pwd, name string, isolate bool, out io.Writer, in io.Reader) {
-	offerGroupEnvrc("aws", "aws", aws.WriteEnvrc, pwd, name, isolate, out, in)
+func offerAwsEnvrc(pwd, name string, isolate bool, mode envrcMode, out io.Writer, in io.Reader) {
+	offerGroupEnvrc("aws", "aws", aws.WriteEnvrc, pwd, name, isolate, mode, out, in)
 }
 
 // awsSubcommands builds a fresh set of the AWS subcommands.

@@ -32,7 +32,7 @@ func shellEnv(providerName, name string) ([]string, error) {
 		dir := config.ProfilesDir()
 		c, err := profile.LoadConf(name, dir)
 		if err != nil {
-			return nil, fmt.Errorf("azrl: unknown azure profile %q: %w", name, err)
+			return nil, profileLoadErr(err, "azrl: unknown azure profile %q: %w", name, err)
 		}
 		env = append(env, "AZURE_CONFIG_DIR="+filepath.Join(dir, name))
 		browser = c.BrowserCmd
@@ -40,7 +40,7 @@ func shellEnv(providerName, name string) ([]string, error) {
 		dir := config.GithubProfilesDir()
 		c, err := github.LoadConf(name, dir)
 		if err != nil {
-			return nil, fmt.Errorf("azrl: unknown github profile %q: %w", name, err)
+			return nil, profileLoadErr(err, "azrl: unknown github profile %q: %w", name, err)
 		}
 		env = append(env, "GH_CONFIG_DIR="+github.ConfigDir(dir, name))
 		browser = c.BrowserCmd
@@ -48,7 +48,7 @@ func shellEnv(providerName, name string) ([]string, error) {
 		dir := config.AwsProfilesDir()
 		c, err := aws.LoadConf(name, dir)
 		if err != nil {
-			return nil, fmt.Errorf("azrl: unknown aws profile %q: %w", name, err)
+			return nil, profileLoadErr(err, "azrl: unknown aws profile %q: %w", name, err)
 		}
 		if c.Isolate {
 			env = append(env,
@@ -62,7 +62,7 @@ func shellEnv(providerName, name string) ([]string, error) {
 		dir := config.GcpProfilesDir()
 		c, err := gcp.LoadConf(name, dir)
 		if err != nil {
-			return nil, fmt.Errorf("azrl: unknown gcp profile %q: %w", name, err)
+			return nil, profileLoadErr(err, "azrl: unknown gcp profile %q: %w", name, err)
 		}
 		if c.Isolate {
 			env = append(env, "CLOUDSDK_CONFIG="+filepath.Join(dir, name))
@@ -87,31 +87,50 @@ var (
 	shellExit        = os.Exit
 )
 
-// runShellLogin signs the profile in by exec-ing the real login verb as a
-// child (bridge, browser mapping, everything — CLI-first). The promoted ghrl
-// binary has github verbs at top level, so the gh group prefix is dropped
-// there, mirroring internal/ui's groupArgs.
-func runShellLogin(providerName, name string) error {
-	self, err := os.Executable()
-	if err != nil || self == "" {
-		self = "azrl"
-	}
-	var args []string
+// loginArgs is the CLI argv (sans binary) that signs providerName's profile
+// in. The promoted ghrl binary has github verbs at top level, so the gh group
+// prefix is dropped there, mirroring internal/ui's groupArgs.
+func loginArgs(self, providerName, name string) []string {
 	switch providerName {
 	case "azure":
-		args = []string{"login", name}
+		return []string{"login", name}
 	case "github":
 		if strings.TrimSuffix(filepath.Base(self), ".exe") == "ghrl" {
-			args = []string{"login", name}
-		} else {
-			args = []string{"gh", "login", name}
+			return []string{"login", name}
 		}
+		return []string{"gh", "login", name}
 	default:
-		args = []string{providerName, "login", name}
+		return []string{providerName, "login", name}
 	}
-	c := exec.Command(self, args...)
+}
+
+// selfExe is the running binary's path, falling back to "azrl".
+func selfExe() string {
+	self, err := os.Executable()
+	if err != nil || self == "" {
+		return "azrl"
+	}
+	return self
+}
+
+// runShellLogin signs the profile in by exec-ing the real login verb as a
+// child (bridge, browser mapping, everything — CLI-first).
+func runShellLogin(providerName, name string) error {
+	self := selfExe()
+	c := exec.Command(self, loginArgs(self, providerName, name)...)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return c.Run()
+}
+
+// loginHint is the command a human should run to sign the profile in, for
+// needs-human messages.
+func loginHint(providerName, name string) string {
+	self := selfExe()
+	bin := strings.TrimSuffix(filepath.Base(self), ".exe")
+	if bin != "ghrl" {
+		bin = "azrl"
+	}
+	return bin + " " + strings.Join(loginArgs(self, providerName, name), " ")
 }
 
 // shellNeedsLogin reports whether the profile's cached session is unusable —
@@ -173,11 +192,8 @@ func runShell(providerName, name string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if shellNeedsLogin(providerName, name) {
-		fmt.Fprintf(out, "azrl: no live session for %s:%s — signing in first\n", providerName, name)
-		if err := shellLoginRunner(providerName, name); err != nil {
-			return fmt.Errorf("azrl: sign-in failed — not starting a shell: %w", err)
-		}
+	if err := ensureSession(providerName, name, true, out); err != nil {
+		return err
 	}
 	if cur := os.Getenv("AZRL_PROFILE"); cur != "" {
 		fmt.Fprintf(out, "azrl: already inside an azrl shell (%s) — nesting; innermost wins\n", cur)
@@ -201,16 +217,83 @@ func runShell(providerName, name string, out io.Writer) error {
 	return nil
 }
 
+// ensureSession signs a dead session in before a shell or command runs. With
+// mayLogin it execs the real login; otherwise it refuses with ExitNeedsHuman
+// and the exact command for a human to run — so an unattended `shell -- cmd`
+// (an agent) never triggers a browser sign-in.
+func ensureSession(providerName, name string, mayLogin bool, out io.Writer) error {
+	if !shellNeedsLogin(providerName, name) {
+		return nil
+	}
+	if !mayLogin {
+		return needsHumanErr("azrl: %s:%s has no live session and needs an interactive sign-in — ask the user to run: %s",
+			providerName, name, loginHint(providerName, name))
+	}
+	fmt.Fprintf(out, "azrl: no live session for %s:%s — signing in first\n", providerName, name)
+	if err := shellLoginRunner(providerName, name); err != nil {
+		return fmt.Errorf("azrl: sign-in failed — not starting: %w", err)
+	}
+	return nil
+}
+
+// shellCommandRunner is a test seam over running one command as the profile.
+var shellCommandRunner = runCommandAs
+
+// runCommandAs runs argv once with the profile's environment (the same map
+// `shell` gives a subshell) and passes its exit status through.
+func runCommandAs(providerName, name string, argv []string, out io.Writer) error {
+	env, err := shellEnv(providerName, name)
+	if err != nil {
+		return err
+	}
+	if err := ensureSession(providerName, name, isInteractive(), out); err != nil {
+		return err
+	}
+	bin, err := exec.LookPath(argv[0])
+	if err != nil {
+		return withCode(127, fmt.Errorf("azrl: %s: command not found", argv[0]))
+	}
+	c := exec.Command(bin, argv[1:]...)
+	c.Env = append(scrubEnv(os.Environ(), shellOwnedKeys(providerName)), env...)
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := c.Run(); err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			shellExit(ee.ExitCode())
+			return nil
+		}
+		return fmt.Errorf("azrl: %s failed to start: %w", argv[0], err)
+	}
+	return nil
+}
+
 func newShellCmd(providerName, short string) *cobra.Command {
 	return &cobra.Command{
-		Use:          "shell [name]",
-		Short:        short,
-		Args:         cobra.MaximumNArgs(1),
+		Use:   "shell [name] [-- <command> [args…]]",
+		Short: short,
+		Long: short + ".\n\n" +
+			"With a command after --, runs just that command as the profile and exits with its status\n" +
+			"(e.g. `shell work -- az group list`). Without a TTY a dead session is never signed in:\n" +
+			"it exits 3 with the login command for a human to run.",
+		Args:         cobra.ArbitraryArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name, err := nameOrGoverning(providerName, args)
+			nameArgs, run := args, []string(nil)
+			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
+				nameArgs, run = args[:dash], args[dash:]
+				if len(run) == 0 {
+					return usageErr("azrl: nothing to run after --")
+				}
+			}
+			if len(nameArgs) > 1 {
+				return usageErr("azrl: shell takes at most one profile name before --")
+			}
+			name, err := nameOrGoverning(providerName, nameArgs)
 			if err != nil {
 				return err
+			}
+			if run != nil {
+				return shellCommandRunner(providerName, name, run, cmd.ErrOrStderr())
 			}
 			return runShell(providerName, name, cmd.OutOrStdout())
 		},

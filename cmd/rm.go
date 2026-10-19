@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -22,7 +21,7 @@ var rmCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		if err := validProfileName(name); err != nil {
-			return err
+			return withCode(ExitUsage, err)
 		}
 		pwd, _ := os.Getwd()
 		confdir := config.ProfilesDir()
@@ -32,20 +31,14 @@ var rmCmd = &cobra.Command{
 		}
 		targets := profile.RemoveTargets(name, confdir, pwd)
 		if len(targets) == 0 {
-			cmd.Printf("azrl: nothing to remove for %q\n", name)
-			return nil
+			return notFoundErr("azrl: no profile %q — nothing to remove", name)
 		}
 		cmd.Println("azrl: will remove:")
 		for _, t := range targets {
 			cmd.Printf("  %s\n", t)
 		}
-		if !rmYes {
-			cmd.Print("Remove these? [y/N] ")
-			sc := bufio.NewScanner(os.Stdin)
-			sc.Scan()
-			if ans := strings.TrimSpace(sc.Text()); !strings.HasPrefix(strings.ToLower(ans), "y") {
-				return fmt.Errorf("azrl: aborted")
-			}
+		if err := confirmDestructive(cmd, "azrl", "Remove these?", rmYes); err != nil {
+			return err
 		}
 		if err := unlinkOrReplace(cmd, scheme, confdir, name, rmUnlinkAll, rmReplace); err != nil {
 			return err
@@ -115,7 +108,7 @@ func unlinkOrReplace(cmd *cobra.Command, scheme profile.Scheme, confdir, name st
 }
 
 func init() {
-	rmCmd.Flags().BoolVarP(&rmYes, "yes", "y", false, "Skip the confirmation prompt")
+	rmCmd.Flags().BoolVarP(&rmYes, "yes", "y", false, "Skip the confirmation prompt (required without a TTY)")
 	rmCmd.Flags().BoolVar(&rmUnlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
 	rmCmd.Flags().StringVar(&rmReplace, "replace", "", "Repoint every directory mapping at this profile before deleting")
 	rmCmd.MarkFlagsMutuallyExclusive("unmap-all", "replace")

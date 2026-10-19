@@ -15,6 +15,7 @@ import (
 var loginPaste bool
 var loginYes bool
 var loginNoLink bool
+var loginEnvrc *envrcFlags
 
 // validAzureName guards a name typed at the azure first-login prompt with the
 // shared profile.ValidateName rule (azure profiles map to a conf file and an
@@ -66,16 +67,16 @@ var loginCmd = &cobra.Command{
 		if newProfile {
 			// First-login on a TTY with no saved profiles: create and sign in via
 			// the shared tenant-less create path (runAzureInit).
-			return runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink)
+			return runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink, loginEnvrc.mode())
 		}
 		conf, err := profile.LoadConf(name, config.ProfilesDir())
 		if err != nil {
 			// Explicit unknown name: confirm-then-create inline via the tenant-less
 			// path (azure discovers the tenant on first login), matching gh/gcp/aws.
 			if !confirmCreateProfile(cmd, "azrl", name, "tenant-less sign-in", loginYes) {
-				return fmt.Errorf("azrl: no profile %q — pass --yes to create it or run interactively", name)
+				return usageErr("azrl: no profile %q — pass --yes to create it or run interactively", name)
 			}
-			return runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink)
+			return runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink, loginEnvrc.mode())
 		}
 		if conf.BrowserCmd != "" {
 			g.BrowserCmd = conf.BrowserCmd
@@ -107,7 +108,7 @@ var loginCmd = &cobra.Command{
 		printSignedIn(out, acct)
 		// The profile's session lives in its isolated dir; plain `az` in this
 		// shell still uses ~/.azure. Offer to pin it so they match.
-		offerEnvrc(pwd, out, os.Stdin)
+		offerEnvrc(pwd, loginEnvrc.mode(), out, cmd.InOrStdin())
 		printApplyHint(cmd, "azrl", "azure", name)
 		return nil
 	},
@@ -127,5 +128,6 @@ func init() {
 	loginCmd.Flags().BoolVar(&loginPaste, "paste", false, "Force the manual paste-line path (A)")
 	loginCmd.Flags().BoolVarP(&loginYes, "yes", "y", false, "Create a missing profile without prompting.")
 	loginCmd.Flags().BoolVar(&loginNoLink, "no-map", false, "Create without claiming this directory (skip the .azprofile pin).")
+	loginEnvrc = addEnvrcFlags(loginCmd)
 	RootCmd.AddCommand(loginCmd)
 }

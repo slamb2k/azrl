@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -31,21 +30,54 @@ func newValidName(tool, reserved string) func(string) error {
 	}
 }
 
+// captureName resolves capture's optional name argument: the explicit name,
+// else one derived from the current directory (profile.DefaultName).
+func captureName(args []string) string {
+	pwd, _ := os.Getwd()
+	arg := ""
+	if len(args) == 1 {
+		arg = args[0]
+	}
+	return profile.DefaultName(arg, pwd)
+}
+
 // groupConfPath is the conf file path for a provider-group profile.
 func groupConfPath(dir, name string) string {
 	return dir + string(os.PathSeparator) + name + ".conf"
 }
 
+// listedProfile is one row of `<provider> list --json`.
+type listedProfile struct {
+	Name   string   `json:"name"`
+	Label  string   `json:"label,omitempty"`
+	Detail string   `json:"detail,omitempty"`
+	Mapped []string `json:"mapped"`
+}
+
 // newGroupListCmd is the shared `list` verb for a provider group.
 func newGroupListCmd(provFn func() provider.Provider, short string) *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	c := &cobra.Command{
 		Use:   "list",
 		Short: short,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prov := provFn()
-			profs, err := prov.ListProfiles(prov.ProfilesDir())
+			dir := prov.ProfilesDir()
+			profs, err := prov.ListProfiles(dir)
 			if err != nil {
 				return err
+			}
+			if asJSON {
+				rows := make([]listedProfile, 0, len(profs))
+				for _, p := range profs {
+					mapped := prov.Scheme().LinkedDirs(dir, p.Name)
+					if mapped == nil {
+						mapped = []string{}
+					}
+					rows = append(rows, listedProfile{Name: p.Name, Label: p.Label, Detail: p.Detail, Mapped: mapped})
+				}
+				return writeJSON(cmd.OutOrStdout(), rows)
 			}
 			pairs := make([][2]string, len(profs))
 			for i, p := range profs {
@@ -55,11 +87,14 @@ func newGroupListCmd(provFn func() provider.Provider, short string) *cobra.Comma
 			return nil
 		},
 	}
+	addJSONFlag(c, &asJSON, "the profiles and their mapped directories")
+	return c
 }
 
-// newGroupRmCmd is the shared `rm` verb for a provider group.
+// newGroupRmCmd is the shared `rm` verb for a provider group. Like the Azure
+// rm it confirms on a TTY and refuses without one unless --yes is passed.
 func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(string) error) *cobra.Command {
-	var unlinkAll bool
+	var unlinkAll, yes bool
 	var replace string
 	c := &cobra.Command{
 		Use:   "rm <name>",
@@ -68,11 +103,18 @@ func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(str
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := valid(name); err != nil {
-				return err
+				return withCode(ExitUsage, err)
 			}
 			prov := provFn()
 			dir := prov.ProfilesDir()
+			tool := prov.Scheme().Prefix
+			if err := requireProfile(tool, prov, name); err != nil {
+				return err
+			}
 			if err := refuseIfLinked(prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
+				return err
+			}
+			if err := confirmDestructive(cmd, tool, fmt.Sprintf("%s: remove profile %q and its isolated config dir?", tool, name), yes); err != nil {
 				return err
 			}
 			if err := unlinkOrReplace(cmd, prov.Scheme(), dir, name, unlinkAll, replace); err != nil {
@@ -89,6 +131,7 @@ func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(str
 			return nil
 		},
 	}
+	c.Flags().BoolVarP(&yes, "yes", "y", false, "Skip the confirmation prompt (required without a TTY)")
 	c.Flags().BoolVar(&unlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
 	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
 	c.MarkFlagsMutuallyExclusive("unmap-all", "replace")
@@ -96,12 +139,21 @@ func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(str
 }
 
 // newGroupStatusCmd is the shared `status` verb for a provider group. When
-// ambientEnv is set, the env-var line is printed before the pin lines.
+// ambientEnv is set, the env-var line is printed before the pin lines. With
+// --json it prints this provider's `whoami --json` row instead.
 func newGroupStatusCmd(provFn func() provider.Provider, short, pointerName, ambientEnv string) *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	c := &cobra.Command{
 		Use:   "status",
 		Short: short,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			prov := provFn()
+			pwd, _ := os.Getwd()
+			if asJSON {
+				rep := buildWhoami([]provider.Provider{prov}, pwd, false)
+				return writeJSON(cmd.OutOrStdout(), rep.Providers[0])
+			}
 			if ambientEnv != "" {
 				if p := os.Getenv(ambientEnv); p != "" {
 					cmd.Printf("ambient %s: %s\n", ambientEnv, p)
@@ -109,8 +161,6 @@ func newGroupStatusCmd(provFn func() provider.Provider, short, pointerName, ambi
 					cmd.Printf("ambient %s: (unset)\n", ambientEnv)
 				}
 			}
-			prov := provFn()
-			pwd, _ := os.Getwd()
 			if pin, err := prov.Resolve("", pwd); err == nil {
 				cmd.Printf("this dir is pinned to: %s\n", pin)
 			} else {
@@ -119,19 +169,15 @@ func newGroupStatusCmd(provFn func() provider.Provider, short, pointerName, ambi
 			return nil
 		},
 	}
+	addJSONFlag(c, &asJSON, "this provider's effective identity (the whoami --json row)")
+	return c
 }
 
 // offerGroupEnvrc offers to write a direnv .envrc so the plain native CLI in
-// pwd follows the profile. A closed/non-tty stdin reads as a decline (never
-// hangs).
-func offerGroupEnvrc(tool, cli string, writeEnvrc func(pwd, name string, isolate bool) (bool, error), pwd, name string, isolate bool, out io.Writer, in io.Reader) {
-	fmt.Fprintf(out, "%s: also write .envrc so `%s` in this dir follows this profile? [y/N] ", tool, cli)
-	sc := bufio.NewScanner(in)
-	if !sc.Scan() {
-		fmt.Fprintln(out)
-		return
-	}
-	if ans := strings.TrimSpace(sc.Text()); !strings.HasPrefix(strings.ToLower(ans), "y") {
+// pwd follows the profile. mode decides whether it asks (a closed stdin reads
+// as a decline), writes, or stays quiet.
+func offerGroupEnvrc(tool, cli string, writeEnvrc func(pwd, name string, isolate bool) (bool, error), pwd, name string, isolate bool, mode envrcMode, out io.Writer, in io.Reader) {
+	if !envrcConsent(mode, fmt.Sprintf("%s: also write .envrc so `%s` in this dir follows this profile?", tool, cli), out, in) {
 		return
 	}
 	wrote, err := writeEnvrc(pwd, name, isolate)
@@ -183,7 +229,7 @@ func resolveGoverning(providerName string) (string, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("azrl: no %s profile governs this directory — pass a name, map one (use <name>), or set a default (default <name>)", providerName)
+	return "", usageErr("azrl: no %s profile governs this directory — pass a name, map one (use <name>), or set a default (default <name>)", providerName)
 }
 
 // nameOrGoverning resolves the optional profile argument for verbs that can
@@ -191,7 +237,7 @@ func resolveGoverning(providerName string) (string, error) {
 func nameOrGoverning(providerName string, args []string) (string, error) {
 	if len(args) == 1 {
 		if err := profile.ValidateName(args[0]); err != nil {
-			return "", fmt.Errorf("azrl: %w", err)
+			return "", withCode(ExitUsage, fmt.Errorf("azrl: %w", err))
 		}
 		return args[0], nil
 	}
