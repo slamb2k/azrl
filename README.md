@@ -42,11 +42,17 @@ For all the machinery underneath, day-to-day azrl is deliberately tiny:
 
 ```bash
 azrl setup                  # once per machine — detects WSL/remote/desktop, writes the config
-azrl login work             # sign an identity in (first use creates the profile)
-azrl use work               # this directory now acts as that identity — permanently
-azrl whoami                 # "who am I here, and which browser opens?"  (--all: everywhere)
-azrl rm old-client          # clean up
+azrl az login work          # sign an identity in (first use creates the profile)
+azrl az use work            # this directory now acts as that identity — permanently
+azrl whoami                 # "who am I here, and which browser opens?"
+azrl list                   # every mapping, native default and profile, everywhere
 ```
+
+Every per-profile verb lives under its provider — `azrl az|gh|aws|gcp <verb>` —
+and every provider has the same ten: `login`, `capture`, `use`, `unmap`, `rm`,
+`env`, `shell`, `console`, `default`, `browser`. The cross-provider read verbs
+take an optional provider: `azrl whoami gh`, `azrl list aws`. (The older
+top-level Azure spellings — `azrl login`, `azrl use`, … — still work.)
 
 That's a complete workflow. Sign in once per identity, point directories at
 profiles, and from then on plain `az` in any mapped directory just *is* the
@@ -56,7 +62,7 @@ right account — no flags, no re-login, no thinking. When something looks odd,
 Everything else — subshells (`shell`), current-shell overrides (`env`), browser
 windows (`browser`), web consoles (`console`), native defaults (`default`), the
 sign-in bridge for other tools (`bridge`) — is the advanced shelf, grouped
-separately in `azrl --help` so it never crowds the five verbs above. Reach for
+in each provider's `--help` so it never crowds the verbs above. Reach for
 it when you want it; ignore it forever if you don't.
 
 ## The one thing to understand: `login` fills a container
@@ -222,26 +228,33 @@ are separate acts — `login <name>` does both by default, `login <name>
 --no-map` does only the first, and `use <name>` / `unmap` manage the mapping
 on its own, without touching the profile.
 
+Azure's verbs are shown below; `azrl gh|aws|gcp` take the same verbs (see their
+sections). `azrl az` is the canonical spelling — the bare `azrl login`,
+`azrl use`, … are hidden aliases kept for muscle memory.
+
 ```bash
 azrl                       # launch the TUI (manage / select / sign in to profiles)
-azrl login [profile]       # sign in via the browser bridge (uses this dir's profile)
+azrl whoami [provider]     # "who am I, here?" — governing profile + effective browser per provider
+                           # --json; --explain prints the resolution ladder
+azrl list [provider]       # everywhere: MAPPINGS / AMBIENT / UNMAPPED PROFILES (--json)
+azrl az login [profile]    # sign in via the browser bridge (uses this dir's profile)
                            # login <name> also creates the profile on first use
                            # (Azure discovers the tenant); pass --yes to skip the prompt
                            # pass --no-map to create without linking this directory
-azrl capture [name]        # record the CURRENT az session as a profile (metadata only —
+azrl az capture [name]     # record the CURRENT az session as a profile (metadata only —
                            # no .azprofile; re-run to update it in place; --json)
-azrl use <name>            # link this dir to an existing profile (--envrc / --no-envrc)
-azrl unmap                # remove this dir's own mapping (keeps the profile)
-azrl rm <name> [-y]        # remove a profile (conf + token dir + matching .azprofile)
+azrl az use <name>         # link this dir to an existing profile (--envrc / --no-envrc)
+azrl az unmap              # remove this dir's own mapping (keeps the profile)
+azrl az rm <name> [-y]     # remove a profile (conf + token dir + matching .azprofile)
                            # prompts on a TTY; without one it needs --yes
                            # refuses while other directories still link to it —
                            # pass --unmap-all or --replace <other> first
-azrl whoami [--json]       # "who am I, here?" — governing profile + effective browser per provider
-                           # --explain prints the resolution ladder; --all the everywhere-view
-azrl browser <name>        # map the profile to a local Edge/Chrome browser profile
+azrl az browser <name>     # map the profile to a local Edge/Chrome browser profile
                            # --cmd <c> [--label <l>] | --clear: set it unattended
-azrl shell [name] [-- cmd] # subshell as the profile; with -- cmd, run just that command
-azrl console [name]        # open the portal as the profile (--print-url: just print the link)
+azrl az shell [name] [-- cmd] # subshell as the profile; with -- cmd, run just that command
+azrl az env [name]         # print exports so `eval "$(azrl az env work)"` acts as the profile
+azrl az console [name]     # open the portal as the profile (--print-url: just print the link)
+azrl az default [name]     # make the profile's identity the native `az` default
 azrl --help                # usage; azrl --version prints the version
 ```
 
@@ -255,7 +268,7 @@ processes (same user, parent process dead) left behind by earlier attempts —
 zombies that would otherwise steal the OAuth browser callback — and prints a
 note about any *live* `az login` it finds, without killing it.
 
-Bare `azrl` opens the tabbed TUI (below). `azrl whoami --all` prints the same
+Bare `azrl` opens the tabbed TUI (below). `azrl list` prints the same
 three-section overview on the CLI; `--json` emits
 `{"mappings":[…],"ambient":[…],"unmapped":[…]}` (profile-backed rows carry the
 assigned `browser`/`browserLabel`), plus a `shell_override` field when the
@@ -476,18 +489,19 @@ signed in with the browser on your **local** machine.
 ```bash
 azrl gh login [name] [--hostname H]  # sign in (github.com, *.ghe.com, or a GHES host)
                                       # --no-map creates without mapping this repo
-azrl gh list [--json]                # list GitHub profiles and their hosts
 azrl gh use <name>                   # pin this repo (.ghprofile) + wire git-HTTPS creds
 azrl gh unmap                       # remove this repo's own mapping (keeps the profile)
 azrl gh capture [name] [--hostname H]# record the currently signed-in gh session (--json)
-azrl gh status [--json]              # show the ambient and repo-pinned accounts
+azrl whoami gh [--json]              # which account governs this repo, and why
+azrl list gh [--json]                # GitHub mappings, ambient default and profiles
 azrl gh rm <name> [-y]               # remove a GitHub profile and its config dir
                                       # refuses while mapped; --unmap-all or --replace <other>
 azrl gh browser <name>                # map to a local browser profile (see "Mapping a local browser profile" above)
 ```
 
-The **`ghrl`** alias promotes these to the top level (`ghrl login`, `ghrl use`, …)
-and opens the TUI on the GitHub tab.
+The **`ghrl`** alias promotes these to the top level (`ghrl login`, `ghrl use`, …),
+adds `ghrl whoami` / `ghrl list` scoped to GitHub, and opens the TUI on the
+GitHub tab.
 
 > **`gh switch` was removed in v0.7.0.** The default account is whatever `gh`
 > itself is signed into — use `gh auth switch` to change it, or map a directory
@@ -522,11 +536,11 @@ gitignored `.awsprofile`.
 ```bash
 azrl aws login [name]   # sign in via `aws sso login` over the browser bridge
                          # --no-map creates without mapping this dir
-azrl aws list [--json]  # list AWS SSO profiles and their start URLs
 azrl aws use <name>     # pin this dir (.awsprofile); --envrc writes an .envrc
 azrl aws unmap         # remove this dir's own mapping (keeps the profile)
 azrl aws capture [name] # record the current SSO session as a profile (--json)
-azrl aws status [--json] # disk-only "who am I?" from the SSO token cache
+azrl whoami aws [--json] # disk-only "who am I?" from the SSO token cache
+azrl list aws [--json]  # AWS mappings, ambient default and profiles
 azrl aws rm <name> [-y] # remove an AWS profile
                          # refuses while mapped; --unmap-all or --replace <other>
 azrl aws browser <name> # map to a local browser profile (see "Mapping a local browser profile" above)
@@ -534,7 +548,7 @@ azrl aws browser <name> # map to a local browser profile (see "Mapping a local b
 
 `aws sso login` reuses the SSH browser bridge unchanged — the PKCE loopback
 `127.0.0.1` callback is forwarded back to your local browser (with
-`--use-device-code` as a fallback). `azrl aws status` is disk-only: it reads
+`--use-device-code` as a fallback). `azrl whoami aws` is disk-only: it reads
 `~/.aws/sso/cache/*.json` for the signed-in account/role and expiry, no network.
 On login `azrl` runs `aws sts get-caller-identity` to assert you landed on the
 expected account and role boundary. Pass `--isolate` to scope
@@ -551,11 +565,11 @@ pinned to a repo with a gitignored `.gcpprofile`.
 ```bash
 azrl gcp login [name]   # sign in via `gcloud auth login` over the browser bridge
                          # --no-map creates without mapping this dir
-azrl gcp list [--json]  # list GCP profiles and their projects
 azrl gcp use <name>     # pin this dir (.gcpprofile); --envrc writes an .envrc
 azrl gcp unmap         # remove this dir's own mapping (keeps the profile)
 azrl gcp capture [name] # record the current gcloud session as a profile (--json)
-azrl gcp status [--json] # disk-only "who am I?" from the gcloud config dir
+azrl whoami gcp [--json] # disk-only "who am I?" from the gcloud config dir
+azrl list gcp [--json]  # GCP mappings, ambient default and profiles
 azrl gcp rm <name> [-y] # remove a GCP profile
                          # refuses while mapped; --unmap-all or --replace <other>
 azrl gcp browser <name> # map to a local browser profile (see "Mapping a local browser profile" above)
@@ -563,7 +577,7 @@ azrl gcp browser <name> # map to a local browser profile (see "Mapping a local b
 
 `gcloud auth login` reuses the SSH browser bridge unchanged — by default it binds
 a `localhost` loopback callback that is forwarded back to your local browser.
-`azrl gcp status` is disk-only: it reads the gcloud config dir
+`azrl whoami gcp` is disk-only: it reads the gcloud config dir
 (`configurations/config_<name>` for the signed-in account, `active_config` for
 drift, `access_tokens.db` for token expiry), no network. On login `azrl` runs
 `gcloud auth list --filter=status:ACTIVE` to assert you landed on the expected
@@ -668,9 +682,12 @@ dotfiles script, or a coding agent such as Claude Code:
   would prompt either has a flag (`--yes`, `--envrc`/`--no-envrc`,
   `browser --cmd`/`--clear`/`--steal`) or fails fast with exit code 2 naming the
   flag to pass.
-- **JSON on stdout.** `whoami --json`, `whoami --all --json`, `<provider> list
-  --json`, `<provider> status --json` and `capture --json` print one JSON
-  document on stdout; progress for those runs goes to stderr.
+- **Data on stdout, progress on stderr.** `whoami [provider] --json`,
+  `list [provider] --json` and `capture --json` print one JSON document on
+  stdout; every mutating verb (`login`, `use`, `unmap`, `rm`, `browser`, …)
+  reports on stderr only, so `x=$(azrl …)` never captures chatter.
+- **One verb grid.** `azrl <az|gh|aws|gcp> <verb>` with the same ten verbs on
+  every provider, so one loop covers them all.
 - **One-shot commands as a profile.** `azrl shell <name> -- <cmd…>` (and `azrl
   gh|aws|gcp shell …`) runs one command with the profile's environment and exits
   with its status. A dead session is never signed in unattended: it exits 3 with
@@ -692,7 +709,7 @@ azrl whoami --json                              # ground truth for every provide
 azrl aws shell prod -- aws s3 ls               # run as a profile; exit 3 = ask the human
 azrl gh use work --envrc                        # map a repo and wire direnv, no prompt
 azrl gcp capture analytics --json               # adopt a session, read back the result
-azrl browser contoso --cmd 'msedge --profile-directory="Profile 2"' --label 'Edge · Contoso'
+azrl az browser contoso --cmd 'msedge --profile-directory="Profile 2"' --label 'Edge · Contoso'
 azrl gh rm old-client --unmap-all --yes        # unattended delete
 ```
 
@@ -743,7 +760,7 @@ numbered phases behind the shared `Provider` interface (see `specs/`):
 - **Richer auditability — "who am I, everywhere?"** *(shipped — Phase 5.5,
   `specs/status-dashboard.md`; restructured in v0.7.0,
   `specs/resolution-strategies.md`)*. A cross-provider overview is the default
-  landing view of the TUI (and `azrl whoami --all [--json]` on the CLI): directory →
+  landing view of the TUI (and `azrl list [--json]` on the CLI): directory →
   profile mappings with drift, each CLI's ambient identity read from its own
   config on disk, and unmapped profiles with their expiry — refreshed from local
   cache only (no network). A per-directory *history* beyond a single last-used

@@ -149,13 +149,9 @@ func newDefaultCmd(providerName, short string) *cobra.Command {
 			if len(args) == 1 {
 				name = args[0]
 			}
-			return runDefault(providerName, name, cmd.InOrStdin(), cmd.OutOrStdout())
+			return runDefault(providerName, name, cmd.InOrStdin(), cmd.ErrOrStderr())
 		},
 	}
-}
-
-func init() {
-	RootCmd.AddCommand(newDefaultCmd("azure", "Make a profile's identity the native az default (interactive sign-in via the bridge)"))
 }
 
 // nativeEnvScrub lists the variables to drop from a `default` child so the

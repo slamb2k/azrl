@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -46,25 +45,56 @@ type whoamiReport struct {
 }
 
 var whoamiCmd = &cobra.Command{
-	Use:   "whoami",
-	Short: "Show what is in effect here (--all: every mapping, ambient default, and profile)",
+	Use:   "whoami [provider]",
+	Short: "Show what is in effect in this directory, per provider",
+	Long: "Show what is in effect in this directory: per provider, the governing profile\n" +
+		"(shell override > this dir's pointer > a parent's pointer / git config > ambient\n" +
+		"default), its identity, and the browser a sign-in would use.\n\n" +
+		"Name a provider (az, gh, aws, gcp) to show just that one. For the inventory of\n" +
+		"every mapping and profile, use `azrl list`.",
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if whoamiAll {
-			return runOverview(cmd, whoamiJSON)
+		provs, err := selectProviders(args)
+		if err != nil {
+			return err
 		}
-		cwd, _ := os.Getwd()
-		rep := buildWhoami(provider.All(), cwd, whoamiExplain)
-		if whoamiJSON {
-			b, err := json.MarshalIndent(rep, "", "  ")
+		if whoamiAll {
+			deprecationNote(cmd.ErrOrStderr(), "whoami --all", "azrl list")
+			return runOverview(cmd, provs, whoamiJSON)
+		}
+		return runWhoami(cmd, provs, whoamiJSON, whoamiExplain)
+	},
+}
+
+// runWhoami renders the here-view for provs as text or JSON.
+func runWhoami(cmd *cobra.Command, provs []provider.Provider, asJSON, explain bool) error {
+	cwd, _ := os.Getwd()
+	rep := buildWhoami(provs, cwd, explain)
+	if asJSON {
+		return writeJSON(cmd.OutOrStdout(), rep)
+	}
+	printWhoami(cmd.OutOrStdout(), rep)
+	return nil
+}
+
+// newScopedWhoamiCmd is `whoami` pinned to one provider, for the ghrl alias.
+func newScopedWhoamiCmd(providerName string) *cobra.Command {
+	var asJSON, explain bool
+	c := &cobra.Command{
+		Use:   "whoami",
+		Short: "Show which profile is in effect in this directory",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			provs, err := selectProviders([]string{providerName})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), string(b))
-			return nil
-		}
-		printWhoami(cmd.OutOrStdout(), rep)
-		return nil
-	},
+			return runWhoami(cmd, provs, asJSON, explain)
+		},
+	}
+	c.Flags().BoolVar(&asJSON, "json", false, "Output the effective view as JSON")
+	c.Flags().BoolVar(&explain, "explain", false, "Show the full resolution ladder: every rung checked and why the winner won")
+	return c
 }
 
 // buildWhoami resolves, per provider, what governs cwd — shell override >
@@ -317,6 +347,7 @@ func printWhoami(w io.Writer, rep whoamiReport) {
 func init() {
 	whoamiCmd.Flags().BoolVar(&whoamiJSON, "json", false, "Output the per-provider effective view as JSON")
 	whoamiCmd.Flags().BoolVar(&whoamiExplain, "explain", false, "Show the full resolution ladder per provider: every rung checked and why the winner won")
-	whoamiCmd.Flags().BoolVar(&whoamiAll, "all", false, "Show the everywhere-view: MAPPINGS / AMBIENT / UNMAPPED PROFILES across all directories")
+	whoamiCmd.Flags().BoolVar(&whoamiAll, "all", false, "Show the everywhere-view (now `azrl list`)")
+	_ = whoamiCmd.Flags().MarkHidden("all")
 	RootCmd.AddCommand(whoamiCmd)
 }

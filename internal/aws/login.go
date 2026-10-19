@@ -87,14 +87,14 @@ func Login(dir, name string, isolate, device bool) error {
 		tunnel = t
 		if tunnel != nil {
 			defer func() { _ = tunnel.Process.Kill() }()
-			fmt.Fprintf(os.Stdout, "aws: browser opened on %s (zero-paste path B)\n", g.BrowserHost)
+			fmt.Fprintf(os.Stderr, "azrl aws: browser opened on %s (zero-paste path B)\n", g.BrowserHost)
 		} else if g.IsLocal() {
-			fmt.Fprintf(os.Stdout, "aws: browser opened locally (%s)\n", g.BrowserCmd)
+			fmt.Fprintf(os.Stderr, "azrl aws: browser opened locally (%s)\n", g.BrowserCmd)
 		} else {
-			fmt.Fprintf(os.Stdout, "aws: paste this on your LOCAL machine:\n\n%s\n\n", paste)
+			fmt.Fprintf(os.Stderr, "azrl aws: paste this on your LOCAL machine:\n\n%s\n\n", paste)
 		}
 	} else {
-		fmt.Fprintf(os.Stdout, "aws: device sign-in — open the verification URL on your LOCAL machine:\n\n%s\n\n", url)
+		fmt.Fprintf(os.Stderr, "azrl aws: device sign-in — open the verification URL on your LOCAL machine:\n\n%s\n\n", url)
 	}
 
 	select {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
@@ -18,7 +19,7 @@ var bannerOut io.Writer = os.Stderr
 
 // showRunBanner prints the AZRL crest on stderr when azrl runs as a plain
 // command (from a script or a shell). Skipped for bare invocation (the TUI
-// draws its own), hidden plumbing ($BROWSER shims, shell completion), and
+// draws its own), the "__" plumbing ($BROWSER shims, shell completion), and
 // when AZRL_NO_BANNER is set. Colour follows stderr: a terminal gets the
 // gradient crest, a redirected stderr gets the plain glyphs.
 func showRunBanner(root *cobra.Command, args []string) {
@@ -30,7 +31,9 @@ func showRunBanner(root *cobra.Command, args []string) {
 		return
 	}
 	for c := target; c != nil; c = c.Parent() {
-		if c.Hidden || c.Name() == "completion" || c.Name() == "help" {
+		// Plumbing only: the "__" self-shims, completion and help. Hidden
+		// convenience aliases (top-level Azure verbs) still get the crest.
+		if strings.HasPrefix(c.Name(), "__") || c.Name() == "completion" || c.Name() == "help" {
 			return
 		}
 	}

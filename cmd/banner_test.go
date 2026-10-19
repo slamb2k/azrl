@@ -21,7 +21,7 @@ func runBanner(t *testing.T, root *cobra.Command, args ...string) string {
 
 func TestRunBannerShownOnPlainCommands(t *testing.T) {
 	t.Setenv("AZRL_NO_BANNER", "")
-	for _, args := range [][]string{{"whoami"}, {"whoami", "--all", "--json"}, {"gh", "list"}, {"env", "work"}} {
+	for _, args := range [][]string{{"whoami"}, {"list", "--json"}, {"gh", "login", "work"}, {"az", "env", "work"}, {"env", "work"}, {"login", "work"}} {
 		out := runBanner(t, RootCmd, args...)
 		if !strings.Contains(out, "╚═╝") {
 			t.Fatalf("azrl %v: banner missing on stderr; got %q", args, out)

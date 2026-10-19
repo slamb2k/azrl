@@ -96,10 +96,10 @@ func TestPrintApplyHint(t *testing.T) {
 	t.Setenv("AZRL_PROFILE", "")
 	c := &cobra.Command{}
 	buf := new(bytes.Buffer)
-	c.SetOut(buf)
+	c.SetErr(buf)
 
 	printApplyHint(c, "azrl", "azure", "work")
-	if !strings.Contains(buf.String(), "apply with") {
+	if !strings.Contains(buf.String(), "apply with: azrl az use work") {
 		t.Fatalf("hint expected when nothing governs:\n%s", buf.String())
 	}
 

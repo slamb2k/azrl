@@ -82,8 +82,12 @@ func printApplyHint(cmd *cobra.Command, label, providerName, name string) {
 	if g, err := resolveGoverning(providerName); err == nil && g == name {
 		return
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), cliDim.Render(fmt.Sprintf(
+	verbs := label
+	if providerName == "azure" {
+		verbs = "azrl az"
+	}
+	fmt.Fprintln(cmd.ErrOrStderr(), cliDim.Render(fmt.Sprintf(
 		"%s: note — tokens live in the profile; plain CLIs HERE still act as the ambient default.\n"+
 			"      apply with: %s use %s (this dir) · shell (subshell) · env (this shell) · default (everywhere)",
-		label, label, name)))
+		label, verbs, name)))
 }

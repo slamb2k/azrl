@@ -30,7 +30,7 @@ func confirmCreateProfile(cmd *cobra.Command, label, name, detail string, assume
 	if !isInteractive() {
 		return false
 	}
-	out := cmd.OutOrStdout()
+	out := cmd.ErrOrStderr()
 	fmt.Fprintf(out, "%s: profile %q doesn't exist. Create it (%s)? [y/N]: ", label, name, detail)
 	sc := bufio.NewScanner(cmd.InOrStdin())
 	if !sc.Scan() {
@@ -79,7 +79,7 @@ func resolveLoginTargetWithProfiles(cmd *cobra.Command, prov provider.Provider, 
 	if pin != "" {
 		return pin, nil, false, nil
 	}
-	out := cmd.OutOrStdout()
+	out := cmd.ErrOrStderr()
 	profs, err = prov.ListProfiles(prov.ProfilesDir())
 	if err != nil {
 		return "", nil, false, err

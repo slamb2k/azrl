@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -70,11 +69,10 @@ type profilesReport struct {
 	Unmapped      []profilesRow     `json:"unmapped"`
 }
 
-// runOverview renders the everywhere-view (`azrl whoami --all`): the same
-// three sections the TUI landing view shows, as text or JSON.
-func runOverview(cmd *cobra.Command, asJSON bool) error {
+// runOverview renders the everywhere-view (`azrl list`): the same three
+// sections the TUI landing view shows, as text or JSON, for provs.
+func runOverview(cmd *cobra.Command, provs []provider.Provider, asJSON bool) error {
 	cwd, _ := os.Getwd()
-	provs := provider.All()
 	byName := map[string]provider.Provider{}
 	for _, p := range provs {
 		byName[p.Name()] = p
@@ -108,12 +106,7 @@ func runOverview(cmd *cobra.Command, asJSON bool) error {
 	}
 	rep.ShellOverride = os.Getenv("AZRL_PROFILE")
 	if asJSON {
-		b, err := json.MarshalIndent(rep, "", "  ")
-		if err != nil {
-			return err
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), string(b))
-		return nil
+		return writeJSON(cmd.OutOrStdout(), rep)
 	}
 	printProfilesSections(cmd.OutOrStdout(), ov, rep)
 	return nil

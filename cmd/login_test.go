@@ -188,7 +188,7 @@ func TestLoginUnknownNameNonInteractiveErrors(t *testing.T) {
 	home := os.Getenv("HOME")
 	chdirClean(t)
 	stubInteractive(t, false)
-	loginYes = false // shared RootCmd flag: clear any leak from a prior --yes run
+	resetFlags(RootCmd) // shared RootCmd flags: clear any leak from a prior --yes run
 
 	out, err := execRoot(t, "login", "ghostazure")
 	if err == nil {
@@ -209,7 +209,7 @@ func TestLoginUnknownNameInteractiveDeclines(t *testing.T) {
 	home := os.Getenv("HOME")
 	chdirClean(t)
 	stubInteractive(t, true)
-	loginYes = false // shared RootCmd flag: clear any leak from a prior --yes run
+	resetFlags(RootCmd) // shared RootCmd flags: clear any leak from a prior --yes run
 
 	out, err := execRootIn(t, "n\n", "login", "ghostazure")
 	if err == nil {
@@ -395,7 +395,7 @@ func TestLoginNoLinkSkipsPointer(t *testing.T) {
 	home := os.Getenv("HOME")
 	chdirClean(t)
 	pwd, _ := os.Getwd()
-	t.Cleanup(func() { loginNoLink = false }) // shared RootCmd flag: don't leak into later tests
+	t.Cleanup(func() { resetFlags(RootCmd) }) // shared RootCmd flags: don't leak into later tests
 
 	out, err := execRoot(t, "login", "newprof", "--yes", "--no-map")
 	if err != nil {

@@ -128,8 +128,8 @@ func TestLegacyLinkSpellingsStillParse(t *testing.T) {
 	}
 	resetRmFlags(t)
 	rm, _, _ := RootCmd.Find([]string{"rm"})
-	if err := rm.Flags().Set("unmap-all", "true"); err != nil || !rmUnlinkAll {
-		t.Fatalf("--unlink-all should normalize to --unmap-all: err=%v val=%v", err, rmUnlinkAll)
+	if err := rm.Flags().Set("unmap-all", "true"); err != nil || rm.Flags().Lookup("unmap-all").Value.String() != "true" {
+		t.Fatalf("rm should take --unmap-all: err=%v", err)
 	}
 	login, _, _ := RootCmd.Find([]string{"login"})
 	if err := login.Flags().Set("no-map", "true"); err != nil {
