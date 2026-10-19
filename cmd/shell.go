@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/slamb2k/azrl/internal/aws"
-	"github.com/slamb2k/azrl/internal/azure"
 	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/gcp"
 	"github.com/slamb2k/azrl/internal/github"
@@ -295,12 +294,7 @@ func newShellCmd(providerName, short string) *cobra.Command {
 			if run != nil {
 				return shellCommandRunner(providerName, name, run, cmd.ErrOrStderr())
 			}
-			return runShell(providerName, name, cmd.OutOrStdout())
+			return runShell(providerName, name, cmd.ErrOrStderr())
 		},
 	}
-}
-
-func init() {
-	RootCmd.AddCommand(newShellCmd("azure", "Open a subshell acting as an Azure profile (no mapping)"))
-	RootCmd.AddCommand(newEnvCmd(func() provider.Provider { return azure.NewProvider() }, "azrl", "azure", validProfileName))
 }

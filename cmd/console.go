@@ -123,13 +123,9 @@ func newConsoleCmd(providerName, short string) *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), u)
 				return nil
 			}
-			return runConsole(providerName, name, cmd.OutOrStdout())
+			return runConsole(providerName, name, cmd.ErrOrStderr())
 		},
 	}
 	c.Flags().BoolVar(&printURL, "print-url", false, "Print the console deep link on stdout instead of opening a browser")
 	return c
-}
-
-func init() {
-	RootCmd.AddCommand(newConsoleCmd("azure", "Open the Azure portal as a profile's tenant"))
 }

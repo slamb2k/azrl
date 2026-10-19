@@ -2,66 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/slamb2k/azrl/internal/config"
 	"github.com/slamb2k/azrl/internal/profile"
 	"github.com/spf13/cobra"
 )
-
-var rmYes bool
-var rmUnlinkAll bool
-var rmReplace string
-
-var rmCmd = &cobra.Command{
-	Use:   "rm <name>",
-	Short: "Remove a profile: its conf, token dir, and matching .azprofile",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
-		if err := validProfileName(name); err != nil {
-			return withCode(ExitUsage, err)
-		}
-		pwd, _ := os.Getwd()
-		confdir := config.ProfilesDir()
-		scheme := profile.AzureScheme()
-		if err := refuseIfLinked(scheme, confdir, name, rmUnlinkAll, rmReplace); err != nil {
-			return err
-		}
-		targets := profile.RemoveTargets(name, confdir, pwd)
-		if len(targets) == 0 {
-			return notFoundErr("azrl: no profile %q — nothing to remove", name)
-		}
-		cmd.Println("azrl: will remove:")
-		for _, t := range targets {
-			cmd.Printf("  %s\n", t)
-		}
-		if err := confirmDestructive(cmd, "azrl", "Remove these?", rmYes); err != nil {
-			return err
-		}
-		if err := unlinkOrReplace(cmd, scheme, confdir, name, rmUnlinkAll, rmReplace); err != nil {
-			return err
-		}
-		if _, err := profile.Remove(name, confdir, pwd); err != nil {
-			return err
-		}
-		cmd.Printf("azrl: removed profile %q\n", name)
-		return nil
-	},
-}
-
-// validProfileName applies the shared profile.ValidateName rule and refuses the
-// reserved global config name.
-func validProfileName(name string) error {
-	if err := validAzureName(name); err != nil {
-		return err
-	}
-	if name == "azrl" {
-		return fmt.Errorf("azrl: refusing to use the global azrl config")
-	}
-	return nil
-}
 
 // refuseIfLinked is the read-only half of a rm command's mapping-awareness:
 // with no mapped dirs it's a no-op; with mappings and neither flag it
@@ -93,24 +38,16 @@ func unlinkOrReplace(cmd *cobra.Command, scheme profile.Scheme, confdir, name st
 	case unlinkAll:
 		unlinked, err := scheme.UnlinkAll(confdir, name)
 		for _, d := range unlinked {
-			cmd.Printf("unmapped %s\n", d)
+			fmt.Fprintf(cmd.ErrOrStderr(), "unmapped %s\n", d)
 		}
 		return err
 	case replace != "":
 		repointed, err := scheme.ReplaceLinks(confdir, name, replace)
 		for _, d := range repointed {
-			cmd.Printf("repointed %s -> %s\n", d, replace)
+			fmt.Fprintf(cmd.ErrOrStderr(), "repointed %s -> %s\n", d, replace)
 		}
 		return err
 	default:
 		return nil
 	}
-}
-
-func init() {
-	rmCmd.Flags().BoolVarP(&rmYes, "yes", "y", false, "Skip the confirmation prompt (required without a TTY)")
-	rmCmd.Flags().BoolVar(&rmUnlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
-	rmCmd.Flags().StringVar(&rmReplace, "replace", "", "Repoint every directory mapping at this profile before deleting")
-	rmCmd.MarkFlagsMutuallyExclusive("unmap-all", "replace")
-	RootCmd.AddCommand(rmCmd)
 }

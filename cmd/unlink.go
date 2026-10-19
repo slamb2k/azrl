@@ -38,11 +38,7 @@ func newUnlinkCmd(providerName, short string) *cobra.Command {
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUnlink(providerName, cmd.OutOrStdout())
+			return runUnlink(providerName, cmd.ErrOrStderr())
 		},
 	}
-}
-
-func init() {
-	RootCmd.AddCommand(newUnlinkCmd("azure", "Remove this directory's Azure profile mapping (keeps the profile)"))
 }

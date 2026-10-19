@@ -57,6 +57,7 @@ type listedProfile struct {
 // newGroupListCmd is the shared `list` verb for a provider group.
 func newGroupListCmd(provFn func() provider.Provider, short string) *cobra.Command {
 	var asJSON bool
+	word := providerWord(provFn().Name())
 	c := &cobra.Command{
 		Use:   "list",
 		Short: short,
@@ -88,6 +89,7 @@ func newGroupListCmd(provFn func() provider.Provider, short string) *cobra.Comma
 		},
 	}
 	addJSONFlag(c, &asJSON, "the profiles and their mapped directories")
+	deprecate(c, fmt.Sprintf("azrl list %s", word))
 	return c
 }
 
@@ -126,7 +128,7 @@ func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(str
 				return err
 			}
 			for _, r := range removed {
-				cmd.Printf("removed %s\n", r)
+				fmt.Fprintf(cmd.ErrOrStderr(), "removed %s\n", r)
 			}
 			return nil
 		},
@@ -143,6 +145,7 @@ func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(str
 // --json it prints this provider's `whoami --json` row instead.
 func newGroupStatusCmd(provFn func() provider.Provider, short, pointerName, ambientEnv string) *cobra.Command {
 	var asJSON bool
+	word := providerWord(provFn().Name())
 	c := &cobra.Command{
 		Use:   "status",
 		Short: short,
@@ -156,38 +159,28 @@ func newGroupStatusCmd(provFn func() provider.Provider, short, pointerName, ambi
 			}
 			if ambientEnv != "" {
 				if p := os.Getenv(ambientEnv); p != "" {
-					cmd.Printf("ambient %s: %s\n", ambientEnv, p)
+					fmt.Fprintf(cmd.ErrOrStderr(), "ambient %s: %s\n", ambientEnv, p)
 				} else {
-					cmd.Printf("ambient %s: (unset)\n", ambientEnv)
+					fmt.Fprintf(cmd.ErrOrStderr(), "ambient %s: (unset)\n", ambientEnv)
 				}
 			}
 			if pin, err := prov.Resolve("", pwd); err == nil {
-				cmd.Printf("this dir is pinned to: %s\n", pin)
+				fmt.Fprintf(cmd.ErrOrStderr(), "this dir is pinned to: %s\n", pin)
 			} else {
-				cmd.Printf("this dir has no %s pin\n", pointerName)
+				fmt.Fprintf(cmd.ErrOrStderr(), "this dir has no %s pin\n", pointerName)
 			}
 			return nil
 		},
 	}
 	addJSONFlag(c, &asJSON, "this provider's effective identity (the whoami --json row)")
+	deprecate(c, fmt.Sprintf("azrl whoami %s", word))
 	return c
 }
 
 // offerGroupEnvrc offers to write a direnv .envrc so the plain native CLI in
-// pwd follows the profile. mode decides whether it asks (a closed stdin reads
-// as a decline), writes, or stays quiet.
+// pwd follows the profile, via the shared offerEnvrcIn.
 func offerGroupEnvrc(tool, cli string, writeEnvrc func(pwd, name string, isolate bool) (bool, error), pwd, name string, isolate bool, mode envrcMode, out io.Writer, in io.Reader) {
-	if !envrcConsent(mode, fmt.Sprintf("%s: also write .envrc so `%s` in this dir follows this profile?", tool, cli), out, in) {
-		return
-	}
-	wrote, err := writeEnvrc(pwd, name, isolate)
-	if err != nil {
-		fmt.Fprintf(out, "%s: could not write .envrc: %v\n", tool, err)
-		return
-	}
-	if wrote {
-		fmt.Fprintf(out, "%s: wrote %s/.envrc — run `direnv allow` to activate\n", tool, pwd)
-	}
+	offerEnvrcIn(tool, cli, pwd, func() (bool, error) { return writeEnvrc(pwd, name, isolate) }, mode, out, in)
 }
 
 // resolveGoverning returns the profile governing the cwd for providerName —

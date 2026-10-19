@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/slamb2k/azrl/internal/github"
 )
 
-// validGhName guards GitHub profile names the same way validProfileName guards
+// validGhName guards GitHub profile names the same way validAzureName guards
 // Azure ones, reserving the ghrl global-conf basename.
 var validGhName = newValidName("ghrl", "ghrl")
 
@@ -44,10 +45,10 @@ func newGhLoginCmd() *cobra.Command {
 					return werr
 				}
 				created = true
-				cmd.Printf("ghrl: created profile %q (%s)\n", name, hostname)
+				fmt.Fprintf(cmd.ErrOrStderr(), "ghrl: created profile %q (%s)\n", name, hostname)
 			}
-			cmd.Printf("ghrl: signing in to %s as profile %q\n", conf.Host, name)
-			if _, err := loadGlobalOrSetup(cmd.OutOrStdout()); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "ghrl: signing in to %s as profile %q\n", conf.Host, name)
+			if _, err := loadGlobalOrSetup(cmd.ErrOrStderr()); err != nil {
 				return err
 			}
 			if err := github.Login(dir, name, conf); err != nil {
@@ -61,11 +62,11 @@ func newGhLoginCmd() *cobra.Command {
 					return err
 				}
 				if err := github.SetupRepo(dir, name, pwd, conf); err != nil {
-					cmd.Printf("ghrl: pinned %s/.ghprofile -> %q (credential wiring skipped: %v)\n", pwd, name, err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "ghrl: pinned %s/.ghprofile -> %q (credential wiring skipped: %v)\n", pwd, name, err)
 				} else {
-					cmd.Printf("ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
+					fmt.Fprintf(cmd.ErrOrStderr(), "ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
 				}
-				offerGhEnvrc(pwd, name, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
+				offerGhEnvrc(pwd, name, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "ghrl", "github", name)
 			return github.Scheme().Touch(name, dir, pwd)
@@ -103,11 +104,11 @@ func newGhUseCmd() *cobra.Command {
 				return err
 			}
 			if err := github.SetupRepo(dir, name, pwd, conf); err != nil {
-				cmd.Printf("ghrl: pinned %s/.ghprofile -> %q (credential wiring skipped: %v)\n", pwd, name, err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "ghrl: pinned %s/.ghprofile -> %q (credential wiring skipped: %v)\n", pwd, name, err)
 			} else {
-				cmd.Printf("ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
+				fmt.Fprintf(cmd.ErrOrStderr(), "ghrl: pinned %s/.ghprofile -> %q and wired git-HTTPS for %s\n", pwd, name, conf.Host)
 			}
-			offerGhEnvrc(pwd, name, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
+			offerGhEnvrc(pwd, name, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			return nil
 		},
 	}
@@ -166,7 +167,7 @@ func newGhCaptureCmd() *cobra.Command {
 			if err := github.Scheme().Touch(name, dir, pwd); err != nil {
 				return err
 			}
-			cmd.Printf("ghrl: captured %s@%s into profile %q\n", login, hostname, name)
+			fmt.Fprintf(cmd.ErrOrStderr(), "ghrl: captured %s@%s into profile %q\n", login, hostname, name)
 			if asJSON {
 				return writeJSON(stdout, captureResult{Provider: "github", Profile: name, Identity: login, Detail: hostname, Created: created})
 			}
@@ -200,7 +201,7 @@ func githubSubcommands() []*cobra.Command {
 func newGhGroupCmd() *cobra.Command {
 	g := &cobra.Command{
 		Use:   "gh",
-		Short: "Manage GitHub accounts (login, use, …)",
+		Short: "Manage GitHub accounts (login, use, capture, …)",
 	}
 	g.AddCommand(githubSubcommands()...)
 	return g

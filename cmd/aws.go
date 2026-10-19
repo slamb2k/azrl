@@ -50,7 +50,7 @@ func newAwsLoginCmd() *cobra.Command {
 					return werr
 				}
 				created = true
-				cmd.Printf("azrl aws: created profile %q (%s)\n", name, startURL)
+				fmt.Fprintf(cmd.ErrOrStderr(), "azrl aws: created profile %q (%s)\n", name, startURL)
 			} else if isolate && !conf.Isolate {
 				conf.Isolate = true
 				if serr := aws.SetIsolate(dir, name, true); serr != nil {
@@ -60,13 +60,13 @@ func newAwsLoginCmd() *cobra.Command {
 			if err := aws.SyncConfig(name, dir, conf); err != nil {
 				return err
 			}
-			cmd.Printf("aws: signing in to %s as profile %q\n", conf.SSOStartURL, name)
+			fmt.Fprintf(cmd.ErrOrStderr(), "azrl aws: signing in to %s as profile %q\n", conf.SSOStartURL, name)
 			if conf.BrowserCmd != "" {
 				// aws.Login loads config.Global itself; the env hook in
 				// LoadGlobal picks this up (same pattern as AZURE_CONFIG_DIR).
 				os.Setenv("AZRL_BROWSER_CMD", conf.BrowserCmd)
 			}
-			if _, err := loadGlobalOrSetup(cmd.OutOrStdout()); err != nil {
+			if _, err := loadGlobalOrSetup(cmd.ErrOrStderr()); err != nil {
 				return err
 			}
 			if err := aws.Login(dir, name, conf.Isolate, device); err != nil {
@@ -75,7 +75,7 @@ func newAwsLoginCmd() *cobra.Command {
 			if conf.ExpectAccount != "" || conf.ExpectARN != "" {
 				id, err := aws.CallerIdentity(dir, name, conf.Isolate)
 				if err != nil {
-					return fmt.Errorf("aws: could not verify signed-in identity: %w", err)
+					return fmt.Errorf("azrl aws: could not verify signed-in identity: %w", err)
 				}
 				if err := aws.AssertAccount(id, conf.ExpectAccount, conf.ExpectARN); err != nil {
 					return err
@@ -88,8 +88,8 @@ func newAwsLoginCmd() *cobra.Command {
 				if err := prov.Use(name, dir, pwd); err != nil {
 					return err
 				}
-				cmd.Printf("aws: pinned %s/.awsprofile -> %q\n", pwd, name)
-				offerAwsEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
+				fmt.Fprintf(cmd.ErrOrStderr(), "azrl aws: pinned %s/.awsprofile -> %q\n", pwd, name)
+				offerAwsEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "azrl aws", "aws", name)
 			return aws.Scheme().Touch(name, dir, pwd)
@@ -139,11 +139,11 @@ func newAwsUseCmd() *cobra.Command {
 				}
 			}
 			if err := aws.SyncConfig(name, dir, conf); err != nil {
-				cmd.Printf("aws: pinned %s/.awsprofile -> %q (config sync skipped: %v)\n", pwd, name, err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "azrl aws: pinned %s/.awsprofile -> %q (config sync skipped: %v)\n", pwd, name, err)
 				return nil
 			}
-			cmd.Printf("aws: pinned %s/.awsprofile -> %q and synced ~/.aws/config\n", pwd, name)
-			offerAwsEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
+			fmt.Fprintf(cmd.ErrOrStderr(), "azrl aws: pinned %s/.awsprofile -> %q and synced ~/.aws/config\n", pwd, name)
+			offerAwsEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			return nil
 		},
 	}
@@ -202,9 +202,9 @@ func newAwsCaptureCmd() *cobra.Command {
 				return err
 			}
 			if conf.SSOStartURL == "" {
-				cmd.Printf("aws: captured profile %q\n", name)
+				fmt.Fprintf(cmd.ErrOrStderr(), "azrl aws: captured profile %q\n", name)
 			} else {
-				cmd.Printf("aws: captured %s into profile %q\n", conf.SSOStartURL, name)
+				fmt.Fprintf(cmd.ErrOrStderr(), "azrl aws: captured %s into profile %q\n", conf.SSOStartURL, name)
 			}
 			if asJSON {
 				return writeJSON(stdout, captureResult{Provider: "aws", Profile: name, Identity: conf.AccountID, Detail: conf.SSOStartURL, Created: created})

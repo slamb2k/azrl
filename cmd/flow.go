@@ -50,7 +50,7 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 	fmt.Fprintln(out, "azrl: waiting for sign-in to complete...")
 	if err := azure.WaitForLogin(lg, browsercapture.LoginTimeout()); err != nil {
 		if g.IsLocal() {
-			fmt.Fprintf(out, "✗ %v\n  Retry with: azrl login\n", err)
+			fmt.Fprintf(out, "✗ %v\n  Retry with: azrl az login\n", err)
 		} else {
 			vmHost, _ := bridge.VMHost(g)
 			fmt.Fprintf(out, "✗ %v\n  Recover with:\n  %s\n", err,
@@ -71,7 +71,7 @@ func captureSession(name, pwd string, link bool, out io.Writer) (profile.Conf, b
 	confPath := filepath.Join(config.ProfilesDir(), name+".conf")
 	acctBytes, err := azure.AccountShow()
 	if err != nil {
-		return profile.Conf{}, false, needsHumanErr("azrl: not logged in for %q — run azrl login first", name)
+		return profile.Conf{}, false, needsHumanErr("azrl: not logged in for %q — run azrl az login first", name)
 	}
 	var acct profile.AccountJSON
 	if err := json.Unmarshal(acctBytes, &acct); err != nil {

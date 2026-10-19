@@ -25,27 +25,26 @@ var RootCmd = &cobra.Command{
 	},
 }
 
-// Execute runs the root command with help grouped into the everyday core
-// and the power-user shelf, so `azrl --help` teaches the product in four
-// verbs instead of fourteen.
+// Execute runs the root command with help grouped into the cross-provider
+// core, the four provider groups, and the power-user shelf.
 func Execute() error {
 	groupCommands(RootCmd)
 	tagUsageErrors(RootCmd)
 	return executeTagged(RootCmd)
 }
 
-// groupCommands sorts the root's visible commands into help groups: the core
-// loop (sign in, point a directory, ask who governs here), providers, and
-// everything else under Advanced. Unknown/new commands land in Advanced by
-// default — the core set is a deliberate, short list.
+// groupCommands sorts the root's visible commands into help groups: the
+// cross-provider core (what governs here, what exists, first-run setup), the
+// provider groups that hold every per-profile verb, and everything else under
+// Advanced. The top-level Azure aliases are hidden, so they stay ungrouped.
 func groupCommands(root *cobra.Command) {
 	root.AddGroup(
 		&cobra.Group{ID: "core", Title: "Core Commands:"},
 		&cobra.Group{ID: "providers", Title: "Provider Groups:"},
 		&cobra.Group{ID: "advanced", Title: "Advanced Commands:"},
 	)
-	core := map[string]bool{"login": true, "use": true, "whoami": true, "rm": true, "setup": true}
-	providers := map[string]bool{"gh": true, "aws": true, "gcp": true}
+	core := map[string]bool{"whoami": true, "list": true, "setup": true}
+	providers := map[string]bool{"az": true, "gh": true, "aws": true, "gcp": true}
 	for _, c := range root.Commands() {
 		switch {
 		case core[c.Name()]:

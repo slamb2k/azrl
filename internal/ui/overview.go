@@ -20,7 +20,7 @@ const (
 )
 
 // MappingRow is one directory→profile association for the landing view and
-// `azrl whoami --all`. Profile is "" for an unmanaged row (Unmanaged then carries
+// `azrl list`. Profile is "" for an unmanaged row (Unmanaged then carries
 // the git-config identity, adoptable); Conflict is set when a repo's git
 // config and .ghprofile disagree (git wins). Pointer is the provider's
 // pointer filename, used as the pointer-source icon.
@@ -59,7 +59,7 @@ type UnmappedRow struct {
 }
 
 // Overview is the three-section aggregation shared by the TUI landing view and
-// `azrl whoami --all`: MAPPINGS → AMBIENT → UNMAPPED PROFILES.
+// `azrl list`: MAPPINGS → AMBIENT → UNMAPPED PROFILES.
 type Overview struct {
 	Mappings []MappingRow
 	Ambient  []AmbientRow
@@ -148,7 +148,7 @@ func BuildOverview(provs []provider.Provider, cwd string) Overview {
 
 // selfHealCwd records the mapping that governs cwd into the provider's index
 // when azrl resolves it (REQ-022/AC-007), so hand-made pointers appear after
-// `azrl whoami --all` or opening the TUI: the nearest pointer walk-up hit for every
+// `azrl list` or opening the TUI: the nearest pointer walk-up hit for every
 // provider (only when it names an existing profile conf), plus GitHub's
 // repo-local gitconfig resolution recorded against the repo root. Best-effort;
 // RecordMapping is a no-op when the entry is already indexed.
