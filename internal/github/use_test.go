@@ -36,9 +36,12 @@ func TestSetupRepoWiresCredentialHelperAndUsername(t *testing.T) {
 	}
 	out, _ := os.ReadFile(log)
 	s := string(out)
-	if !strings.Contains(s, "gh GH_CONFIG_DIR="+filepath.Join(profilesDir, "work")) ||
-		!strings.Contains(s, "auth setup-git") {
-		t.Fatalf("setup-git not scoped/invoked: %s", s)
+	if strings.Contains(s, "setup-git") || strings.Contains(s, "--global") {
+		t.Fatalf("must never touch global git config: %s", s)
+	}
+	if !strings.Contains(s, "config --local --replace-all credential.https://github.com.helper") ||
+		!strings.Contains(s, "config --local --add credential.https://github.com.helper !GH_CONFIG_DIR='"+filepath.Join(profilesDir, "work")+"'") {
+		t.Fatalf("repo-local helper not pinned to the profile dir: %s", s)
 	}
 	if !strings.Contains(s, "credential.https://github.com.username octocat") {
 		t.Fatalf("credential username not set: %s", s)
@@ -95,5 +98,46 @@ func TestSetupRepoRecordsRepoRootMappingFromSubdir(t *testing.T) {
 	got := profile.ReadMappings(profilesDir)
 	if len(got) != 1 || got[0].Dir != want || got[0].Profile != "work" || got[0].Source != "gitconfig" {
 		t.Fatalf("mappings = %+v, want Dir=%s Profile=work Source=gitconfig", got, want)
+	}
+}
+
+// TestSetupRepoLeavesGlobalGitConfigAlone runs real git with an isolated
+// HOME: an existing global helper (e.g. GCM) must survive untouched, and the
+// repo gets its own reset + gh helper pinned to the profile's config dir.
+func TestSetupRepoLeavesGlobalGitConfigAlone(t *testing.T) {
+	fakeGhOnly(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	global := filepath.Join(home, ".gitconfig")
+	before := "[credential \"https://github.com\"]\n\thelper = manager\n"
+	if err := os.WriteFile(global, []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := initGitRepo(t)
+	profilesDir := t.TempDir()
+	c := Conf{Host: "github.com", User: "octocat", Protocol: "https"}
+	if err := SetupRepo(profilesDir, "work", root, c); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := os.ReadFile(global); string(after) != before {
+		t.Fatalf("global git config changed:\n%s", after)
+	}
+	out, err := GitCmd(root, "config", "--local", "--get-all", "credential.https://github.com.helper").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(lines) != 2 || lines[0] != "" || !strings.HasPrefix(lines[1], "!GH_CONFIG_DIR='"+filepath.Join(profilesDir, "work")+"' ") {
+		t.Fatalf("local helpers = %q", lines)
+	}
+	// Idempotent: a second run leaves exactly the same two entries.
+	if err := SetupRepo(profilesDir, "work", root, c); err != nil {
+		t.Fatal(err)
+	}
+	out2, _ := GitCmd(root, "config", "--local", "--get-all", "credential.https://github.com.helper").Output()
+	if string(out2) != string(out) {
+		t.Fatalf("not idempotent: %q then %q", out, out2)
 	}
 }

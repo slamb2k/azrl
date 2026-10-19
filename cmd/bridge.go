@@ -7,8 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/slamb2k/azrl/internal/bridge"
 )
 
 // bridgeShimScript is the single-word $BROWSER target `azrl bridge` points a
@@ -17,29 +20,79 @@ import (
 // `&` to avoid blocking; gh shell-splits; GCM ignores $BROWSER entirely) —
 // and the shim backgrounds the real bridge and returns immediately, so
 // launchers that wait for $BROWSER to exit never block the OAuth callback
-// they are about to serve.
-func bridgeShimScript(bin string) string {
-	return fmt.Sprintf("#!/bin/sh\nnohup %q __browser \"$1\" >/dev/null 2>&1 &\n", bin)
+// they are about to serve. The background process must not hold the
+// launcher's stdio (a launcher reading its pipe to EOF would hang), so its
+// output — the paste line and any fallback notes — goes to logPath, which
+// bridgeRun relays to the user's terminal.
+func bridgeShimScript(bin, logPath string) string {
+	return fmt.Sprintf("#!/bin/sh\nnohup %s __browser \"$1\" </dev/null >>%s 2>&1 &\n",
+		bridge.ShellQuote(bin), bridge.ShellQuote(logPath))
 }
 
-// writeBridgeShim writes the shim into a private temp dir, returning its
-// path and a cleanup func. The dir can be removed as soon as the bridged
-// command exits — the backgrounded __browser process no longer needs it.
-func writeBridgeShim() (string, func(), error) {
+// writeBridgeShim writes the shim and its (empty) output log into a private
+// temp dir, returning both paths and a cleanup func. The dir can be removed
+// as soon as the bridged command exits — the backgrounded __browser process
+// no longer needs it.
+func writeBridgeShim() (shim, logPath string, cleanup func(), err error) {
 	dir, err := os.MkdirTemp("", "azrl-bridge-")
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	self, err := os.Executable()
 	if err != nil || self == "" {
 		self = "azrl"
 	}
-	p := filepath.Join(dir, "azrl-browser")
-	if err := os.WriteFile(p, []byte(bridgeShimScript(self)), 0o755); err != nil {
+	logPath = filepath.Join(dir, "browser.log")
+	if err := os.WriteFile(logPath, nil, 0o600); err != nil {
 		os.RemoveAll(dir)
-		return "", nil, err
+		return "", "", nil, err
 	}
-	return p, func() { os.RemoveAll(dir) }, nil
+	shim = filepath.Join(dir, "azrl-browser")
+	if err := os.WriteFile(shim, []byte(bridgeShimScript(self, logPath)), 0o755); err != nil {
+		os.RemoveAll(dir)
+		return "", "", nil, err
+	}
+	return shim, logPath, func() { os.RemoveAll(dir) }, nil
+}
+
+// bridgeNotices is where the backgrounded shim's output is relayed.
+var bridgeNotices io.Writer = os.Stderr
+
+// relayLog copies whatever is appended to path onto w until stop is called,
+// then drains the rest. It is how the path-A paste line (and every "zero-paste
+// unavailable" note) reaches the user while the bridged CLI waits for its
+// callback.
+func relayLog(path string, w io.Writer) (stop func()) {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		var off int64
+		drain := func() {
+			f, err := os.Open(path)
+			if err != nil {
+				return
+			}
+			defer f.Close()
+			if _, err := f.Seek(off, io.SeekStart); err != nil {
+				return
+			}
+			n, _ := io.Copy(w, f)
+			off += n
+		}
+		t := time.NewTicker(150 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				drain()
+				return
+			case <-t.C:
+				drain()
+			}
+		}
+	}()
+	return func() { close(done); <-finished }
 }
 
 // bridgeRun execs the command with $BROWSER wired to the shim, streaming its
@@ -47,14 +100,19 @@ func writeBridgeShim() (string, func(), error) {
 // (e.g. gh default's switch→login fallback); a non-ExitError failure to start
 // is the returned error. azrl never touches where the command stores its
 // session — this is plumbing only (PAT-002).
-func bridgeRun(args []string, out io.Writer) (int, error) {
-	shim, cleanup, err := writeBridgeShim()
+//
+// drop names extra variables to remove from the child's environment (see
+// nativeEnvScrub), on top of the BROWSER the shim replaces.
+func bridgeRun(args []string, out io.Writer, drop ...string) (int, error) {
+	shim, logPath, cleanup, err := writeBridgeShim()
 	if err != nil {
 		return 0, fmt.Errorf("azrl: bridge: %w", err)
 	}
 	defer cleanup()
+	stopRelay := relayLog(logPath, bridgeNotices)
+	defer stopRelay()
 	c := exec.Command(args[0], args[1:]...)
-	c.Env = append(scrubEnv(os.Environ(), []string{"BROWSER"}), "BROWSER="+shim)
+	c.Env = append(scrubEnv(os.Environ(), append([]string{"BROWSER"}, drop...)), "BROWSER="+shim)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, out, os.Stderr
 	if err := c.Run(); err != nil {
 		var ee *exec.ExitError
@@ -67,8 +125,8 @@ func bridgeRun(args []string, out io.Writer) (int, error) {
 }
 
 // runBridge is bridgeRun with the child's exit status passed through.
-func runBridge(args []string, out io.Writer) error {
-	code, err := bridgeRun(args, out)
+func runBridge(args []string, out io.Writer, drop ...string) error {
+	code, err := bridgeRun(args, out, drop...)
 	if err != nil {
 		return err
 	}

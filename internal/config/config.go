@@ -309,3 +309,11 @@ func SetEnabledProviders(dir string, names []string) error {
 	}
 	return os.Rename(tmp, path)
 }
+
+// Within reports whether path is dir itself or lies inside it — used to tell
+// an env var azrl exported for a profile (pointing into a profiles dir) from
+// one the user set for their native CLI.
+func Within(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}

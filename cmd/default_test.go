@@ -141,3 +141,57 @@ func TestDefaultPicker(t *testing.T) {
 		t.Fatalf("lone profile = %q, %v", name, err)
 	}
 }
+
+// TestDefaultScrubsProfileEnv proves `default` run inside a mapped directory
+// (profile env exported by direnv/azrl shell) still reaches the NATIVE store:
+// the profile's redirect variables are dropped from the child, while a
+// user's own override (outside azrl's profiles dir) survives.
+func TestDefaultScrubsProfileEnv(t *testing.T) {
+	home, bin, log := defaultTestHome(t)
+	os.MkdirAll(filepath.Join(home, ".azure-profiles"), 0o755)
+	os.WriteFile(filepath.Join(home, ".azure-profiles", "work.conf"), []byte("AZ_TENANT=acme.com\n"), 0o644)
+	fakeCLI(t, bin, "az", log, "echo \"AZURE_CONFIG_DIR=$AZURE_CONFIG_DIR\" >> "+log+"\n")
+	t.Setenv("AZURE_CONFIG_DIR", filepath.Join(home, ".azure-profiles", "work"))
+	var out bytes.Buffer
+	if err := runDefault("azure", "work", strings.NewReader(""), &out); err != nil {
+		t.Fatalf("runDefault: %v\n%s", err, out.String())
+	}
+	if b, _ := os.ReadFile(log); !strings.Contains(string(b), "AZURE_CONFIG_DIR=\n") {
+		t.Fatalf("profile AZURE_CONFIG_DIR leaked into the native sign-in:\n%s", b)
+	}
+
+	// A user's own store outside azrl's dirs is their native default: kept.
+	own := filepath.Join(home, "my-az")
+	t.Setenv("AZURE_CONFIG_DIR", own)
+	if got := nativeEnvScrub("azure"); len(got) != 0 {
+		t.Fatalf("user override must survive, scrub = %v", got)
+	}
+}
+
+func TestNativeEnvScrubAwsAndGcp(t *testing.T) {
+	home, _, _ := defaultTestHome(t)
+	os.MkdirAll(filepath.Join(home, ".aws-profiles"), 0o755)
+	os.WriteFile(filepath.Join(home, ".aws-profiles", "prod.conf"), []byte("AWS_SSO_START_URL=https://x\n"), 0o644)
+	os.MkdirAll(filepath.Join(home, ".gcp-profiles"), 0o755)
+	os.WriteFile(filepath.Join(home, ".gcp-profiles", "lab.conf"), []byte("GCP_PROJECT=p\nGCP_CONFIG_NAME=lab-cfg\n"), 0o644)
+
+	t.Setenv("AWS_PROFILE", "prod")
+	t.Setenv("AWS_DEFAULT_PROFILE", "someone-elses")
+	t.Setenv("AWS_CONFIG_FILE", filepath.Join(home, ".aws-profiles", "prod", "config"))
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(home, "creds"))
+	got := strings.Join(nativeEnvScrub("aws"), ",")
+	if got != "AWS_CONFIG_FILE,AWS_PROFILE" {
+		t.Fatalf("aws scrub = %q", got)
+	}
+
+	t.Setenv("CLOUDSDK_ACTIVE_CONFIG_NAME", "lab-cfg")
+	t.Setenv("CLOUDSDK_CONFIG", filepath.Join(home, ".gcp-profiles", "lab"))
+	if got := strings.Join(nativeEnvScrub("gcp"), ","); got != "CLOUDSDK_CONFIG,CLOUDSDK_ACTIVE_CONFIG_NAME" {
+		t.Fatalf("gcp scrub = %q", got)
+	}
+	t.Setenv("CLOUDSDK_ACTIVE_CONFIG_NAME", "unmanaged")
+	t.Setenv("CLOUDSDK_CONFIG", "")
+	if got := nativeEnvScrub("gcp"); len(got) != 0 {
+		t.Fatalf("unmanaged gcp config must survive, scrub = %v", got)
+	}
+}

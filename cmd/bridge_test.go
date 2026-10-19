@@ -8,11 +8,11 @@ import (
 )
 
 func TestBridgeShimScriptShape(t *testing.T) {
-	s := bridgeShimScript("/usr/local/bin/azrl")
+	s := bridgeShimScript("/usr/local/bin/azrl", "/tmp/azrl-bridge-x/browser.log")
 	if !strings.HasPrefix(s, "#!/bin/sh\n") {
 		t.Fatalf("shim must be a sh script: %q", s)
 	}
-	for _, want := range []string{"nohup", `"/usr/local/bin/azrl" __browser "$1"`, "&"} {
+	for _, want := range []string{"nohup", `'/usr/local/bin/azrl' __browser "$1"`, ">>'/tmp/azrl-bridge-x/browser.log' 2>&1", "</dev/null", "&"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("shim missing %q:\n%s", want, s)
 		}
@@ -57,5 +57,25 @@ func TestBridgeMissingCommandErrors(t *testing.T) {
 	}
 	if _, err := os.Stat("azrl-definitely-not-a-command"); err == nil {
 		t.Fatal("test invariant broken")
+	}
+}
+
+// TestBridgeRelaysShimOutput is the regression for the paste line vanishing
+// under `azrl bridge`: whatever the backgrounded __browser writes (the path-A
+// paste line, fallback notes) must reach the user, not /dev/null.
+func TestBridgeRelaysShimOutput(t *testing.T) {
+	var notices bytes.Buffer
+	old := bridgeNotices
+	bridgeNotices = &notices
+	t.Cleanup(func() { bridgeNotices = old })
+	// Stand-in for the shim's background process: append to the log the
+	// shim script names, the way __browser's stdout would.
+	child := `echo "paste this on your LOCAL machine: ssh -fNL 1:localhost:1 vm" >> "$(dirname "$BROWSER")/browser.log"; sleep 0.4`
+	var out bytes.Buffer
+	if err := runBridge([]string{"sh", "-c", child}, &out); err != nil {
+		t.Fatalf("runBridge: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(notices.String(), "paste this on your LOCAL machine") {
+		t.Fatalf("paste line not relayed; notices=%q", notices.String())
 	}
 }
