@@ -53,7 +53,7 @@ func newGcpLoginCmd() *cobra.Command {
 					return werr
 				}
 				created = true
-				cmd.Printf("azrl gcp: created profile %q (%s)\n", name, detail)
+				fmt.Fprintf(cmd.ErrOrStderr(), "azrl gcp: created profile %q (%s)\n", name, detail)
 			} else if isolate && !conf.Isolate {
 				conf.Isolate = true
 				if serr := gcp.SetIsolate(dir, name, true); serr != nil {
@@ -64,13 +64,13 @@ func newGcpLoginCmd() *cobra.Command {
 				return err
 			}
 			configName := conf.ResolvedConfigName(name)
-			cmd.Printf("gcp: signing in to project %q as profile %q\n", conf.Project, name)
+			fmt.Fprintf(cmd.ErrOrStderr(), "azrl gcp: signing in to project %q as profile %q\n", conf.Project, name)
 			if conf.BrowserCmd != "" {
 				// gcp.Login loads config.Global itself; the env hook in
 				// LoadGlobal picks this up (same pattern as AZURE_CONFIG_DIR).
 				os.Setenv("AZRL_BROWSER_CMD", conf.BrowserCmd)
 			}
-			if _, err := loadGlobalOrSetup(cmd.OutOrStdout()); err != nil {
+			if _, err := loadGlobalOrSetup(cmd.ErrOrStderr()); err != nil {
 				return err
 			}
 			if err := gcp.Login(dir, name, configName, conf.Isolate); err != nil {
@@ -79,14 +79,14 @@ func newGcpLoginCmd() *cobra.Command {
 			if conf.ExpectAccount != "" {
 				account, err := gcp.ActiveAccount(dir, name, configName, conf.Isolate)
 				if err != nil {
-					return fmt.Errorf("gcp: could not verify signed-in account: %w", err)
+					return fmt.Errorf("azrl gcp: could not verify signed-in account: %w", err)
 				}
 				if err := gcp.AssertAccount(account, conf.ExpectAccount); err != nil {
 					return err
 				}
 			}
 			if warn := gcp.GKEIsolationWarning(conf.Isolate); warn != "" {
-				cmd.Println(warn)
+				fmt.Fprintln(cmd.ErrOrStderr(), warn)
 			}
 			pwd, _ := os.Getwd()
 			if created && !gcpNoLink {
@@ -95,8 +95,8 @@ func newGcpLoginCmd() *cobra.Command {
 				if err := prov.Use(name, dir, pwd); err != nil {
 					return err
 				}
-				cmd.Printf("gcp: pinned %s/.gcpprofile -> %q\n", pwd, name)
-				offerGcpEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
+				fmt.Fprintf(cmd.ErrOrStderr(), "azrl gcp: pinned %s/.gcpprofile -> %q\n", pwd, name)
+				offerGcpEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "azrl gcp", "gcp", name)
 			return gcp.Scheme().Touch(name, dir, pwd)
@@ -144,13 +144,13 @@ func newGcpUseCmd() *cobra.Command {
 				}
 			}
 			if err := gcp.SyncConfig(name, conf, conf.Isolate); err != nil {
-				cmd.Printf("gcp: pinned %s/.gcpprofile -> %q (config sync skipped: %v)\n", pwd, name, err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "azrl gcp: pinned %s/.gcpprofile -> %q (config sync skipped: %v)\n", pwd, name, err)
 				return nil
 			}
-			cmd.Printf("gcp: pinned %s/.gcpprofile -> %q and synced the gcloud configuration\n", pwd, name)
-			offerGcpEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.OutOrStdout(), cmd.InOrStdin())
+			fmt.Fprintf(cmd.ErrOrStderr(), "azrl gcp: pinned %s/.gcpprofile -> %q and synced the gcloud configuration\n", pwd, name)
+			offerGcpEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			if warn := gcp.GKEIsolationWarning(conf.Isolate); warn != "" {
-				cmd.Println(warn)
+				fmt.Fprintln(cmd.ErrOrStderr(), warn)
 			}
 			return nil
 		},
@@ -212,7 +212,7 @@ func newGcpCaptureCmd() *cobra.Command {
 			if err := gcp.Scheme().Touch(name, dir, pwd); err != nil {
 				return err
 			}
-			cmd.Printf("gcp: captured project %q into profile %q\n", conf.Project, name)
+			fmt.Fprintf(cmd.ErrOrStderr(), "azrl gcp: captured project %q into profile %q\n", conf.Project, name)
 			if asJSON {
 				return writeJSON(stdout, captureResult{Provider: "gcp", Profile: name, Identity: conf.ExpectAccount, Detail: conf.Project, Created: created})
 			}

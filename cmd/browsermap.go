@@ -47,7 +47,7 @@ func newBrowserMapCmd(tool string, provFn func() provider.Provider, expectIdent 
 				return usageErr("%s: --label needs --cmd", tool)
 			}
 			cmdKey, labelKey := browserpick.Keys(prov.Name())
-			out := cmd.OutOrStdout()
+			out := cmd.ErrOrStderr()
 			in := bufio.NewScanner(cmd.InOrStdin())
 			s := prov.Scheme()
 			// A browser profile has a single owner per provider: assigning one
@@ -234,5 +234,3 @@ func newAwsBrowserCmd() *cobra.Command {
 func newGcpBrowserCmd() *cobra.Command {
 	return newBrowserMapCmd("azrl gcp", func() provider.Provider { return gcp.NewProvider() }, gcpExpectIdent, validGcpName)
 }
-
-func init() { RootCmd.AddCommand(newAzureBrowserCmd()) }

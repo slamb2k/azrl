@@ -16,7 +16,7 @@ func TestGhrlRootPromotesGithubSubcommands(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("ghrl list: %v", err)
 	}
-	if !strings.Contains(buf.String(), "work") || !strings.Contains(buf.String(), "github.com") {
+	if !strings.Contains(buf.String(), "github:work") || strings.Contains(buf.String(), "azure") {
 		t.Fatalf("ghrl list output:\n%s", buf.String())
 	}
 }
@@ -28,7 +28,7 @@ func TestGhrlRootIncludesBrowserShim(t *testing.T) {
 		names = append(names, c.Name())
 	}
 	joined := strings.Join(names, " ")
-	for _, want := range []string{"__browser", "login", "use", "rm", "status", "capture"} {
+	for _, want := range []string{"__browser", "login", "use", "rm", "whoami", "list", "capture"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("ghrl root missing %q; has: %s", want, joined)
 		}

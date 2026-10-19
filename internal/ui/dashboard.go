@@ -422,7 +422,7 @@ func (m dashboardModel) View() string {
 
 	body = append(body, paneTitleStyle.Render("MAPPINGS"))
 	if len(m.ov.Mappings) == 0 {
-		body = append(body, "  "+mutedStyle.Render("No mappings yet — map a directory with `azrl use <name>`."))
+		body = append(body, "  "+mutedStyle.Render("No mappings yet — map a directory with `azrl az use <name>` (or press m)."))
 	} else {
 		dirW, tgtW := mappingWidths(m.ov.Mappings)
 		for _, r := range m.ov.Mappings {
@@ -449,7 +449,7 @@ func (m dashboardModel) View() string {
 	case m.ov.hasProfiles():
 		body = append(body, "  "+mutedStyle.Render("All profiles are mapped."))
 	default:
-		body = append(body, "  "+mutedStyle.Render("No profiles yet. Create one with `azrl login <name>` or `ghrl login <name>`."))
+		body = append(body, "  "+mutedStyle.Render("No profiles yet. Create one with `azrl az login <name>` or `azrl gh login <name>`."))
 	}
 
 	view := m.frame(header, body, help)

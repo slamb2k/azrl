@@ -84,9 +84,10 @@ func seedAgentHome(t *testing.T) string {
 	return home
 }
 
-// surfaces is every provider's verb prefix: Azure lives at the root.
+// surfaces is every provider's verb prefix. Azure is driven both through its
+// `az` group and through the hidden top-level aliases.
 var surfaces = []struct{ provider, prefix string }{
-	{"azure", ""}, {"github", "gh"}, {"aws", "aws"}, {"gcp", "gcp"},
+	{"azure", "az"}, {"azure", ""}, {"github", "gh"}, {"aws", "aws"}, {"gcp", "gcp"},
 }
 
 func argv(prefix string, rest ...string) []string {
