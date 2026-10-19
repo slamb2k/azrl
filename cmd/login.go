@@ -19,6 +19,7 @@ var validAzureName = newValidName("azrl", "azrl")
 func newAzureLoginCmd() *cobra.Command {
 	var loginPaste, loginYes, loginNoLink bool
 	var loginEnvrc *envrcFlags
+	var res loginResult
 	c := &cobra.Command{
 		Use:   "login [profile]",
 		Short: "Sign in via the remote-browser bridge (creates the profile on first use)",
@@ -56,7 +57,11 @@ func newAzureLoginCmd() *cobra.Command {
 			if newProfile {
 				// First-login on a TTY with no saved profiles: create and sign in via
 				// the shared tenant-less create path (runAzureInit).
-				return runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink, loginEnvrc.mode())
+				if err := runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink, loginEnvrc.mode()); err != nil {
+					return err
+				}
+				res.Profile, res.Created = name, true
+				return nil
 			}
 			conf, err := profile.LoadConf(name, config.ProfilesDir())
 			if err != nil {
@@ -65,7 +70,11 @@ func newAzureLoginCmd() *cobra.Command {
 				if !confirmCreateProfile(cmd, "azrl", name, "tenant-less sign-in", loginYes) {
 					return usageErr("azrl: no profile %q — pass --yes to create it or run interactively", name)
 				}
-				return runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink, loginEnvrc.mode())
+				if err := runAzureInit(cmd, g, name, pwd, loginPaste, !loginNoLink, loginEnvrc.mode()); err != nil {
+					return err
+				}
+				res.Profile, res.Created = name, true
+				return nil
 			}
 			if conf.BrowserCmd != "" {
 				g.BrowserCmd = conf.BrowserCmd
@@ -99,6 +108,7 @@ func newAzureLoginCmd() *cobra.Command {
 			// shell still uses ~/.azure. Offer to pin it so they match.
 			offerEnvrc(pwd, loginEnvrc.mode(), out, cmd.InOrStdin())
 			printApplyHint(cmd, "azrl", "azure", name)
+			res.Profile = name
 			return nil
 		},
 	}
@@ -106,6 +116,7 @@ func newAzureLoginCmd() *cobra.Command {
 	c.Flags().BoolVarP(&loginYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&loginNoLink, "no-map", false, "Create without claiming this directory (skip the .azprofile pin).")
 	loginEnvrc = addEnvrcFlags(c)
+	addLoginJSON(c, "azure", &res)
 	return c
 }
 

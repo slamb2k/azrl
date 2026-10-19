@@ -17,7 +17,6 @@ import (
 var (
 	whoamiJSON    bool
 	whoamiExplain bool
-	whoamiAll     bool
 )
 
 // whoamiRow is one provider's effective identity for the current directory:
@@ -57,10 +56,6 @@ var whoamiCmd = &cobra.Command{
 		provs, err := selectProviders(args)
 		if err != nil {
 			return err
-		}
-		if whoamiAll {
-			deprecationNote(cmd.ErrOrStderr(), "whoami --all", "azrl list")
-			return runOverview(cmd, provs, whoamiJSON)
 		}
 		return runWhoami(cmd, provs, whoamiJSON, whoamiExplain)
 	},
@@ -347,7 +342,5 @@ func printWhoami(w io.Writer, rep whoamiReport) {
 func init() {
 	whoamiCmd.Flags().BoolVar(&whoamiJSON, "json", false, "Output the per-provider effective view as JSON")
 	whoamiCmd.Flags().BoolVar(&whoamiExplain, "explain", false, "Show the full resolution ladder per provider: every rung checked and why the winner won")
-	whoamiCmd.Flags().BoolVar(&whoamiAll, "all", false, "Show the everywhere-view (now `azrl list`)")
-	_ = whoamiCmd.Flags().MarkHidden("all")
 	RootCmd.AddCommand(whoamiCmd)
 }

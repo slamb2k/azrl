@@ -24,14 +24,7 @@ func GhrlRoot() *cobra.Command {
 			return ui.RunGitHub()
 		},
 	}
-	// ghrl is `azrl gh` at the top level, with the cross-provider read verbs
-	// pinned to GitHub in place of the deprecated per-group list/status.
-	for _, c := range githubSubcommands() {
-		if c.Name() == "list" || c.Name() == "status" {
-			continue
-		}
-		root.AddCommand(c)
-	}
+	root.AddCommand(githubSubcommands()...)
 	root.AddCommand(newListCmd("github"), newScopedWhoamiCmd("github"))
 	root.AddCommand(newBrowserShimCmd())
 	root.AddCommand(newBrowserCaptureCmd())

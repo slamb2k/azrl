@@ -94,6 +94,7 @@ func newAzGroupCmd() *cobra.Command {
 		Use:     "az",
 		Aliases: []string{"azure"},
 		Short:   "Manage Azure tenants (login, use, capture, …)",
+		RunE:    groupRun,
 	}
 	g.AddCommand(azureSubcommands()...)
 	return g

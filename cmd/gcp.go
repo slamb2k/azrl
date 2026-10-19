@@ -18,6 +18,7 @@ func newGcpLoginCmd() *cobra.Command {
 	var configName, project, region string
 	var isolate, gcpYes, gcpNoLink bool
 	var envrc *envrcFlags
+	var res loginResult
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a Google Cloud account (browser pops on your local machine)",
@@ -99,7 +100,11 @@ func newGcpLoginCmd() *cobra.Command {
 				offerGcpEnvrc(pwd, name, conf.Isolate, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "azrl gcp", "gcp", name)
-			return gcp.Scheme().Touch(name, dir, pwd)
+			if err := gcp.Scheme().Touch(name, dir, pwd); err != nil {
+				return err
+			}
+			res.Profile, res.Created = name, created
+			return nil
 		},
 	}
 	c.Flags().StringVar(&configName, "config-name", "", "gcloud named configuration to drive (defaults to the profile name)")
@@ -109,6 +114,7 @@ func newGcpLoginCmd() *cobra.Command {
 	c.Flags().BoolVarP(&gcpYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&gcpNoLink, "no-map", false, "Create without claiming this directory (skip the .gcpprofile pin).")
 	envrc = addEnvrcFlags(c)
+	addLoginJSON(c, "gcp", &res)
 	return c
 }
 
@@ -237,11 +243,9 @@ func offerGcpEnvrc(pwd, name string, isolate bool, mode envrcMode, out io.Writer
 func gcpSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newGcpLoginCmd(),
-		newGroupListCmd(gcp.NewProvider, "List configured GCP profiles and their projects"),
 		newGcpUseCmd(),
 		newGroupRmCmd(gcp.NewProvider, "Remove a GCP profile and its isolated config dir", validGcpName),
 		newGcpCaptureCmd(),
-		newGroupStatusCmd(gcp.NewProvider, "Show the ambient and repo-pinned GCP configurations", ".gcpprofile", "CLOUDSDK_ACTIVE_CONFIG_NAME"),
 		newGcpBrowserCmd(),
 		newShellCmd("gcp", "Open a subshell acting as a GCP profile (no mapping)"),
 		newConsoleCmd("gcp", "Open the GCP console for a profile's project"),
@@ -256,6 +260,7 @@ func newGcpGroupCmd() *cobra.Command {
 	g := &cobra.Command{
 		Use:   "gcp",
 		Short: "Manage Google Cloud accounts (login, use, capture, …)",
+		RunE:  groupRun,
 	}
 	g.AddCommand(gcpSubcommands()...)
 	return g

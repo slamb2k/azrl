@@ -145,16 +145,6 @@ func renderAligned(w io.Writer, indent string, rows [][]string) {
 	}
 }
 
-// printList renders name/detail profile rows: bold names, content-sized
-// columns instead of a hardcoded 24-cell gutter.
-func printList(w io.Writer, pairs [][2]string) {
-	rows := make([][]string, len(pairs))
-	for i, p := range pairs {
-		rows[i] = []string{cliBold.Render(p[0]), cliValue.Render(p[1])}
-	}
-	renderAligned(w, "", rows)
-}
-
 // ensureStderrColour re-detects the colour profile from stderr when stdout is
 // captured. lipgloss keys its default profile to stdout, so under
 // `eval "$(azrl env …)"` — stdout a pipe, stderr the terminal — every style

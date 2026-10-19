@@ -18,6 +18,7 @@ func newGhLoginCmd() *cobra.Command {
 	var hostname string
 	var ghYes, ghNoLink bool
 	var envrc *envrcFlags
+	var res loginResult
 	c := &cobra.Command{
 		Use:   "login [name]",
 		Short: "Sign in to a GitHub account (browser pops on your local machine)",
@@ -69,13 +70,18 @@ func newGhLoginCmd() *cobra.Command {
 				offerGhEnvrc(pwd, name, envrc.mode(), cmd.ErrOrStderr(), cmd.InOrStdin())
 			}
 			printApplyHint(cmd, "ghrl", "github", name)
-			return github.Scheme().Touch(name, dir, pwd)
+			if err := github.Scheme().Touch(name, dir, pwd); err != nil {
+				return err
+			}
+			res.Profile, res.Created = name, created
+			return nil
 		},
 	}
 	c.Flags().StringVar(&hostname, "hostname", "github.com", "GitHub host (github.com, a *.ghe.com tenant, or a GHES hostname)")
 	c.Flags().BoolVarP(&ghYes, "yes", "y", false, "Create a missing profile without prompting.")
 	c.Flags().BoolVar(&ghNoLink, "no-map", false, "Create without claiming this directory (skip the .ghprofile pin).")
 	envrc = addEnvrcFlags(c)
+	addLoginJSON(c, "github", &res)
 	return c
 }
 
@@ -184,10 +190,8 @@ func newGhCaptureCmd() *cobra.Command {
 func githubSubcommands() []*cobra.Command {
 	return []*cobra.Command{
 		newGhLoginCmd(),
-		newGroupListCmd(github.NewProvider, "List configured GitHub profiles and their hosts"),
 		newGhUseCmd(), newGroupRmCmd(github.NewProvider, "Remove a GitHub profile and its isolated config dir", validGhName),
 		newGhCaptureCmd(),
-		newGroupStatusCmd(github.NewProvider, "Show the repo-pinned GitHub profile", ".ghprofile", ""),
 		newGhBrowserCmd(),
 		newShellCmd("github", "Open a subshell acting as a GitHub profile (no mapping)"),
 		newConsoleCmd("github", "Open GitHub as a profile's account"),
@@ -202,6 +206,7 @@ func newGhGroupCmd() *cobra.Command {
 	g := &cobra.Command{
 		Use:   "gh",
 		Short: "Manage GitHub accounts (login, use, capture, …)",
+		RunE:  groupRun,
 	}
 	g.AddCommand(githubSubcommands()...)
 	return g

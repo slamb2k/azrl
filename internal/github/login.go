@@ -52,7 +52,8 @@ func Login(profilesDir, name string, c Conf) error {
 	}
 	cmd.Env = env
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
+	// azrl's stdout is reserved for data (login --json); gh's chatter is UX.
+	cmd.Stdout = os.Stderr
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		cmd.Stderr = os.Stderr

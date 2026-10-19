@@ -47,9 +47,8 @@ func runRoot(t *testing.T, args ...string) string {
 
 func TestGhListPrintsProfiles(t *testing.T) {
 	seedGhHome(t)
-	out := runRoot(t, "gh", "list")
-	if !strings.Contains(out, "work") || !strings.Contains(out, "github.com") ||
-		!strings.Contains(out, "emu") || !strings.Contains(out, "acme.ghe.com") {
+	out := runRoot(t, "list", "gh")
+	if !strings.Contains(out, "github:work") || !strings.Contains(out, "github:emu") {
 		t.Fatalf("gh list output:\n%s", out)
 	}
 }
@@ -93,18 +92,15 @@ func TestGhSwitchCommandRemoved(t *testing.T) {
 }
 
 // TestGhStatusIgnoresStaleCurrent proves a leftover .current file changes
-// nothing: gh status neither reads nor mentions it.
+// nothing: whoami gh neither reads nor mentions it.
 func TestGhStatusIgnoresStaleCurrent(t *testing.T) {
 	home := seedGhHome(t)
 	chdirClean(t)
 	os.WriteFile(filepath.Join(home, ".github-profiles", ".current"), []byte("work\n"), 0o644)
 
-	out := runRoot(t, "gh", "status")
+	out := runRoot(t, "whoami", "gh")
 	if strings.Contains(out, "active profile") || strings.Contains(out, "work") {
 		t.Fatalf("stale .current must be ignored:\n%s", out)
-	}
-	if !strings.Contains(out, "no .ghprofile pin") {
-		t.Fatalf("status should still report the pin state:\n%s", out)
 	}
 }
 

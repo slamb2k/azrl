@@ -248,32 +248,32 @@ func TestAgentConsolePrintURL(t *testing.T) {
 	}
 }
 
-func TestAgentListAndStatusJSON(t *testing.T) {
+func TestAgentListAndWhoamiJSON(t *testing.T) {
 	seedAgentHome(t)
 	if _, stderr, code := runAgent(t, "gcp", "use", "work"); code != ExitOK {
 		t.Fatalf("use: exit %d (%s)", code, stderr)
 	}
-	stdout, stderr, code := runAgent(t, "gcp", "list", "--json")
+	stdout, stderr, code := runAgent(t, "list", "gcp", "--json")
 	if code != ExitOK {
 		t.Fatalf("list: exit %d (%s)", code, stderr)
 	}
-	var rows []listedProfile
-	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+	var rep profilesReport
+	if err := json.Unmarshal([]byte(stdout), &rep); err != nil {
 		t.Fatalf("list --json is not JSON: %v\n%s", err, stdout)
 	}
-	if len(rows) != 1 || rows[0].Name != "work" || rows[0].Detail != "acme-lab" || len(rows[0].Mapped) != 1 {
-		t.Fatalf("rows = %+v", rows)
+	if len(rep.Mappings) != 1 || rep.Mappings[0].Profile != "work" || rep.Mappings[0].Provider != "gcp" {
+		t.Fatalf("mappings = %+v", rep.Mappings)
 	}
-	stdout, stderr, code = runAgent(t, "gcp", "status", "--json")
+	stdout, stderr, code = runAgent(t, "whoami", "gcp", "--json")
 	if code != ExitOK {
-		t.Fatalf("status: exit %d (%s)", code, stderr)
+		t.Fatalf("whoami: exit %d (%s)", code, stderr)
 	}
-	var row whoamiRow
-	if err := json.Unmarshal([]byte(stdout), &row); err != nil {
-		t.Fatalf("status --json is not JSON: %v\n%s", err, stdout)
+	var who whoamiReport
+	if err := json.Unmarshal([]byte(stdout), &who); err != nil {
+		t.Fatalf("whoami --json is not JSON: %v\n%s", err, stdout)
 	}
-	if row.Provider != "gcp" || row.Profile != "work" || row.Via != "pointer" {
-		t.Fatalf("row = %+v", row)
+	if len(who.Providers) != 1 || who.Providers[0].Profile != "work" || who.Providers[0].Via != "pointer" {
+		t.Fatalf("providers = %+v", who.Providers)
 	}
 }
 

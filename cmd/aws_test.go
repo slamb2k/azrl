@@ -26,9 +26,8 @@ func seedAwsHome(t *testing.T) string {
 
 func TestAwsListPrintsProfiles(t *testing.T) {
 	seedAwsHome(t)
-	out := runRoot(t, "aws", "list")
-	if !strings.Contains(out, "work") || !strings.Contains(out, "acme.awsapps.com") ||
-		!strings.Contains(out, "play") || !strings.Contains(out, "play.awsapps.com") {
+	out := runRoot(t, "list", "aws")
+	if !strings.Contains(out, "aws:work") || !strings.Contains(out, "aws:play") || strings.Contains(out, "azure:") {
 		t.Fatalf("aws list output:\n%s", out)
 	}
 }

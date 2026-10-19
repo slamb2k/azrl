@@ -46,53 +46,6 @@ func groupConfPath(dir, name string) string {
 	return dir + string(os.PathSeparator) + name + ".conf"
 }
 
-// listedProfile is one row of `<provider> list --json`.
-type listedProfile struct {
-	Name   string   `json:"name"`
-	Label  string   `json:"label,omitempty"`
-	Detail string   `json:"detail,omitempty"`
-	Mapped []string `json:"mapped"`
-}
-
-// newGroupListCmd is the shared `list` verb for a provider group.
-func newGroupListCmd(provFn func() provider.Provider, short string) *cobra.Command {
-	var asJSON bool
-	word := providerWord(provFn().Name())
-	c := &cobra.Command{
-		Use:   "list",
-		Short: short,
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			prov := provFn()
-			dir := prov.ProfilesDir()
-			profs, err := prov.ListProfiles(dir)
-			if err != nil {
-				return err
-			}
-			if asJSON {
-				rows := make([]listedProfile, 0, len(profs))
-				for _, p := range profs {
-					mapped := prov.Scheme().LinkedDirs(dir, p.Name)
-					if mapped == nil {
-						mapped = []string{}
-					}
-					rows = append(rows, listedProfile{Name: p.Name, Label: p.Label, Detail: p.Detail, Mapped: mapped})
-				}
-				return writeJSON(cmd.OutOrStdout(), rows)
-			}
-			pairs := make([][2]string, len(profs))
-			for i, p := range profs {
-				pairs[i] = [2]string{p.Display(), p.Detail}
-			}
-			printList(cmd.OutOrStdout(), pairs)
-			return nil
-		},
-	}
-	addJSONFlag(c, &asJSON, "the profiles and their mapped directories")
-	deprecate(c, fmt.Sprintf("azrl list %s", word))
-	return c
-}
-
 // newGroupRmCmd is the shared `rm` verb for a provider group. Like the Azure
 // rm it confirms on a TTY and refuses without one unless --yes is passed.
 func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(string) error) *cobra.Command {
@@ -137,43 +90,6 @@ func newGroupRmCmd(provFn func() provider.Provider, short string, valid func(str
 	c.Flags().BoolVar(&unlinkAll, "unmap-all", false, "Remove every directory mapping before deleting the profile")
 	c.Flags().StringVar(&replace, "replace", "", "Repoint every directory link at this profile before deleting")
 	c.MarkFlagsMutuallyExclusive("unmap-all", "replace")
-	return c
-}
-
-// newGroupStatusCmd is the shared `status` verb for a provider group. When
-// ambientEnv is set, the env-var line is printed before the pin lines. With
-// --json it prints this provider's `whoami --json` row instead.
-func newGroupStatusCmd(provFn func() provider.Provider, short, pointerName, ambientEnv string) *cobra.Command {
-	var asJSON bool
-	word := providerWord(provFn().Name())
-	c := &cobra.Command{
-		Use:   "status",
-		Short: short,
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			prov := provFn()
-			pwd, _ := os.Getwd()
-			if asJSON {
-				rep := buildWhoami([]provider.Provider{prov}, pwd, false)
-				return writeJSON(cmd.OutOrStdout(), rep.Providers[0])
-			}
-			if ambientEnv != "" {
-				if p := os.Getenv(ambientEnv); p != "" {
-					fmt.Fprintf(cmd.ErrOrStderr(), "ambient %s: %s\n", ambientEnv, p)
-				} else {
-					fmt.Fprintf(cmd.ErrOrStderr(), "ambient %s: (unset)\n", ambientEnv)
-				}
-			}
-			if pin, err := prov.Resolve("", pwd); err == nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "this dir is pinned to: %s\n", pin)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "this dir has no %s pin\n", pointerName)
-			}
-			return nil
-		},
-	}
-	addJSONFlag(c, &asJSON, "this provider's effective identity (the whoami --json row)")
-	deprecate(c, fmt.Sprintf("azrl whoami %s", word))
 	return c
 }
 
