@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/slamb2k/azrl/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +31,7 @@ var RootCmd = &cobra.Command{
 // core, the four provider groups, and the power-user shelf.
 func Execute() error {
 	groupCommands(RootCmd)
+	showRunBanner(RootCmd, os.Args[1:])
 	tagUsageErrors(RootCmd)
 	return executeTagged(RootCmd)
 }

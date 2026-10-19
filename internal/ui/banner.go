@@ -173,3 +173,12 @@ func Banner() string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// BannerForWidth is the crest for plain-CLI runs: sized to width like the TUI
+// header, or the full art when width is unknown (≤0, e.g. stderr redirected).
+func BannerForWidth(width int) string {
+	if width <= 0 {
+		return Banner()
+	}
+	return bannerFor(width)
+}

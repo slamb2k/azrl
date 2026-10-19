@@ -735,6 +735,8 @@ leave them to you.
 | `<repo>/.gcpprofile` | one line: the GCP profile for that repo (uncommitted; globally gitignored) |
 | `~/.gcp-profiles/<profile>/` | isolated `CLOUDSDK_CONFIG` dir (only under `--isolate`) |
 
+Every plain command (anything but the bare TUI, help and completion) prints the AZRL crest on **stderr** as it starts, so stdout stays clean for `--json`, `eval "$(azrl env …)"` and other scripted use. Set `AZRL_NO_BANNER=1` to turn it off.
+
 See `azrl.conf.example` and `profile.conf.example` for templates. Note: a plain `git push` runs Git Credential Manager outside any `azrl` login, so `AZ_BROWSER_CMD`/`GH_BROWSER_CMD` don't apply there — export `AZRL_BROWSER_CMD` if you need GCM's browser prompt overridden too.
 
 ## Roadmap

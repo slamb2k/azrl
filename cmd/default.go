@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -90,7 +91,7 @@ func runDefault(providerName, name string, in io.Reader, out io.Writer) error {
 			tenant = c.Tenant
 		}
 		fmt.Fprintf(out, "azrl: signing the native az session in as %s (tenant %s)\n", name, tenant)
-		return runBridge([]string{"az", "login", "--tenant", tenant}, out)
+		return runBridge([]string{"az", "login", "--tenant", tenant}, out, nativeEnvScrub("azure")...)
 	case "gcp":
 		c, err := gcp.LoadConf(name, config.GcpProfilesDir())
 		if err != nil {
@@ -101,7 +102,7 @@ func runDefault(providerName, name string, in io.Reader, out io.Writer) error {
 			args = append(args, c.ExpectAccount)
 		}
 		fmt.Fprintf(out, "azrl: signing the native gcloud session in as %s\n", name)
-		return runBridge(args, out)
+		return runBridge(args, out, nativeEnvScrub("gcp")...)
 	case "github":
 		c, err := github.LoadConf(name, config.GithubProfilesDir())
 		if err != nil {
@@ -112,7 +113,8 @@ func runDefault(providerName, name string, in io.Reader, out io.Writer) error {
 		}
 		// The account may already be known to the native gh: switch is
 		// instant and needs no browser. Fall back to a bridged web login.
-		code, err := bridgeRun([]string{"gh", "auth", "switch", "--hostname", c.Host, "--user", c.User}, out)
+		drop := nativeEnvScrub("github")
+		code, err := bridgeRun([]string{"gh", "auth", "switch", "--hostname", c.Host, "--user", c.User}, out, drop...)
 		if err != nil {
 			return err
 		}
@@ -120,7 +122,7 @@ func runDefault(providerName, name string, in io.Reader, out io.Writer) error {
 			return nil
 		}
 		fmt.Fprintf(out, "azrl: %s isn't signed in to the native gh — starting a web login\n", c.User)
-		return runBridge([]string{"gh", "auth", "login", "--hostname", c.Host, "--web"}, out)
+		return runBridge([]string{"gh", "auth", "login", "--hostname", c.Host, "--web"}, out, drop...)
 	case "aws":
 		c, err := aws.LoadConf(name, config.AwsProfilesDir())
 		if err != nil {
@@ -131,7 +133,7 @@ func runDefault(providerName, name string, in io.Reader, out io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(out, "azrl: %s [default] now targets %s/%s — signing in\n", path, c.AccountID, c.RoleName)
-		return runBridge([]string{"aws", "sso", "login"}, out)
+		return runBridge([]string{"aws", "sso", "login"}, out, nativeEnvScrub("aws")...)
 	}
 	return fmt.Errorf("azrl: unknown provider %q", providerName)
 }
@@ -150,4 +152,65 @@ func newDefaultCmd(providerName, short string) *cobra.Command {
 			return runDefault(providerName, name, cmd.InOrStdin(), cmd.ErrOrStderr())
 		},
 	}
+}
+
+// nativeEnvScrub lists the variables to drop from a `default` child so the
+// native CLI acts on its own default store, not on a profile's. Inside a
+// mapped directory (direnv) or an `azrl shell`, azrl has exported variables
+// that redirect the CLI into the profile's isolated store or named config;
+// left in place, `default` would sign that profile in again and report it as
+// the native default. Only values azrl itself would have exported are
+// dropped — a path inside azrl's profiles dir, or a name that is one of the
+// provider's managed profiles — so a user's own global overrides survive.
+func nativeEnvScrub(providerName string) []string {
+	var drop []string
+	inDir := func(key, dir string) {
+		if v := os.Getenv(key); v != "" && config.Within(dir, v) {
+			drop = append(drop, key)
+		}
+	}
+	managed := func(key string, names map[string]bool) {
+		if v := os.Getenv(key); v != "" && names[v] {
+			drop = append(drop, key)
+		}
+	}
+	switch providerName {
+	case "azure":
+		inDir("AZURE_CONFIG_DIR", config.ProfilesDir())
+	case "github":
+		inDir("GH_CONFIG_DIR", config.GithubProfilesDir())
+	case "aws":
+		dir := config.AwsProfilesDir()
+		inDir("AWS_CONFIG_FILE", dir)
+		inDir("AWS_SHARED_CREDENTIALS_FILE", dir)
+		names := profileNames("aws")
+		managed("AWS_PROFILE", names)
+		managed("AWS_DEFAULT_PROFILE", names)
+	case "gcp":
+		dir := config.GcpProfilesDir()
+		inDir("CLOUDSDK_CONFIG", dir)
+		names := map[string]bool{}
+		for n := range profileNames("gcp") {
+			if c, err := gcp.LoadConf(n, dir); err == nil {
+				names[c.ResolvedConfigName(n)] = true
+			}
+		}
+		managed("CLOUDSDK_ACTIVE_CONFIG_NAME", names)
+	}
+	return drop
+}
+
+// profileNames is the set of a provider's managed profile names.
+func profileNames(providerName string) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range provider.All() {
+		if p.Name() != providerName {
+			continue
+		}
+		listed, _ := p.ListProfiles(p.ProfilesDir())
+		for _, l := range listed {
+			out[l.Name] = true
+		}
+	}
+	return out
 }
