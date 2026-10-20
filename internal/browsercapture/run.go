@@ -27,6 +27,9 @@ func Run(url string, g config.Global, forcePaste bool, hold time.Duration) (stri
 			_ = tunnel.Process.Kill()
 			return "", nil
 		}
+		if g.IsLocal() && paste != "" {
+			return localOpenLine(paste), nil
+		}
 		return paste, nil
 	}
 	return relayDevice(url, g, forcePaste), nil
@@ -37,7 +40,9 @@ func Run(url string, g config.Global, forcePaste bool, hold time.Duration) (stri
 // path A returns a local-open line.
 func relayDevice(url string, g config.Global, forcePaste bool) string {
 	if g.IsLocal() {
-		_ = bridge.LaunchLocal(g.BrowserCmd, url)
+		if err := bridge.LaunchLocal(g.BrowserCmd, url); err != nil {
+			return fmt.Sprintf("could not open the browser with %q: %v\n", g.BrowserCmd, err) + localOpenLine(url)
+		}
 		return ""
 	}
 	if !forcePaste && reachable(g.BrowserHost) {
@@ -50,4 +55,10 @@ func relayDevice(url string, g config.Global, forcePaste bool) string {
 // reachable reports whether host answers a batch-mode SSH probe.
 func reachable(host string) bool {
 	return exec.Command("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, "true").Run() == nil
+}
+
+// localOpenLine asks the user to open url themselves after a local launch
+// failed — the callback is on this machine, so any browser here will do.
+func localOpenLine(url string) string {
+	return fmt.Sprintf("open this URL in your browser to sign in:\n\n  %s", url)
 }

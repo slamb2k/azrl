@@ -40,7 +40,7 @@ func runLogin(tenant string, g config.Global, forcePaste bool, out io.Writer) er
 		defer func() { _ = tunnel.Process.Kill() }()
 		fmt.Fprintf(out, "azrl: browser opened on %s (zero-paste path B)\n", g.BrowserHost)
 	} else if g.IsLocal() {
-		fmt.Fprintf(out, "azrl: browser opened locally (%s)\n", g.BrowserCmd)
+		fmt.Fprint(out, bridge.LocalNote("azrl", g.BrowserCmd, lg.URL, paste))
 	} else {
 		fmt.Fprintf(out, "azrl: paste this on your LOCAL machine:\n\n%s\n\n", paste)
 		if _, ok := bridge.VMHost(g); !ok {

@@ -89,7 +89,7 @@ func Login(dir, name string, isolate, device bool) error {
 			defer func() { _ = tunnel.Process.Kill() }()
 			fmt.Fprintf(os.Stderr, "azrl aws: browser opened on %s (zero-paste path B)\n", g.BrowserHost)
 		} else if g.IsLocal() {
-			fmt.Fprintf(os.Stderr, "azrl aws: browser opened locally (%s)\n", g.BrowserCmd)
+			fmt.Fprint(os.Stderr, bridge.LocalNote("azrl aws", g.BrowserCmd, url, paste))
 		} else {
 			fmt.Fprintf(os.Stderr, "azrl aws: paste this on your LOCAL machine:\n\n%s\n\n", paste)
 		}
