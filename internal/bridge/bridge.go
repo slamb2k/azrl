@@ -6,10 +6,12 @@
 package bridge
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/slamb2k/azrl/internal/config"
@@ -74,12 +76,78 @@ func VMHost(g config.Global) (host string, ok bool) {
 	return "<your-vm-host>", false
 }
 
+// localLaunchWait bounds how long a local browser launch may hold the caller
+// while it is watched for an early failure. Launchers like wslview, xdg-open
+// and open hand off and exit well inside it; a browser that stays in the
+// foreground is treated as launched once the window passes.
+var localLaunchWait = 2 * time.Second
+
 // LaunchLocal opens url on the current machine using browserCmd, with no SSH.
 // Used in local mode, where azrl runs on the same host as the browser and the
-// OAuth callback loops back over localhost directly. Best-effort and detached:
-// browserCmd may carry its own arguments, so it runs through the shell.
+// OAuth callback loops back over localhost directly. browserCmd may carry its
+// own arguments, so it runs through the shell. A launcher that exits non-zero
+// within localLaunchWait (missing binary, broken WSL interop) is reported with
+// its output; one still running after it is left detached and returns nil.
 func LaunchLocal(browserCmd, url string) error {
-	return exec.Command("sh", "-c", BrowserLine(browserCmd, url)).Start()
+	var buf lockedBuffer
+	c := exec.Command("sh", "-c", BrowserLine(browserCmd, url))
+	c.Stdout, c.Stderr = &buf, &buf
+	if err := c.Start(); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.Wait() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			if msg := strings.TrimSpace(buf.String()); msg != "" {
+				return fmt.Errorf("%w: %s", err, lastLine(msg))
+			}
+			return err
+		}
+		return nil
+	case <-time.After(localLaunchWait):
+		return nil
+	}
+}
+
+// lastLine returns the final non-empty line of s — a launcher's error is
+// usually its last word, and the whole of its output would swamp the note.
+func lastLine(s string) string {
+	lines := strings.Split(s, "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
+}
+
+// lockedBuffer is a bytes.Buffer safe for the exec copier goroutines to write
+// while LaunchLocal reads it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// LocalNote is what a local-mode caller prints after Bridge returns no tunnel.
+// A successful launch still shows the URL: a launcher can exit 0 and put
+// nothing on screen (a Windows default-browser picker swallowing a wslview
+// hand-off), and the callback loops back over localhost, so opening the URL
+// in any browser on this machine completes the sign-in. paste is Bridge's
+// second return: empty when the launch went through, the URL when it failed.
+func LocalNote(prefix, browserCmd, url, paste string) string {
+	if paste != "" {
+		return fmt.Sprintf("%s: open this URL in your browser to sign in:\n\n  %s\n\n", prefix, url)
+	}
+	return fmt.Sprintf("%s: browser opened locally (%s)\n%s: no browser window? open this URL yourself:\n\n  %s\n\n", prefix, browserCmd, prefix, url)
 }
 
 // Bridge connects the local browser to the VM's callback port. Path B (default):
@@ -89,8 +157,12 @@ func LaunchLocal(browserCmd, url string) error {
 func Bridge(port, url string, g config.Global, forcePaste bool) (*exec.Cmd, string, error) {
 	if g.IsLocal() {
 		// Local mode: azrl and the browser share this host, so the callback
-		// loops back over localhost — no tunnel, no paste line.
-		_ = LaunchLocal(g.BrowserCmd, url)
+		// loops back over localhost — no tunnel, no paste line. A failed launch
+		// returns the URL itself so the caller can tell the user to open it.
+		if err := LaunchLocal(g.BrowserCmd, url); err != nil {
+			fmt.Fprintf(os.Stderr, "azrl: could not open the browser with %q: %v\n", g.BrowserCmd, err)
+			return nil, url, nil
+		}
 		return nil, "", nil
 	}
 	vmHost, _ := VMHost(g)

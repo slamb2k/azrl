@@ -256,3 +256,65 @@ func fakeTunnelSSH(t *testing.T, onTunnel string) string {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return log
 }
+
+// TestLaunchLocalReportsFailedLauncher proves a launcher that exits non-zero
+// (wslview with broken interop, a missing binary) surfaces as an error carrying
+// its last line of output instead of being reported as an opened browser.
+func TestLaunchLocalReportsFailedLauncher(t *testing.T) {
+	bin := t.TempDir()
+	browser := filepath.Join(bin, "badbrowser")
+	if err := os.WriteFile(browser, []byte("#!/usr/bin/env bash\necho noise >&2\necho 'interop is disabled' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := LaunchLocal(browser, "https://login/x")
+	if err == nil || !strings.Contains(err.Error(), "interop is disabled") {
+		t.Fatalf("want the launcher's error, got %v", err)
+	}
+}
+
+// TestLaunchLocalDoesNotBlockOnForegroundBrowser proves a browser that stays in
+// the foreground releases the caller after localLaunchWait.
+func TestLaunchLocalDoesNotBlockOnForegroundBrowser(t *testing.T) {
+	bin := t.TempDir()
+	browser := filepath.Join(bin, "slowbrowser")
+	if err := os.WriteFile(browser, []byte("#!/usr/bin/env bash\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := localLaunchWait
+	localLaunchWait = 200 * time.Millisecond
+	t.Cleanup(func() { localLaunchWait = old })
+	start := time.Now()
+	if err := LaunchLocal(browser, "https://login/x"); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatal("LaunchLocal blocked on a foreground browser")
+	}
+}
+
+// TestBridgeLocalLaunchFailureReturnsURL proves local mode hands the URL back
+// when the launcher fails, so the caller can ask the user to open it.
+func TestBridgeLocalLaunchFailureReturnsURL(t *testing.T) {
+	g := config.Global{BrowserCmd: "false"}
+	tun, paste, err := Bridge("40404", "https://login/x?y=z", g, false)
+	if err != nil || tun != nil {
+		t.Fatalf("tun=%v err=%v", tun, err)
+	}
+	if paste != "https://login/x?y=z" {
+		t.Fatalf("want the URL back on a failed launch, got %q", paste)
+	}
+}
+
+// TestLocalNoteAlwaysShowsURL proves the sign-in URL is printed whether or not
+// the launch reported success — a launcher can exit 0 and show nothing.
+func TestLocalNoteAlwaysShowsURL(t *testing.T) {
+	url := "https://login/x?y=z"
+	ok := LocalNote("azrl", "wslview", url, "")
+	if !strings.Contains(ok, "browser opened locally (wslview)") || !strings.Contains(ok, url) {
+		t.Fatalf("success note: %q", ok)
+	}
+	failed := LocalNote("azrl", "wslview", url, url)
+	if strings.Contains(failed, "opened") || !strings.Contains(failed, url) {
+		t.Fatalf("failure note: %q", failed)
+	}
+}

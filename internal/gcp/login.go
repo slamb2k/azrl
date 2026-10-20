@@ -80,7 +80,7 @@ func Login(dir, name, configName string, isolate bool) error {
 			defer func() { _ = tunnel.Process.Kill() }()
 			fmt.Fprintf(os.Stderr, "azrl gcp: browser opened on %s (zero-paste path B)\n", g.BrowserHost)
 		} else if g.IsLocal() {
-			fmt.Fprintf(os.Stderr, "azrl gcp: browser opened locally (%s)\n", g.BrowserCmd)
+			fmt.Fprint(os.Stderr, bridge.LocalNote("azrl gcp", g.BrowserCmd, url, paste))
 		} else {
 			fmt.Fprintf(os.Stderr, "azrl gcp: paste this on your LOCAL machine:\n\n%s\n\n", paste)
 		}
