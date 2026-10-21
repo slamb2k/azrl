@@ -7,6 +7,7 @@ package bridge
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -56,10 +57,32 @@ func LaunchRemote(host, browserCmd, url string) error {
 	go func() { done <- c.Wait() }()
 	select {
 	case err := <-done:
-		return err
+		return launchResult(browserCmd, err)
 	case <-time.After(launchWait):
 		return nil
 	}
+}
+
+// launchResult maps a browser command's exit to success or failure.
+// explorer.exe exits 1 even after handing a URL to the default browser, so
+// that one status is not a failure for it.
+func launchResult(browserCmd string, err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 1 && isExplorer(browserCmd) {
+		return nil
+	}
+	return err
+}
+
+// isExplorer reports whether browserCmd runs Windows' explorer.exe (bare, or
+// by a WSL path such as /mnt/c/Windows/explorer.exe).
+func isExplorer(browserCmd string) bool {
+	f := strings.Fields(browserCmd)
+	if len(f) == 0 {
+		return false
+	}
+	base := strings.ToLower(f[0][strings.LastIndexAny(f[0], `/\`)+1:])
+	return base == "explorer.exe" || base == "explorer"
 }
 
 // VMHost resolves the VM's SSH name for the path-A paste line: VM_SSH_HOST if
@@ -99,7 +122,7 @@ func LaunchLocal(browserCmd, url string) error {
 	go func() { done <- c.Wait() }()
 	select {
 	case err := <-done:
-		if err != nil {
+		if err = launchResult(browserCmd, err); err != nil {
 			if msg := strings.TrimSpace(buf.String()); msg != "" {
 				return fmt.Errorf("%w: %s", err, lastLine(msg))
 			}

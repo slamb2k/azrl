@@ -108,7 +108,7 @@ just for remote servers:
 | Environment | What azrl does for you |
 |---|---|
 | **Local workstation** | Keep work / personal / per-client accounts side by side, each in its own profile; switch by directory instead of re-logging-in. |
-| **WSL (WSL2 on Windows)** | The browser is on Windows, `az` runs in Linux — azrl launches the sign-in page via `wslview` and captures the callback, no device code needed. |
+| **WSL (WSL2 on Windows)** | The browser is on Windows, `az` runs in Linux — azrl launches the sign-in page via `explorer.exe` (no extra packages; `wslview` if you have wslu) and captures the callback, no device code needed. |
 | **Headless / remote VM (SSH)** | Pops the sign-in browser on your **local** machine over a reverse SSH tunnel and forwards the OAuth callback back to the VM. |
 | **Conditional-Access tenants** | Keeps the interactive auth-code flow alive so tenants that block device code still work. |
 | **Guest / B2B / multi-tenant** | Pins the tenant by GUID (needed where `az account show` returns a null default domain) and verifies you landed as the expected user. |
@@ -128,7 +128,7 @@ just for remote servers:
   you don't fire a command as the wrong identity.
 - **Browser bridging.** No local browser? `azrl` still completes an interactive
   login — reverse SSH tunnel (zero-paste), or a one-line command you paste
-  locally, or `wslview` under WSL.
+  locally, or `explorer.exe` under WSL.
 - **Works with subscription-less tenants.** Signs in with
   `--allow-no-subscription`, so Entra-ID-only / tenant-level accounts are fine.
 
@@ -175,7 +175,7 @@ bootstrap it from [`azrl.conf.example`](azrl.conf.example)):
 
 ```ini
 LOCAL_HOST=my-laptop        # SSH name of the machine with the browser (e.g. a tailnet name)
-LOCAL_BROWSER_CMD=xdg-open  # what opens a URL there — wslview on WSL, open on macOS
+LOCAL_BROWSER_CMD=xdg-open  # what opens a URL there — explorer.exe on WSL, open on macOS
 VM_HOST=my-vm               # this machine's SSH-reachable name
 ```
 
@@ -183,7 +183,7 @@ Then `azrl login` does the rest: if `LOCAL_HOST` is SSH-reachable from here,
 the sign-in page **pops on your local machine** through a reverse tunnel and
 the OAuth callback is forwarded back — zero paste. If it isn't reachable, azrl
 prints a one-line `ssh -fNL …` to paste in a local terminal instead. Under
-WSL2 with `LOCAL_BROWSER_CMD=wslview`, the page opens straight in your Windows
+WSL2 with `LOCAL_BROWSER_CMD=explorer.exe` (or `wslview`), the page opens straight in your Windows
 browser.
 
 [direnv](https://direnv.net) is optional but recommended — it's what makes

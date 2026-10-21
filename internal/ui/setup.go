@@ -38,7 +38,7 @@ type osChoice struct{ label, cmd string }
 
 var osChoices = []osChoice{
 	{"macOS", "open"},
-	{"WSL (Windows browser)", "wslview"},
+	{"WSL (Windows browser)", "explorer.exe"},
 	{"Linux", "xdg-open"},
 }
 
