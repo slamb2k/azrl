@@ -35,14 +35,22 @@ func TestDetectWSL(t *testing.T) {
 	if len(c) != 1 || c[0].Mode != Local || !c[0].Recommended {
 		t.Fatalf("WSL should yield a single recommended local candidate: %+v", c)
 	}
-	if c[0].BrowserCmd != "wslview" || c[0].BrowserHost != "localhost" {
-		t.Fatalf("WSL candidate = %+v", c[0])
+	if c[0].BrowserCmd != "explorer.exe" || c[0].BrowserHost != "localhost" {
+		t.Fatalf("WSL without wslu should use explorer.exe: %+v", c[0])
+	}
+}
+
+func TestDetectWSLPrefersInstalledWslview(t *testing.T) {
+	has := func(b string) bool { return b == "wslview" }
+	c := Detect(Env{WSLDistro: "Ubuntu", GOOS: "linux", Has: has})
+	if len(c) != 1 || c[0].BrowserCmd != "wslview" {
+		t.Fatalf("installed wslview should be used: %+v", c)
 	}
 }
 
 func TestDetectWSLViaProcVersion(t *testing.T) {
 	c := Detect(Env{ProcVersion: "Linux version 5.15.0-microsoft-standard-WSL2", GOOS: "linux", Has: hasNone})
-	if len(c) != 1 || c[0].BrowserCmd != "wslview" {
+	if len(c) != 1 || c[0].BrowserCmd != "explorer.exe" {
 		t.Fatalf("proc-version WSL detection failed: %+v", c)
 	}
 }

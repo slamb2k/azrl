@@ -68,8 +68,8 @@ func TestSetupLocalSingleCandidate(t *testing.T) {
 	if m.step != stepFields {
 		t.Fatalf("single candidate should skip pick, step=%v", m.step)
 	}
-	if !strings.Contains(m.View(), "wslview") {
-		t.Fatalf("field view should pre-fill wslview:\n%s", m.View())
+	if !strings.Contains(m.View(), "explorer.exe") {
+		t.Fatalf("field view should pre-fill explorer.exe:\n%s", m.View())
 	}
 	m = send(m, key("enter")) // last field → confirm
 	if m.step != stepConfirm {
@@ -77,7 +77,7 @@ func TestSetupLocalSingleCandidate(t *testing.T) {
 	}
 	m = send(m, key("y"))
 	g, ok := m.Result()
-	if !ok || g.BrowserCmd != "wslview" || !g.IsLocal() {
+	if !ok || g.BrowserCmd != "explorer.exe" || !g.IsLocal() {
 		t.Fatalf("confirm result = %+v ok=%v", g, ok)
 	}
 }
@@ -101,8 +101,8 @@ func TestSetupRemoteFlow(t *testing.T) {
 	if m.step != stepFields {
 		t.Fatalf("OS pick should enter fields, step=%v", m.step)
 	}
-	if m.chosen.BrowserCmd != "wslview" {
-		t.Fatalf("OS pick should set BrowserCmd=wslview, got %q", m.chosen.BrowserCmd)
+	if m.chosen.BrowserCmd != "explorer.exe" {
+		t.Fatalf("OS pick should set BrowserCmd=explorer.exe, got %q", m.chosen.BrowserCmd)
 	}
 	// VM_SSH_HOST field pre-filled from the candidate.
 	if !strings.Contains(m.View(), "203.0.113.10") {
@@ -115,7 +115,7 @@ func TestSetupRemoteFlow(t *testing.T) {
 	}
 	m = send(m, key("enter")) // write
 	g, ok := m.Result()
-	if !ok || g.IsLocal() || g.BrowserCmd != "wslview" || g.VMSSHHost != "203.0.113.10" {
+	if !ok || g.IsLocal() || g.BrowserCmd != "explorer.exe" || g.VMSSHHost != "203.0.113.10" {
 		t.Fatalf("remote result = %+v ok=%v", g, ok)
 	}
 }
@@ -144,7 +144,7 @@ func TestSetupViewChrome(t *testing.T) {
 	m = send(m, key("enter")) // VM host
 	m = send(m, key("enter")) // browser host → confirm
 	cv := m.View()
-	for _, want := range []string{"REMOTE", "BROWSER_CMD", "wslview", "azrl.conf.bak"} {
+	for _, want := range []string{"REMOTE", "BROWSER_CMD", "explorer.exe", "azrl.conf.bak"} {
 		if !strings.Contains(cv, want) {
 			t.Fatalf("confirm view missing %q", want)
 		}

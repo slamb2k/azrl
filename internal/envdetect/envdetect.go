@@ -60,7 +60,13 @@ func DeriveVMHost(sshConn string) string {
 // or ok=false when no local browser signal is present.
 func localCandidate(e Env) (Candidate, bool) {
 	if strings.Contains(strings.ToLower(e.ProcVersion), "microsoft") || e.WSLDistro != "" {
-		return Candidate{Mode: Local, Label: "Local (WSL → Windows browser)", Reason: "WSL detected", BrowserCmd: "wslview", BrowserHost: "localhost"}, true
+		// explorer.exe ships with Windows and is on PATH under WSL interop, so it
+		// needs no extra package; wslview (wslu) is used only when installed.
+		cmd := "explorer.exe"
+		if e.Has != nil && e.Has("wslview") {
+			cmd = "wslview"
+		}
+		return Candidate{Mode: Local, Label: "Local (WSL → Windows browser)", Reason: "WSL detected", BrowserCmd: cmd, BrowserHost: "localhost"}, true
 	}
 	if e.GOOS == "darwin" {
 		return Candidate{Mode: Local, Label: "Local (macOS browser)", Reason: "macOS detected", BrowserCmd: "open", BrowserHost: "localhost"}, true

@@ -318,3 +318,23 @@ func TestLocalNoteAlwaysShowsURL(t *testing.T) {
 		t.Fatalf("failure note: %q", failed)
 	}
 }
+
+// TestLaunchLocalAcceptsExplorerExitOne proves explorer.exe's habitual exit 1
+// after a successful hand-off is not reported as a failed launch, while any
+// other command exiting 1 still is.
+func TestLaunchLocalAcceptsExplorerExitOne(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "explorer.exe"), []byte("#!/usr/bin/env bash\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := LaunchLocal("explorer.exe", "https://login/x?a=1&b=2"); err != nil {
+		t.Fatalf("explorer.exe exit 1 must count as launched: %v", err)
+	}
+	if err := LaunchLocal(filepath.Join(bin, "explorer.exe"), "https://login/x"); err != nil {
+		t.Fatalf("explorer.exe by path must count as launched: %v", err)
+	}
+	if err := LaunchLocal("false", "https://login/x"); err == nil {
+		t.Fatal("a non-explorer command exiting 1 must still fail")
+	}
+}
